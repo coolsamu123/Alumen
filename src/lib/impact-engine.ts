@@ -3,12 +3,16 @@ import { getDb } from './db';
 import { extractTags } from './similarity';
 import { getProjectDocuments, getFileNamesForUrls } from './drive-engine';
 import { getPrompts } from './prompts';
-import { generateContent } from './llm';
+import { generateContent, getActiveOutputLanguage, type OutputLanguage } from './llm';
 import { normalizeDdsList } from './dds-catalog';
 import type { CIOOProject, CIOOService, ProjectImpact, ProjectSummary, ImpactAnalysisStatus } from './types';
 
 // ─── Module-level state for tracking analysis progress ───────────────────────
 
+// Reads succeeded Goals rows for the active output language. Callers MUST
+// bind the language as the single positional parameter; we use a `?` here
+// (rather than baking the language into the string) so prepared-statement
+// caching inside better-sqlite3 still pays off.
 export const IMPACT_ANALYSIS_QUERY = `
   SELECT
     g.id as goal_id, g.project_id, g.project_name, g.region, g.gate as goal_gate,
@@ -22,12 +26,13 @@ export const IMPACT_ANALYSIS_QUERY = `
     g.impact_claims, g.timeline_struct,
     g.raw_gemini_response, g.source_files, g.analyzed_at,
     g.status as goal_status, g.error_message,
+    g.output_language,
     p.name as proj_name, p.dds, p.gate as proj_gate, p.decision, p.cost_keur, p.description, p.remarks,
     p.review_date, p.link_positions, p.link_folder, p.link_cioo,
     p.services
   FROM project_goals g
   LEFT JOIN projects p ON g.project_id = p.project_id
-  WHERE g.project_id != '' AND g.status = 'success'
+  WHERE g.project_id != '' AND g.status = 'success' AND g.output_language = ?
   ORDER BY g.project_id, p.review_date DESC
 `;
 
@@ -136,9 +141,9 @@ export interface ProjectFullRecord {
   tags: string[];
 }
 
-function fetchAllProjectRecords(): ProjectFullRecord[] {
+function fetchAllProjectRecords(lang: OutputLanguage = getActiveOutputLanguage()): ProjectFullRecord[] {
   const db = getDb();
-  const rows = db.prepare(IMPACT_ANALYSIS_QUERY).all() as Record<string, unknown>[];
+  const rows = db.prepare(IMPACT_ANALYSIS_QUERY).all(lang) as Record<string, unknown>[];
 
   const grouped = new Map<string, Record<string, unknown>[]>();
   for (const row of rows) {
@@ -614,6 +619,42 @@ interface RawImpact {
   citations?: RawCitation[];
 }
 
+// Hard validation of source/target identifiers. The LLM occasionally hallucinates
+// pseudo-targets ("DDS_IMPAcripts", "GIO_SVCS", etc.) that look right at a glance
+// but break the universe fan-out (they can't be matched to GIO_SERVICES or
+// DDS_IMPACTS, so they become phantom "project" satellites). This normaliser:
+//   - returns the canonical string when an obvious typo is detected
+//   - returns '' when the value can't be salvaged (caller drops the row)
+const PROJECT_ID_RE = /^PRJ\d{4,}$/;
+
+function normalizeImpactTarget(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  if (trimmed === 'GIO_SERVICES' || trimmed === 'DDS_IMPACTS') return trimmed;
+  if (PROJECT_ID_RE.test(trimmed)) return trimmed;
+
+  // Fuzzy match for pseudo-target typos: case-insensitive, strip non-alphanum.
+  // Examples that must collapse to DDS_IMPACTS:
+  //   "DDS_IMPAcripts" (LLM hallucination observed in the wild)
+  //   "dds-impacts", "DDS_IMPACT", "DDS IMPACTS"
+  const stripped = trimmed.toUpperCase().replace(/[^A-Z]/g, '');
+  if (stripped.startsWith('DDSIMP')) return 'DDS_IMPACTS';
+  if (stripped.startsWith('GIOSERV') || stripped.startsWith('GIOSL')) return 'GIO_SERVICES';
+  // Look for an embedded PRJ id (LLM occasionally wraps it in quotes/labels).
+  const m = trimmed.match(/PRJ\d{4,}/);
+  if (m) return m[0];
+  return '';
+}
+
+function normalizeImpactSource(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  if (PROJECT_ID_RE.test(trimmed)) return trimmed;
+  const m = trimmed.match(/PRJ\d{4,}/);
+  if (m) return m[0];
+  return '';
+}
+
 function parseImpactResponse(text: string): RawImpact[] {
   try {
     // Remove markdown code fences if present
@@ -632,9 +673,12 @@ function parseImpactResponse(text: string): RawImpact[] {
       return [];
     }
 
-    // Normalize field names — Gemini may use different keys
-    return parsed.map((item: Record<string, unknown>) => {
-      const rawCitations = Array.isArray(item.citations) ? item.citations as Record<string, unknown>[] : [];
+    let droppedTarget = 0;
+    let normalisedTarget = 0;
+
+    const out: RawImpact[] = [];
+    for (const raw of parsed as Record<string, unknown>[]) {
+      const rawCitations = Array.isArray(raw.citations) ? raw.citations as Record<string, unknown>[] : [];
       const citations: RawCitation[] = rawCitations
         .map(c => ({
           doc_url: String(c.doc_url || c.docUrl || c.url || '').trim(),
@@ -642,18 +686,39 @@ function parseImpactResponse(text: string): RawImpact[] {
         }))
         .filter(c => c.doc_url && c.snippet);
 
-      return {
-        source: (item.source || item.source_project_id || item.sourceProjectId || '') as string,
-        target: (item.target || item.target_project_id || item.targetProjectId || '') as string,
-        impact_type: (item.impact_type || item.impactType || item.type || 'technology_dependency') as string,
-        direction: (item.direction || item.relationship || 'requires_coordination') as string,
-        severity: (item.severity || item.level || 'medium') as string,
-        explanation: (item.explanation || item.reason || item.description || '') as string,
-        gio_services: Array.isArray(item.gio_services) ? item.gio_services as string[] : [],
-        dds_entities: normalizeDdsList(item.dds_entities ?? item.ddsEntities ?? item.dds),
+      const rawSource = String(raw.source || raw.source_project_id || raw.sourceProjectId || '');
+      const rawTarget = String(raw.target || raw.target_project_id || raw.targetProjectId || '');
+      const source = normalizeImpactSource(rawSource);
+      const target = normalizeImpactTarget(rawTarget);
+      if (!source || !target) {
+        droppedTarget++;
+        continue;
+      }
+      if (target !== rawTarget.trim() && (target === 'DDS_IMPACTS' || target === 'GIO_SERVICES')) {
+        normalisedTarget++;
+      }
+
+      out.push({
+        source,
+        target,
+        impact_type: (raw.impact_type || raw.impactType || raw.type || 'technology_dependency') as string,
+        direction: (raw.direction || raw.relationship || 'requires_coordination') as string,
+        // Normalise to the 2-tier scale. Default missing severities to 'low'
+        // and fold legacy 'medium' values into 'low' (2026-06-18 collapse).
+        severity: ((): string => {
+          const s = String(raw.severity || raw.level || 'low').toLowerCase();
+          return s === 'medium' ? 'low' : s;
+        })(),
+        explanation: (raw.explanation || raw.reason || raw.description || '') as string,
+        gio_services: Array.isArray(raw.gio_services) ? raw.gio_services as string[] : [],
+        dds_entities: normalizeDdsList(raw.dds_entities ?? raw.ddsEntities ?? raw.dds),
         citations,
-      };
-    }).filter(item => item.source && item.target) as RawImpact[];
+      });
+    }
+    if (droppedTarget > 0 || normalisedTarget > 0) {
+      console.log(`[Impact] parseImpactResponse: dropped=${droppedTarget} fuzzy-fixed=${normalisedTarget} (of ${parsed.length} rows)`);
+    }
+    return out;
   } catch (err) {
     console.error('[Impact] Failed to parse Gemini response:', (err as Error).message, '— raw:', text.slice(0, 500));
     return [];
@@ -662,12 +727,12 @@ function parseImpactResponse(text: string): RawImpact[] {
 
 // ─── Store impacts in DB ─────────────────────────────────────────────────────
 
-function storeImpacts(impacts: RawImpact[], batchId: string): number {
+function storeImpacts(impacts: RawImpact[], batchId: string, lang: OutputLanguage): number {
   const db = getDb();
   const stmt = db.prepare(`
     INSERT OR REPLACE INTO projects_impact
-    (source_project_id, target_project_id, impact_type, direction, severity, explanation, batch_id, gio_services, dds_entities, citations, evidence_chain)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (source_project_id, target_project_id, impact_type, direction, severity, explanation, batch_id, gio_services, dds_entities, citations, evidence_chain, output_language)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   // Onda 4: load each source project's Goals once so we can attach an
@@ -675,13 +740,15 @@ function storeImpacts(impacts: RawImpact[], batchId: string): number {
   //   1. Fetch all relevant project_goals (source projects in this batch).
   //   2. For each impact row, find which atomic claim (or project_relation)
   //      it corresponds to and persist the trace.
+  // Scoped to the SAME language we're storing impacts in — otherwise the
+  // goal_id we record would point to a row in the other language's analysis.
   const sourceProjectIds = Array.from(new Set(impacts.map(i => i.source).filter(Boolean)));
   const goalsByProject = new Map<string, { goal_id: number; impact_claims: string; project_relations: string }>();
   if (sourceProjectIds.length > 0) {
     const placeholders = sourceProjectIds.map(() => '?').join(',');
     const rows = db.prepare(
-      `SELECT id, project_id, impact_claims, project_relations FROM project_goals WHERE project_id IN (${placeholders}) AND status = 'success'`
-    ).all(...sourceProjectIds) as Array<{ id: number; project_id: string; impact_claims: string; project_relations: string }>;
+      `SELECT id, project_id, impact_claims, project_relations FROM project_goals WHERE project_id IN (${placeholders}) AND status = 'success' AND output_language = ?`
+    ).all(...sourceProjectIds, lang) as Array<{ id: number; project_id: string; impact_claims: string; project_relations: string }>;
     for (const r of rows) goalsByProject.set(r.project_id, { goal_id: r.id, impact_claims: r.impact_claims, project_relations: r.project_relations });
   }
 
@@ -717,6 +784,11 @@ function storeImpacts(impacts: RawImpact[], batchId: string): number {
       // Drop self-loops: an LLM occasionally emits source===target rows from
       // out_of_scope-flavored sentences. They are never meaningful as edges.
       if (item.source && item.target && item.source === item.target) continue;
+      // Sort entity arrays before serialisation so the UNIQUE constraint key
+      // is stable regardless of the order the LLM (or materialiser) listed
+      // them — ["HHC","Americas"] and ["Americas","HHC"] must collide.
+      const sortedGio = [...(item.gio_services || [])].sort();
+      const sortedDds = [...(item.dds_entities || [])].sort();
       const result = stmt.run(
         item.source,
         item.target,
@@ -725,10 +797,11 @@ function storeImpacts(impacts: RawImpact[], batchId: string): number {
         item.severity,
         item.explanation || '',
         batchId,
-        JSON.stringify(item.gio_services || []),
-        JSON.stringify(item.dds_entities || []),
+        JSON.stringify(sortedGio),
+        JSON.stringify(sortedDds),
         JSON.stringify(item.citations || []),
         buildChain(item),
+        lang,
       );
       if (result.changes > 0) inserted++;
     }
@@ -738,12 +811,152 @@ function storeImpacts(impacts: RawImpact[], batchId: string): number {
   return inserted;
 }
 
+// ─── Materialize impact_claims as direct rows (Option 3, 2026-06-18) ─────────
+// The Goals extractor (Onda 3) already produces atomic, evidence-anchored
+// impact_claims — one per (project, target, role). The Impact LLM was being
+// asked to faithfully re-emit one row per claim, which turned out to be
+// unreliable: it occasionally merged claims sharing an evidence_quote, lost
+// rows, or corrupted the pseudo-target (e.g. "DDS_IMPACTS" → "DDS_IMPAcripts").
+// This function bypasses the LLM for claim-derived rows: it walks the
+// project_goals.impact_claims arrays and builds RawImpact rows deterministically.
+// Cross-project deductions still go through the LLM in processBatch.
+
+interface MaterializedClaim {
+  target_kind: 'gio' | 'dds';
+  target: string;
+  role: string;
+  severity: string;
+  impact_type: string;
+  evidence_file: string;
+  evidence_quote: string;
+  confidence: 'stated' | 'inferred';
+}
+
+// Mirrors prompts.ts:231-236 — the role → direction mapping the LLM was supposed
+// to apply. Now applied deterministically so the column never disagrees with
+// the row's semantics.
+const ROLE_TO_DIRECTION: Record<string, string> = {
+  primary_provider: 'provides_to',
+  downstream_consumer: 'depends_on',
+  regional_executor: 'requires_coordination',
+  risk_owner: 'requires_coordination',
+  blocked_by: 'depends_on',
+};
+
+function materializeClaimsAsImpacts(
+  records: ProjectFullRecord[],
+): RawImpact[] {
+  const db = getDb();
+
+  // documents_cache lookup: same normalisation pattern as the universe route's
+  // enrichEmptyCitations fallback — strips extension, unifies separators.
+  const normalizeName = (s: string) =>
+    s.toLowerCase()
+      .replace(/\.(txt|csv|pdf|docx?|xlsx?|md)$/i, '')
+      .replace(/[_\s-]+/g, ' ')
+      .replace(/[()]/g, '')
+      .trim();
+
+  const projectIds = records.map(r => r.projectId);
+  const fileMap = new Map<string, { url: string; file_name: string }>();
+  if (projectIds.length > 0) {
+    const ph = projectIds.map(() => '?').join(',');
+    const docs = db.prepare(
+      `SELECT project_id, url, file_name FROM documents_cache WHERE project_id IN (${ph}) AND fetch_status = 'success'`
+    ).all(...projectIds) as Array<{ project_id: string; url: string; file_name: string }>;
+    for (const d of docs) {
+      fileMap.set(`${d.project_id}|${normalizeName(d.file_name)}`, { url: d.url, file_name: d.file_name });
+    }
+  }
+
+  const out: RawImpact[] = [];
+  let claimsSeen = 0;
+  let claimsKept = 0;
+  let claimsDroppedBadTarget = 0;
+
+  for (const rec of records) {
+    // The latest analysed Goals row for this project. Multi-gate projects can
+    // have several; we trust the latest because that's what the LLM-driven path
+    // also sees through buildImpactPrompt.
+    const latest = rec.goalEntries[0];
+    const claims = latest?.impact_claims as MaterializedClaim[] | undefined;
+    if (!Array.isArray(claims)) continue;
+
+    for (const c of claims) {
+      claimsSeen++;
+      if (!c || (c.target_kind !== 'gio' && c.target_kind !== 'dds')) continue;
+      if (!c.target || !c.impact_type || !c.role) continue;
+
+      // Validate target against the canonical catalog. Should always pass
+      // because sanitizeImpactClaims (goals-analyzer.ts) already filters, but
+      // belt-and-braces in case the JSON was hand-edited.
+      const target = c.target_kind === 'gio' ? c.target : c.target;
+      if (!target) { claimsDroppedBadTarget++; continue; }
+
+      const pseudoTarget = c.target_kind === 'gio' ? 'GIO_SERVICES' : 'DDS_IMPACTS';
+      const direction = ROLE_TO_DIRECTION[c.role] ?? 'requires_coordination';
+      // Normalise severity to the 2-tier scale. sanitizeImpactClaims already
+      // does this, but we re-apply here so legacy un-sanitised JSON also lands
+      // correctly.
+      const severity = (c.severity === 'medium' ? 'low' : c.severity) || 'low';
+
+      // Resolve citation. evidence_file is a filename (no doc_url prefix); we
+      // look it up in documents_cache. If we can't resolve, we still emit the
+      // row with an empty citations[] — the universe route's enrichEmptyCitations
+      // fallback will synthesize one from the evidence_chain we store below.
+      const doc = c.evidence_file ? fileMap.get(`${rec.projectId}|${normalizeName(c.evidence_file)}`) : undefined;
+      const citations: RawCitation[] = (doc && c.evidence_quote)
+        ? [{ doc_url: doc.url, snippet: c.evidence_quote }]
+        : [];
+
+      out.push({
+        source: rec.projectId,
+        target: pseudoTarget,
+        impact_type: c.impact_type,
+        direction,
+        severity,
+        explanation: c.evidence_quote || '',
+        gio_services: c.target_kind === 'gio' ? [target] : [],
+        dds_entities: c.target_kind === 'dds' ? [target] : [],
+        citations,
+      });
+      claimsKept++;
+    }
+  }
+
+  console.log(`[Impact] materializeClaimsAsImpacts: ${claimsKept}/${claimsSeen} claims materialised (dropped bad target: ${claimsDroppedBadTarget})`);
+  return out;
+}
+
+/**
+ * Standalone re-materialisation of claim-derived impact rows for a given
+ * language. Useful as a quick fix-up after a buggy LLM run: it walks every
+ * project's `impact_claims` and INSERT-OR-REPLACEs the corresponding rows,
+ * deterministically. Does NOT run any LLM calls. Returns the inserted count.
+ *
+ * Caller is responsible for clearing any obsolete corrupted rows separately
+ * (e.g. rows with malformed pseudo-targets) — this function only writes the
+ * canonical claim-derived ones.
+ */
+export function rematerializeClaimsForLanguage(lang: OutputLanguage): number {
+  const records = fetchAllProjectRecords(lang);
+  const materialised = materializeClaimsAsImpacts(records);
+  if (materialised.length === 0) return 0;
+  return storeImpacts(materialised, 'rematerialise-' + Date.now(), lang);
+}
+
 // ─── Process a single batch via Gemini ───────────────────────────────────────
 
-async function processBatch(batch: Batch, batchId: string): Promise<number> {
+async function processBatch(batch: Batch, batchId: string, lang: OutputLanguage): Promise<number> {
   const prompt = buildImpactPrompt(batch.projects);
 
-  const { text } = await generateContent({ prompt, model: 'fast', json: true, context: 'impact' });
+  const { text } = await generateContent({
+    prompt,
+    model: 'fast',
+    json: true,
+    context: 'impact',
+    outputLanguage: lang,
+  });
 
   console.log(`[Impact] Batch "${batch.label}" (${batch.projects.length} projects) — response length: ${text.length}, preview: ${text.slice(0, 200)}`);
 
@@ -752,7 +965,7 @@ async function processBatch(batch: Batch, batchId: string): Promise<number> {
 
   if (impacts.length === 0) return 0;
 
-  return storeImpacts(impacts, batchId);
+  return storeImpacts(impacts, batchId, lang);
 }
 
 // ─── Main: Run Full Impact Analysis ──────────────────────────────────────────
@@ -774,7 +987,10 @@ export async function runFullImpactAnalysis(): Promise<void> {
   };
 
   try {
-    const records = fetchAllProjectRecords();
+    // Capture language once per run — see goals-analyzer for the same
+    // rationale (mid-run toggles must not split a row across languages).
+    const lang = getActiveOutputLanguage();
+    const records = fetchAllProjectRecords(lang);
     analysisStatus.totalProjects = records.length;
 
     const allBatches = buildFullCoverageBatches(records, 22);
@@ -787,7 +1003,7 @@ export async function runFullImpactAnalysis(): Promise<void> {
       analysisStatus.currentBatchDDS = batch.label;
 
       try {
-        const inserted = await processBatch(batch, runBatchId);
+        const inserted = await processBatch(batch, runBatchId, lang);
         analysisStatus.totalImpacts += inserted;
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -802,9 +1018,28 @@ export async function runFullImpactAnalysis(): Promise<void> {
       }
     }
 
-    // Update total impacts from DB (more accurate)
+    // Materialise atomic impact_claims directly into rows AFTER the LLM batches.
+    // INSERT OR REPLACE on (source, target, impact_type, lang) means these rows
+    // win over any LLM-emitted equivalents — fixing the class of bugs where the
+    // LLM merged sibling claims (e.g. HHC+Americas+CF collapsed onto one CF row),
+    // corrupted pseudo-targets ("DDS_IMPACTS" → "DDS_IMPAcripts"), or dropped a
+    // claim entirely. Claim-derived rows are deterministic by construction.
+    analysisStatus.currentBatchDDS = 'Materialising atomic claims';
+    try {
+      const materialised = materializeClaimsAsImpacts(records);
+      const inserted = storeImpacts(materialised, runBatchId, lang);
+      console.log(`[Impact] materialised ${inserted}/${materialised.length} claim rows`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      analysisStatus.errors.push(`Claim materialisation: ${msg}`);
+    }
+
+    // Update total impacts from DB (more accurate). Scoped to the active
+    // language so the badge reflects what the user is actually viewing.
     const db = getDb();
-    const countRow = db.prepare('SELECT COUNT(*) as cnt FROM projects_impact').get() as { cnt: number };
+    const countRow = db.prepare(
+      'SELECT COUNT(*) as cnt FROM projects_impact WHERE output_language = ?'
+    ).get(lang) as { cnt: number };
     analysisStatus.totalImpacts = countRow.cnt;
 
     analysisStatus.currentBatchDDS = 'Complete';
@@ -819,11 +1054,15 @@ export async function runFullImpactAnalysis(): Promise<void> {
 // ─── Get current analysis status ─────────────────────────────────────────────
 
 export function getImpactStatus(): ImpactAnalysisStatus {
-  // If not running, refresh total impacts from DB
+  // If not running, refresh total impacts from DB. Scoped to the active
+  // language so the UI counter matches what's actually rendered.
   if (!analysisStatus.isRunning) {
     try {
       const db = getDb();
-      const countRow = db.prepare('SELECT COUNT(*) as cnt FROM projects_impact').get() as { cnt: number };
+      const lang = getActiveOutputLanguage();
+      const countRow = db.prepare(
+        'SELECT COUNT(*) as cnt FROM projects_impact WHERE output_language = ?'
+      ).get(lang) as { cnt: number };
       analysisStatus.totalImpacts = countRow.cnt;
     } catch {
       // ignore
@@ -836,13 +1075,14 @@ export function getImpactStatus(): ImpactAnalysisStatus {
 
 export function getProjectImpacts(projectId: string): ProjectImpact[] {
   const db = getDb();
+  const lang = getActiveOutputLanguage();
   const rows = db.prepare(`
     SELECT * FROM projects_impact
-    WHERE source_project_id = ? OR target_project_id = ?
+    WHERE (source_project_id = ? OR target_project_id = ?) AND output_language = ?
     ORDER BY
-      CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END,
+      CASE severity WHEN 'high' THEN 1 WHEN 'low' THEN 2 WHEN 'medium' THEN 2 ELSE 3 END,
       created_at DESC
-  `).all(projectId, projectId) as ImpactDbRow[];
+  `).all(projectId, projectId, lang) as ImpactDbRow[];
 
   return rows.map(mapImpactRow);
 }
@@ -854,14 +1094,15 @@ export function clearAllImpacts(): number {
     throw new Error('Cannot clear impacts while an analysis is running');
   }
   const db = getDb();
-  const result = db.prepare('DELETE FROM projects_impact').run();
-  // Onda 4: cascade invalidation of deep dives. Without this, the cached
-  // narrative in impact_deep_dives keeps citing edges that no longer exist
-  // — a "stale dive" UX bug surfaced in the Impact_Coherence_Report. Re-run
-  // of Goals + Impact will trigger fresh dives on demand from the UI.
+  const lang = getActiveOutputLanguage();
+  // Scope to the active language so toggling FR↔EN doesn't blow away the
+  // other side's analysis. Deep-dive cache is language-agnostic in the
+  // schema; cascade-clear all of it because the impact rows it cites are
+  // gone for this language regardless.
+  const result = db.prepare('DELETE FROM projects_impact WHERE output_language = ?').run(lang);
   const ddResult = db.prepare('DELETE FROM impact_deep_dives').run();
   if (ddResult.changes > 0) {
-    console.log(`[impact] cleared ${result.changes} impacts and cascaded ${ddResult.changes} cached deep dives`);
+    console.log(`[impact] cleared ${result.changes} impacts (lang=${lang}) and cascaded ${ddResult.changes} cached deep dives`);
   }
   analysisStatus.totalImpacts = 0;
   return result.changes;
@@ -871,12 +1112,14 @@ export function clearAllImpacts(): number {
 
 export function getAllImpacts(): ProjectImpact[] {
   const db = getDb();
+  const lang = getActiveOutputLanguage();
   const rows = db.prepare(`
     SELECT * FROM projects_impact
+    WHERE output_language = ?
     ORDER BY
-      CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END,
+      CASE severity WHEN 'high' THEN 1 WHEN 'low' THEN 2 WHEN 'medium' THEN 2 ELSE 3 END,
       created_at DESC
-  `).all() as ImpactDbRow[];
+  `).all(lang) as ImpactDbRow[];
 
   return rows.map(mapImpactRow);
 }
@@ -907,7 +1150,9 @@ interface ImpactDbRow {
 // same unordered pair into a single representative entry, preserving the full
 // detail in the *plural* fields (impactTypes, directions, explanations).
 
-const SEVERITY_RANK: Record<string, number> = { high: 3, medium: 2, low: 1 };
+// Two-tier severity since 2026-06-18. 'medium' keeps a rank entry so any
+// stray legacy row (or a slow-to-update LLM response) still sorts correctly.
+const SEVERITY_RANK: Record<string, number> = { high: 2, low: 1, medium: 1 };
 
 export function aggregateImpacts(rows: ProjectImpact[]): ProjectImpact[] {
   const groups = new Map<string, ProjectImpact[]>();
@@ -1063,12 +1308,13 @@ export interface ImpactQueryPreview {
 
 export function getImpactQueryPreview(mode: 'raw' | 'grouped' = 'raw'): ImpactQueryPreview {
   const db = getDb();
-  const rawRows = db.prepare(IMPACT_ANALYSIS_QUERY).all() as Record<string, unknown>[];
+  const lang = getActiveOutputLanguage();
+  const rawRows = db.prepare(IMPACT_ANALYSIS_QUERY).all(lang) as Record<string, unknown>[];
 
   const grouped = new Set(rawRows.map(r => String(r.project_id)));
 
   const rows = mode === 'grouped'
-    ? fetchAllProjectRecords() as unknown as Record<string, unknown>[]
+    ? fetchAllProjectRecords(lang) as unknown as Record<string, unknown>[]
     : rawRows;
 
   const columns = rows.length > 0 ? Object.keys(rows[0]) : [];

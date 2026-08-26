@@ -6,17 +6,16 @@
 // guessing what e.g. "User Workplace" means inside Air Liquide and grounds its
 // analysis on a stable definition.
 //
-// HOW TO FILL THIS FILE
-// --------------------
-// Each entry has:
-//   - name         (DO NOT change — must match the canonical strings used by
-//                   prompts.ts and the goals extractor)
-//   - description  (1–3 sentences: what this service line / entity actually
-//                   covers, its scope, and the kind of touchpoints a project
-//                   would have with it)
-//
-// Leave `description` empty until you're ready — `getTargetDefinition` falls
-// back gracefully to the kind-level helper text when a description is empty.
+// Storage split (2026-06-18):
+//   - This file owns the canonical *names* (single source of truth for the set
+//     of allowed targets — type-checked against `prompts.ts`).
+//   - `target-catalog.data.json` owns the editable per-entry data (description,
+//     typicalRoles, typicalImpactTypes). The /admin/catalog UI writes that JSON;
+//     `reloadCatalog()` invalidates the in-memory cache so same-process callers
+//     see fresh values without a restart.
+
+import fs from 'node:fs';
+import path from 'node:path';
 
 export type TargetKind = 'gio' | 'dds';
 
@@ -28,173 +27,150 @@ export type TargetKind = 'gio' | 'dds';
 //   - 'regional_executor'       → 'requires_coordination'
 //   - 'risk_owner'              → 'requires_coordination'
 //   - 'blocked_by'              → 'depends_on'
-export type TargetRole =
-  | 'primary_provider'
-  | 'downstream_consumer'
-  | 'regional_executor'
-  | 'risk_owner'
-  | 'blocked_by';
+export const TARGET_ROLES = [
+  'primary_provider',
+  'downstream_consumer',
+  'regional_executor',
+  'risk_owner',
+  'blocked_by',
+] as const;
+
+export type TargetRole = typeof TARGET_ROLES[number];
+
+// Mirrors prompts.ts:261 — the controlled vocabulary for `impact_type`.
+// Used by the /admin/catalog UI as chip suggestions.
+export const IMPACT_TYPES = [
+  'technology_dependency',
+  'infrastructure_shared',
+  'data_dependency',
+  'timeline_blocking',
+  'resource_contention',
+  'organizational',
+  'platform_shared',
+  'vendor_shared',
+  'integration_required',
+  'security_dependency',
+  'regional_rollout',
+] as const;
 
 export interface TargetDefinition {
   name: string;
   description: string;
-  // Optional. When set, biases the LLM toward picking one of these roles when
-  // a project's content places it in this target. Not restrictive — the LLM
-  // can still emit a role outside this list if evidence is unambiguous. Empty
-  // = no bias.
   typicalRoles?: ReadonlyArray<TargetRole>;
-  // Optional. Same idea for `impact_type` (security_dependency, etc). Helps
-  // disambiguate borderline cases. Empty = no bias.
   typicalImpactTypes?: ReadonlyArray<string>;
 }
 
-// ─── GIO Service Lines (5) ──────────────────────────────────────────────────
-// Canonical list mirrors prompts.ts:32
+// ─── Canonical names ────────────────────────────────────────────────────────
+// MUST stay in sync with prompts.ts. Renaming here without updating prompts.ts
+// and the DB would corrupt impact rows.
 
-export const GIO_SERVICE_DEFINITIONS: ReadonlyArray<TargetDefinition> = [
-  {
-    name: 'Security & Compliance',
-    description: "Designs, builds, and operates the solutions that protect the Group's digital estate. Portfolio is organised in four pillars: Identity & Access Management (IAM), End-user Security, Perimeter Security, and Vulnerability & Compliance. Includes the CSIRT (Computer Security Incident Response Team) for detection, investigation, and response to cybersecurity incidents. Led by Jean-Charles Martin.",
-    typicalRoles: ['primary_provider', 'risk_owner'],
-    typicalImpactTypes: ['security_dependency', 'infrastructure_shared', 'organizational'],
-  },
-  {
-    name: 'Command Center',
-    description: 'Operational brain of GIO, ensuring 24/7 stability. Centralises monitoring of all digital operations to prevent SLA breaches, coordinates Major Incident Management across regions, and runs SIAM (Service Integration & Management) to harmonise multiple MSP service providers. Led by Graeme White.',
-    typicalRoles: ['primary_provider', 'risk_owner'],
-    typicalImpactTypes: ['infrastructure_shared', 'organizational', 'vendor_shared'],
-  },
-  {
-    name: 'User Workplace',
-    description: "Owns the digital ecosystem used by employees day-to-day. Scope covers endpoint hardware (PCs, mobile devices, printers), workplace software (Google Workspace, application stores), and videoconferencing systems. Runs the global Service Desk and L1/L2 local support via partners such as Computacenter, and drives continuous improvement of the employee digital experience through the eXperience Management Office (XMO). Led by Jérôme Bachelerie.",
-    typicalRoles: ['downstream_consumer', 'primary_provider'],
-    typicalImpactTypes: ['platform_shared', 'technology_dependency'],
-  },
-  {
-    name: 'Site Infrastructure',
-    description: 'Owns connectivity and physical infrastructure at Air Liquide sites. Covers global LAN, Wi-Fi, and WAN networks (including perimeter firewall security), telephony and Telecom Expense Management (TEM), and OT (Operational Technology) integration for industrial and IoT environments. Led by Olivier Duccini.',
-    typicalRoles: ['primary_provider'],
-    typicalImpactTypes: ['infrastructure_shared', 'regional_rollout'],
-  },
-  {
-    name: 'Cloud Services',
-    description: 'Owns server infrastructure and modern platforms. Mission covers design and build of cloud platforms (e.g. the migration to GCP) and automation environments. Operates Container-as-a-Service (CaaS) and database services, and coordinates the sunset of physical datacenters. Led by Pierre Bansillon.',
-    typicalRoles: ['primary_provider'],
-    typicalImpactTypes: ['infrastructure_shared', 'platform_shared', 'technology_dependency'],
-  },
-];
+export const CANONICAL_GIO_NAMES = [
+  'Security & Compliance',
+  'Command Center',
+  'User Workplace',
+  'Site Infrastructure',
+  'Cloud Services',
+] as const;
 
-// ─── DDS Entities (~20) ─────────────────────────────────────────────────────
-// Canonical list mirrors prompts.ts:27-29
-// Three sub-groups: geographic zones, business divisions/SBUs, app/functional
-// groups. Sub-group is informational only — the engine treats all DDS entries
-// uniformly.
+export const CANONICAL_DDS_NAMES = [
+  // Geographic zones
+  'Americas', 'Europe', 'APAC', 'AMEI',
+  // Business divisions / SBUs
+  'CF', 'GM&T', 'E&C', 'HC D&IT',
+  'Alizent', 'GDO', 'SEPPIC', 'Airgas', 'HHC',
+  // App / functional groups
+  'Industrial Apps', 'Enterprise Apps', 'Data & AI Apps',
+  'Digital Factory', 'InnoTech', 'CDIO Office', 'IDD',
+] as const;
 
-export const DDS_ENTITY_DEFINITIONS: ReadonlyArray<TargetDefinition> = [
-  // Geographic zones — regional "centers of gravity" for digital governance and
-  // strategy implementation across the Group.
-  {
-    name: 'Americas',
-    description: 'Regional hub overseeing North America (NAM), Argentina (ARG), and Latin America (LATAM). Includes major subsidiaries such as Airgas.',
-    typicalRoles: ['regional_executor'],
-    typicalImpactTypes: ['regional_rollout'],
-  },
-  {
-    name: 'Europe',
-    description: 'Regional hub managing a perimeter that includes Central Europe (CE), South West Europe (SWE), and North East Europe (NEC).',
-    typicalRoles: ['regional_executor'],
-    typicalImpactTypes: ['regional_rollout'],
-  },
-  {
-    name: 'APAC',
-    description: 'Regional hub covering Greater China (GCH) and the broader Asia-Pacific region.',
-    typicalRoles: ['regional_executor'],
-    typicalImpactTypes: ['regional_rollout'],
-  },
-  {
-    name: 'AMEI',
-    description: 'Regional hub responsible for digital operations across Africa, Middle East, and India.',
-    typicalRoles: ['regional_executor'],
-    typicalImpactTypes: ['regional_rollout'],
-  },
+// ─── JSON data loader ───────────────────────────────────────────────────────
 
-  // Business divisions / SBUs — specialized Digital Delivery Services (DDS) or
-  // World Business Lines (WBLs).
-  {
-    name: 'CF',
-    description: 'Corporate Functions. Covers critical Group domains including Finance, HR, Procurement, Communication, Legal, and Intellectual Property.',
-  },
-  {
-    name: 'GM&T',
-    description: 'Global Markets & Technologies. A business division supported by dedicated D&IT Business Partners.',
-  },
-  {
-    name: 'E&C',
-    description: 'Engineering & Construction. Operates as a separate DDS entity from InnoTech for the 2026 roadmap.',
-  },
-  {
-    name: 'HC D&IT',
-    description: 'Healthcare Digital & Information Technology. Provides specialised digital services for the Healthcare business line.',
-  },
-  {
-    name: 'Alizent',
-    description: 'Subsidiary focused on industrial IoT and asset tracking.',
-  },
-  {
-    name: 'GDO',
-    description: 'Global Digital Organization. The central driver for digital transformation and innovation across the Group.',
-  },
-  {
-    name: 'SEPPIC',
-    description: 'Specialty healthcare and beauty ingredient subsidiary, maintained as its own DDS entity.',
-  },
-  {
-    name: 'Airgas',
-    description: 'Key entity within the Americas hub, specifically focused on industrial and medical gas markets.',
-  },
-  {
-    name: 'HHC',
-    description: 'Home Healthcare. Manages digital solutions for chronic patient care, such as the kairin respiratory monitoring solution.',
-  },
+type CatalogEntryData = {
+  description?: string;
+  typicalRoles?: TargetRole[];
+  typicalImpactTypes?: string[];
+};
 
-  // App / Functional groups — delivery units and governance structures within
-  // Global Digital Services (GDS).
-  {
-    name: 'Industrial Apps',
-    description: 'Group within GDS that partners with Industrial Direction to define technical product roadmaps.',
-  },
-  {
-    name: 'Enterprise Apps',
-    description: 'Group focused on digital solutions for core enterprise-wide business processes.',
-  },
-  {
-    name: 'Data & AI Apps',
-    description: 'Specialised technical chapter within GDS dedicated to managing data strategy and artificial intelligence products.',
-  },
-  {
-    name: 'Digital Factory',
-    description: 'Delivery engine within GDS responsible for the rapid development and scaling of digital products.',
-  },
-  {
-    name: 'InnoTech',
-    description: 'Organisational grouping planned to eventually integrate E&C and IDD; for the 2026 roadmap they remain distinct.',
-  },
-  {
-    name: 'CDIO Office',
-    description: "Office of the Chief Digital & Information Officer. Sets the Group's overall Digital & IT vision and governance.",
-    typicalRoles: ['primary_provider', 'risk_owner'],
-    typicalImpactTypes: ['organizational'],
-  },
-  {
-    name: 'IDD',
-    description: 'Innovation & Development Division. Currently operating as a separate DDS from the InnoTech umbrella.',
-  },
-];
+export type CatalogData = {
+  gio: Record<string, CatalogEntryData>;
+  dds: Record<string, CatalogEntryData>;
+};
+
+const DATA_PATH = path.join(process.cwd(), 'src/lib/target-catalog.data.json');
+
+let cache: CatalogData | null = null;
+
+function loadCatalog(): CatalogData {
+  if (cache) return cache;
+  try {
+    const raw = fs.readFileSync(DATA_PATH, 'utf-8');
+    cache = JSON.parse(raw) as CatalogData;
+  } catch {
+    // Missing file → empty catalog. Lookups fall back to empty descriptions,
+    // matching the pre-JSON behaviour for unfilled entries.
+    cache = { gio: {}, dds: {} };
+  }
+  return cache;
+}
+
+/** Invalidate the in-memory cache. Called by the admin API after a write so
+ *  same-process callers (Impact / Deep Dive) see fresh values without a restart. */
+export function reloadCatalog(): void {
+  cache = null;
+}
+
+/** Persist a single entry's editable fields. Used by /api/admin/catalog. */
+export function writeCatalogEntry(
+  kind: TargetKind,
+  name: string,
+  patch: { description?: string; typicalRoles?: TargetRole[]; typicalImpactTypes?: string[] }
+): void {
+  if (!isCanonicalTarget(kind, name)) {
+    throw new Error(`Unknown ${kind} target: ${name}`);
+  }
+  const data = loadCatalog();
+  const existing = data[kind][name] ?? {};
+  const cleaned: CatalogEntryData = {};
+  const description = patch.description !== undefined ? patch.description : existing.description;
+  if (description !== undefined) cleaned.description = description;
+  const roles = patch.typicalRoles !== undefined ? patch.typicalRoles : existing.typicalRoles;
+  if (roles && roles.length > 0) cleaned.typicalRoles = roles;
+  const impactTypes = patch.typicalImpactTypes !== undefined ? patch.typicalImpactTypes : existing.typicalImpactTypes;
+  if (impactTypes && impactTypes.length > 0) cleaned.typicalImpactTypes = impactTypes;
+  data[kind][name] = cleaned;
+  fs.writeFileSync(DATA_PATH, JSON.stringify(data, null, 2) + '\n', 'utf-8');
+  cache = data;
+}
+
+// ─── Builders ───────────────────────────────────────────────────────────────
+
+function buildEntry(kind: TargetKind, name: string): TargetDefinition {
+  const data = loadCatalog();
+  const e = data[kind][name] ?? {};
+  return {
+    name,
+    description: e.description ?? '',
+    typicalRoles: e.typicalRoles,
+    typicalImpactTypes: e.typicalImpactTypes,
+  };
+}
+
+/** Live view of the full catalog for a given kind. Re-reads from cache, so
+ *  reflects edits after `reloadCatalog()`. */
+export function getCatalog(kind: TargetKind): ReadonlyArray<TargetDefinition> {
+  const names = kind === 'gio' ? CANONICAL_GIO_NAMES : CANONICAL_DDS_NAMES;
+  return names.map(n => buildEntry(kind, n));
+}
+
+// Snapshots at module-init time. Useful for one-shot iteration in scripts/tests.
+// For live runtime reads (Impact, Deep Dive), use `getTargetEntry` / `getCatalog`.
+export const GIO_SERVICE_DEFINITIONS: ReadonlyArray<TargetDefinition> = getCatalog('gio');
+export const DDS_ENTITY_DEFINITIONS: ReadonlyArray<TargetDefinition> = getCatalog('dds');
 
 // ─── Lookup helpers ─────────────────────────────────────────────────────────
 
-const GIO_BY_NAME = new Map(GIO_SERVICE_DEFINITIONS.map(d => [d.name, d]));
-const DDS_BY_NAME = new Map(DDS_ENTITY_DEFINITIONS.map(d => [d.name, d]));
+const GIO_NAME_SET = new Set<string>(CANONICAL_GIO_NAMES);
+const DDS_NAME_SET = new Set<string>(CANONICAL_DDS_NAMES);
 
 /**
  * Returns the canonical description for a target if one exists in the catalog.
@@ -206,8 +182,8 @@ const DDS_BY_NAME = new Map(DDS_ENTITY_DEFINITIONS.map(d => [d.name, d]));
  * "no canonical definition available" and degrade to the generic kind helper.
  */
 export function getTargetDefinition(kind: TargetKind, target: string): string {
-  const map = kind === 'gio' ? GIO_BY_NAME : DDS_BY_NAME;
-  return map.get(target)?.description.trim() || '';
+  if (!isCanonicalTarget(kind, target)) return '';
+  return buildEntry(kind, target).description.trim();
 }
 
 /**
@@ -217,8 +193,8 @@ export function getTargetDefinition(kind: TargetKind, target: string): string {
  * target name is not in the canonical list.
  */
 export function getTargetEntry(kind: TargetKind, target: string): TargetDefinition | null {
-  const map = kind === 'gio' ? GIO_BY_NAME : DDS_BY_NAME;
-  return map.get(target) ?? null;
+  if (!isCanonicalTarget(kind, target)) return null;
+  return buildEntry(kind, target);
 }
 
 /**
@@ -226,6 +202,5 @@ export function getTargetEntry(kind: TargetKind, target: string): TargetDefiniti
  * `target` is not in the canonical catalog (catches LLM typos and drift).
  */
 export function isCanonicalTarget(kind: TargetKind, target: string): boolean {
-  const map = kind === 'gio' ? GIO_BY_NAME : DDS_BY_NAME;
-  return map.has(target);
+  return (kind === 'gio' ? GIO_NAME_SET : DDS_NAME_SET).has(target);
 }

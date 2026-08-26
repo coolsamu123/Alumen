@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getProjectDocuments } from '@/lib/drive-engine';
 import { getProjectImpacts, aggregateImpacts } from '@/lib/impact-engine';
+import { getActiveOutputLanguage } from '@/lib/llm';
 import type { ProjectImpact } from '@/lib/types';
 
 const DOC_EXCERPT_LEN = 800;
@@ -134,7 +135,11 @@ export async function GET(request: NextRequest) {
       ORDER BY review_date DESC, id DESC
     `).all(projectId) as Array<{ gate: string; decision: string; review_date: string }>;
 
-    // 3) Goals analysis (latest by analyzed_at).
+    // 3) Goals analysis (latest by analyzed_at) for the active language. The
+    //    composite UNIQUE on (project_id, output_language) means there can be
+    //    one EN row + one FR row per project; filter so the panel shows the
+    //    same language the admin/UI is configured for.
+    const activeLang = getActiveOutputLanguage();
     const goalsRow = db.prepare(`
       SELECT summary_one_line,
              digital_technologies, change_management, security_impacts, regional_impacts,
@@ -144,10 +149,10 @@ export async function GET(request: NextRequest) {
              prompt_version,
              region, month_folder, analyzed_at, source_files, raw_gemini_response, status
       FROM project_goals
-      WHERE project_id = ?
+      WHERE project_id = ? AND output_language = ?
       ORDER BY analyzed_at DESC
       LIMIT 1
-    `).get(projectId) as GoalsRow | undefined;
+    `).get(projectId, activeLang) as GoalsRow | undefined;
 
     const parseArr = (raw: string | null | undefined): string[] => {
       if (!raw) return [];

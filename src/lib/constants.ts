@@ -27,14 +27,16 @@ export const DDS_COLORS: Record<string, string> = {
 export const DEFAULT_COLOR = '#ff6b6b';
 
 // ─── Severity Colors ─────────────────────────────────────────────────────────
-// Cool-low palette: keeps the heat metaphor for high/medium (red → amber) and
-// uses a saturated cyan for low so it actually shows up on the dark background
-// instead of the previous unreadable gray.
+// Two-tier severity (2026-06-18): we collapsed the prior 3-tier scale into
+// {high, low}. Reds stay for genuine high-severity escalations; everything
+// else is a soft sky-blue that reads as informational rather than alarming.
+// `medium` is kept as a defensive alias so any stray legacy row still renders
+// as low instead of falling through to the gray fallback.
 
 export const SEVERITY_COLORS: Record<string, string> = {
-  high: '#ef4444',    // red-500
-  medium: '#fbbf24',  // amber-400
-  low: '#22d3ee',     // cyan-400
+  high: '#ef4444',    // red-500 — escalate
+  low: '#7dd3fc',     // sky-300 — informational
+  medium: '#7dd3fc',  // alias to low (DB-migrated, but defend against stragglers)
 };
 
 export const SEVERITY_FALLBACK = '#6b7280';  // gray for unknown / empty severity

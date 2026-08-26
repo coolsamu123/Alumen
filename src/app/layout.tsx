@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
 import { ProjectProvider } from "@/context/ProjectContext";
-import { isPublicHost } from '@/lib/public-host';
+import { isAnonymousExternal } from '@/lib/public-host';
 
 export const metadata: Metadata = {
   title: "Alumen — Portfolio Intelligence",
@@ -34,7 +34,10 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const isPublic = isPublicHost(headers().get('host'));
+  // "Public" = external host AND middleware did NOT stamp the authed header.
+  // Once a user passes Basic Auth, isPublic flips to false and the UI behaves
+  // exactly like localhost (full nav, admin link, etc).
+  const isPublic = isAnonymousExternal(headers());
   return (
     <html lang="en" data-theme="dark">
       <head>

@@ -132,8 +132,9 @@ export default function ImpactView() {
       };
       const g = groupOf(a) - groupOf(b);
       if (g !== 0) return g;
-      // Within each group, keep severity-first ordering (high → medium → low).
-      const sevRank: Record<string, number> = { high: 3, medium: 2, low: 1 };
+      // Within each group, keep severity-first ordering (high → low).
+      // 'medium' aliased to 'low' rank for any legacy row.
+      const sevRank: Record<string, number> = { high: 2, low: 1, medium: 1 };
       return (sevRank[b.severity] ?? 0) - (sevRank[a.severity] ?? 0);
     });
   }, [impacts, globalFilteredProjects, filters.severity]);
@@ -237,7 +238,7 @@ export default function ImpactView() {
 
       {/* Impact list — one card per project, merging GIO and DDS impacts. */}
       {filtered.length > 0 && (() => {
-        const SEV_RANK: Record<string, number> = { high: 3, medium: 2, low: 1 };
+        const SEV_RANK: Record<string, number> = { high: 2, low: 1, medium: 1 };
         const realProjectId = (imp: ProjectImpact): string | null => {
           if (imp.sourceProjectId !== 'GIO_SERVICES' && imp.sourceProjectId !== 'DDS_IMPACTS') return imp.sourceProjectId;
           if (imp.targetProjectId !== 'GIO_SERVICES' && imp.targetProjectId !== 'DDS_IMPACTS') return imp.targetProjectId;

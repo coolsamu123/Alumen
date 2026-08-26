@@ -35,6 +35,10 @@ interface PseudoNodeImpact {
   // produced each message. Lets the UI render per-message badges.
   impactTypeByExplanation?: string[];
   severityByExplanation?: string[];
+  // Parallel: synthesised narrative ("Why this matters"). The API composes
+  // it from sourceProjectName + direction + targetName + impact_type +
+  // severity + summary_one_line. Falls back to '' for legacy responses.
+  narrativeByExplanation?: string[];
   explanation: string;
 }
 
@@ -55,6 +59,8 @@ interface ProjectEdgeData {
   citationsByExplanation?: SourceRef[][];
   impactTypeByExplanation?: string[];
   severityByExplanation?: string[];
+  // See PseudoNodeImpact.narrativeByExplanation.
+  narrativeByExplanation?: string[];
   explanation: string;
   count: number;
   bidirectional: boolean;
@@ -111,6 +117,9 @@ interface EdgeDetails {
   // show one badge pair per "Reason for the impact" bullet.
   impactTypeByExplanation: string[];
   severityByExplanation: string[];
+  // Parallel: synthesised "Why this matters" narratives. Rendered as the
+  // headline for each bullet; explanations[i] becomes its Evidence companion.
+  narrativeByExplanation: string[];
 }
 
 // Deduplicate explanations while preserving the citation array bound to each
@@ -119,18 +128,20 @@ interface EdgeDetails {
 // dropping the duplicates' sources on the floor. First seen impact_type and
 // severity win on collision.
 function dedupExplanationsWithCitations(
-  impacts: { explanations: string[]; citationsByExplanation?: SourceRef[][]; impactTypeByExplanation?: string[]; severityByExplanation?: string[] }[]
-): { explanations: string[]; citationsByExplanation: SourceRef[][]; impactTypeByExplanation: string[]; severityByExplanation: string[] } {
+  impacts: { explanations: string[]; citationsByExplanation?: SourceRef[][]; impactTypeByExplanation?: string[]; severityByExplanation?: string[]; narrativeByExplanation?: string[] }[]
+): { explanations: string[]; citationsByExplanation: SourceRef[][]; impactTypeByExplanation: string[]; severityByExplanation: string[]; narrativeByExplanation: string[] } {
   const order: string[] = [];
   const citationsByText = new Map<string, SourceRef[]>();
   const seenCitationKeys = new Map<string, Set<string>>();
   const impactTypeByText = new Map<string, string>();
   const severityByText = new Map<string, string>();
+  const narrativeByText = new Map<string, string>();
 
   for (const imp of impacts) {
     const cbe = imp.citationsByExplanation || [];
     const itbe = imp.impactTypeByExplanation || [];
     const sbe = imp.severityByExplanation || [];
+    const nbe = imp.narrativeByExplanation || [];
     imp.explanations.forEach((exp, i) => {
       if (!exp) return;
       if (!citationsByText.has(exp)) {
@@ -139,6 +150,7 @@ function dedupExplanationsWithCitations(
         seenCitationKeys.set(exp, new Set());
         if (itbe[i]) impactTypeByText.set(exp, itbe[i]);
         if (sbe[i]) severityByText.set(exp, sbe[i]);
+        if (nbe[i]) narrativeByText.set(exp, nbe[i]);
       }
       const dest = citationsByText.get(exp)!;
       const seen = seenCitationKeys.get(exp)!;
@@ -156,6 +168,7 @@ function dedupExplanationsWithCitations(
     citationsByExplanation: order.map(exp => citationsByText.get(exp)!),
     impactTypeByExplanation: order.map(exp => impactTypeByText.get(exp) || ''),
     severityByExplanation: order.map(exp => severityByText.get(exp) || ''),
+    narrativeByExplanation: order.map(exp => narrativeByText.get(exp) || ''),
   };
 }
 
@@ -435,6 +448,7 @@ export default function ProjectUniverseView() {
         citationsByExplanation: gioExp.citationsByExplanation,
         impactTypeByExplanation: gioExp.impactTypeByExplanation,
         severityByExplanation: gioExp.severityByExplanation,
+        narrativeByExplanation: gioExp.narrativeByExplanation,
       });
     }
 
@@ -483,6 +497,7 @@ export default function ProjectUniverseView() {
         citationsByExplanation: ddsExp.citationsByExplanation,
         impactTypeByExplanation: ddsExp.impactTypeByExplanation,
         severityByExplanation: ddsExp.severityByExplanation,
+        narrativeByExplanation: ddsExp.narrativeByExplanation,
       });
     }
 
@@ -532,11 +547,14 @@ export default function ProjectUniverseView() {
         ?? projExpRaw.map(() => edge.impactTypes[0] || '');
       const projSbeRaw = edge.severityByExplanation
         ?? projExpRaw.map(() => edge.severity);
+      const projNbeRaw = edge.narrativeByExplanation
+        ?? projExpRaw.map(() => '');
       const projExp = dedupExplanationsWithCitations([{
         explanations: projExpRaw,
         citationsByExplanation: projCbeRaw,
         impactTypeByExplanation: projItbeRaw,
         severityByExplanation: projSbeRaw,
+        narrativeByExplanation: projNbeRaw,
       }]);
       detailsMap.set(edgeId, {
         category: 'project',
@@ -551,6 +569,7 @@ export default function ProjectUniverseView() {
         citationsByExplanation: projExp.citationsByExplanation,
         impactTypeByExplanation: projExp.impactTypeByExplanation,
         severityByExplanation: projExp.severityByExplanation,
+        narrativeByExplanation: projExp.narrativeByExplanation,
       });
     }
 
@@ -702,13 +721,37 @@ export default function ProjectUniverseView() {
                         const cites = selectedDetails.citationsByExplanation?.[i] ?? [];
                         const it = selectedDetails.impactTypeByExplanation?.[i];
                         const sv = selectedDetails.severityByExplanation?.[i];
+                        const narrative = selectedDetails.narrativeByExplanation?.[i] || '';
                         const sevColor = sv ? SEVERITY_COLOR[sv] : undefined;
+                        // Whenever the API gave us a narrative, surface it as the
+                        // headline ("Why this matters") and demote the verbatim
+                        // quote to a smaller "Evidence" companion — the goal of
+                        // the read-side composer (see src/lib/impact-narrative.ts).
+                        // Legacy rows without a narrative fall back to rendering
+                        // the explanation alone, exactly as before.
+                        const hasNarrative = narrative && narrative.trim().length > 0;
                         return (
                           <div key={i} className="text-xs text-ink-2 leading-relaxed bg-surface-1/60 border border-line rounded-md p-3 flex flex-col gap-2">
-                            <div className="flex items-start gap-2">
-                              <div className="flex-1 min-w-0">{exp}</div>
-                              {cites.length > 0 && <SourcePopover sources={cites} label="Sources" />}
-                            </div>
+                            {hasNarrative ? (
+                              <>
+                                <div className="flex items-start gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-[9px] uppercase tracking-wider text-accent-text2 font-bold mb-1">Why this matters</div>
+                                    <div className="text-ink-1">{narrative}</div>
+                                  </div>
+                                  {cites.length > 0 && <SourcePopover sources={cites} label="Sources" />}
+                                </div>
+                                <div className="border-t border-line/40 pt-2">
+                                  <div className="text-[9px] uppercase tracking-wider text-ink-muted font-bold mb-1">Evidence</div>
+                                  <div className="text-ink-4 italic leading-snug">&ldquo;{exp}&rdquo;</div>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="flex items-start gap-2">
+                                <div className="flex-1 min-w-0">{exp}</div>
+                                {cites.length > 0 && <SourcePopover sources={cites} label="Sources" />}
+                              </div>
+                            )}
                             {(it || sv) && (
                               <div className="flex gap-1.5 flex-wrap pt-1 border-t border-line/40">
                                 {sv && sevColor && (

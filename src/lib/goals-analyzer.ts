@@ -2,7 +2,7 @@ import { getDb } from './db';
 import { scanProjects, type ScannedProject } from './goals-scanner';
 import { extractAllTexts } from './goals-extractor';
 import { getPrompts } from './prompts';
-import { generateContent } from './llm';
+import { generateContent, getActiveOutputLanguage, type OutputLanguage } from './llm';
 import {
   filterToCatalog,
   filterToDdsEntities,
@@ -50,6 +50,7 @@ export interface ProjectGoals {
   analyzed_at: string;
   status: string;
   error_message: string;
+  output_language: OutputLanguage;
 }
 
 export interface GoalsRunStatus {
@@ -75,55 +76,12 @@ let runStatus: GoalsRunStatus = {
 // ─── DB Schema ──────────────────────────────────────────────────────────────
 
 export function initGoalsSchema() {
-  const db = getDb();
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS project_goals (
-      id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-      project_id            TEXT NOT NULL,
-      project_name          TEXT NOT NULL,
-      region                TEXT DEFAULT '',
-      gate                  TEXT DEFAULT '',
-      month_folder          TEXT DEFAULT '',
-      digital_technologies  TEXT DEFAULT '',
-      change_management     TEXT DEFAULT '',
-      security_impacts      TEXT DEFAULT '',
-      regional_impacts      TEXT DEFAULT '',
-      ia_embedded           TEXT DEFAULT '',
-      gio_sl_dds_impacts    TEXT DEFAULT '',
-      dds_gio_workload      TEXT DEFAULT '',
-      business_apps_cis     TEXT DEFAULT '',
-      raw_gemini_response   TEXT DEFAULT '',
-      source_files          TEXT DEFAULT '[]',
-      analyzed_at           TEXT DEFAULT NULL,
-      status                TEXT DEFAULT 'pending',
-      error_message         TEXT DEFAULT ''
-    );
-
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_goals_project_id ON project_goals(project_id);
-    CREATE INDEX IF NOT EXISTS idx_goals_region ON project_goals(region);
-    CREATE INDEX IF NOT EXISTS idx_goals_status ON project_goals(status);
-  `);
-
-  // Idempotent migrations for the structured-fields rollout. SQLite ALTER TABLE
-  // only supports ADD COLUMN — wrap in try/catch so re-runs are safe.
-  const addIfMissing = (col: string, decl: string) => {
-    try { db.exec(`ALTER TABLE project_goals ADD COLUMN ${col} ${decl}`); }
-    catch { /* column already exists */ }
-  };
-  addIfMissing('summary_one_line',      "TEXT DEFAULT ''");
-  addIfMissing('dds_entities_touched',  "TEXT DEFAULT '[]'");
-  addIfMissing('gio_services_touched',  "TEXT DEFAULT '[]'");
-  addIfMissing('tech_tags',             "TEXT DEFAULT '[]'");
-  addIfMissing('vendors',               "TEXT DEFAULT '[]'");
-  addIfMissing('data_classifications',  "TEXT DEFAULT '[]'");
-  addIfMissing('mentioned_projects',    "TEXT DEFAULT '[]'");
-  addIfMissing('prompt_version',        'INTEGER DEFAULT 0');
-
-  // Searchable indexes for tag-based filtering (LIKE '%"aws"%' style queries).
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_goals_tech_tags ON project_goals(tech_tags);
-    CREATE INDEX IF NOT EXISTS idx_goals_prompt_version ON project_goals(prompt_version);
-  `);
+  // Schema (including ALTER TABLE migrations and the composite UNIQUE index
+  // on (project_id, output_language)) is owned by `getDb()` →
+  // `initSchema()` in `src/lib/db.ts`. Calling it here just ensures the
+  // database is open; the legacy in-file schema kept drifting from the real
+  // one in db.ts, so we removed the duplicate DDL.
+  getDb();
 }
 
 // ─── Prompts ────────────────────────────────────────────────────────────────
@@ -249,7 +207,10 @@ const CLAIM_IMPACT_TYPES = new Set([
   'security_dependency', 'organizational', 'regional_rollout', 'integration_required',
   'timeline_blocking', 'resource_contention',
 ]);
-const CLAIM_SEVERITIES = new Set(['high', 'medium', 'low']);
+// Two-tier scale since 2026-06-18. 'medium' is silently rewritten to 'low'
+// in the loop below — keeps legacy LLM responses from being dropped if the
+// prompt update hasn't fully propagated.
+const CLAIM_SEVERITIES = new Set(['high', 'low']);
 
 interface ImpactClaim {
   target_kind: TargetKind;
@@ -275,7 +236,10 @@ function sanitizeImpactClaims(raw: unknown): ImpactClaim[] {
     if (!isCanonicalTarget(target_kind, target)) continue;
     const role = String(r.role || '').toLowerCase();
     if (!CLAIM_ROLES.has(role)) continue;
-    const severity = String(r.severity || '').toLowerCase();
+    let severity = String(r.severity || '').toLowerCase();
+    // Defensive: fold any leftover medium into low so the claim isn't
+    // dropped if a slow-to-update model variant still emits the old enum.
+    if (severity === 'medium') severity = 'low';
     if (!CLAIM_SEVERITIES.has(severity)) continue;
     const impact_type = String(r.impact_type || '').toLowerCase();
     if (!CLAIM_IMPACT_TYPES.has(impact_type)) continue;
@@ -365,6 +329,11 @@ function sanitizeTimeline(raw: unknown): TimelineStruct {
 async function analyzeProject(project: ScannedProject): Promise<void> {
   const db = getDb();
   initGoalsSchema();
+  // Capture the active language ONCE per project. This guards against a
+  // toggle mid-batch turning a half-finished run into a mixed-language row
+  // (write would use the new language, but parts of the response were
+  // generated under the old directive).
+  const lang = getActiveOutputLanguage();
 
   // Skip conditions:
   //   1. Already succeeded at the CURRENT prompt version with the SAME source files → no work
@@ -372,9 +341,10 @@ async function analyzeProject(project: ScannedProject): Promise<void> {
   // Both checks fail (i.e. we run) when:
   //   - the prompt was bumped (prompt_version is older / NULL)
   //   - new files were synced
+  //   - the active language differs from what we have on disk for this project
   const existing = db.prepare(
-    "SELECT status, source_files, prompt_version FROM project_goals WHERE project_id = ?"
-  ).get(project.projectId) as
+    "SELECT status, source_files, prompt_version FROM project_goals WHERE project_id = ? AND output_language = ?"
+  ).get(project.projectId, lang) as
     { status: string; source_files: string; prompt_version: number | null } | undefined;
 
   const filesJson = JSON.stringify(project.files);
@@ -395,9 +365,9 @@ async function analyzeProject(project: ScannedProject): Promise<void> {
 
   if (!documentText.trim()) {
     const upsert = db.prepare(`
-      INSERT INTO project_goals (project_id, project_name, region, gate, month_folder, source_files, status, error_message, prompt_version)
-      VALUES (?, ?, ?, ?, ?, ?, 'error', 'No text could be extracted from files', ?)
-      ON CONFLICT(project_id) DO UPDATE SET
+      INSERT INTO project_goals (project_id, project_name, region, gate, month_folder, source_files, status, error_message, prompt_version, output_language)
+      VALUES (?, ?, ?, ?, ?, ?, 'error', 'No text could be extracted from files', ?, ?)
+      ON CONFLICT(project_id, output_language) DO UPDATE SET
         project_name=excluded.project_name, region=excluded.region, gate=excluded.gate,
         month_folder=excluded.month_folder, source_files=excluded.source_files,
         status='error', error_message='No text could be extracted from files',
@@ -405,7 +375,7 @@ async function analyzeProject(project: ScannedProject): Promise<void> {
     `);
     upsert.run(
       project.projectId, project.projectName, project.region, project.gate,
-      project.monthFolders.join(', '), filesJson, GOALS_PROMPT_VERSION,
+      project.monthFolders.join(', '), filesJson, GOALS_PROMPT_VERSION, lang,
     );
     runStatus.errorCount++;
     return;
@@ -413,7 +383,12 @@ async function analyzeProject(project: ScannedProject): Promise<void> {
 
   // Call LLM
   const prompt = buildGoalsPrompt(project, documentText);
-  const { text: responseText } = await generateContent({ prompt, model: 'pro', context: 'goals' });
+  const { text: responseText } = await generateContent({
+    prompt,
+    model: 'pro',
+    context: 'goals',
+    outputLanguage: lang,
+  });
   const parsed = parseGoalsResponse(responseText);
 
   // Sanitise canonical array fields against catalogs — drops anything the LLM
@@ -472,9 +447,11 @@ async function analyzeProject(project: ScannedProject): Promise<void> {
       project_relations, out_of_scope,
       impact_claims, timeline_struct,
       prompt_version,
-      raw_gemini_response, source_files, status, error_message
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '')
-    ON CONFLICT(project_id) DO UPDATE SET
+      raw_gemini_response, source_files, status,
+      output_language,
+      error_message
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '')
+    ON CONFLICT(project_id, output_language) DO UPDATE SET
       project_name=excluded.project_name, region=excluded.region, gate=excluded.gate,
       month_folder=excluded.month_folder,
       summary_one_line=excluded.summary_one_line,
@@ -530,6 +507,7 @@ async function analyzeProject(project: ScannedProject): Promise<void> {
     responseText,
     filesJson,
     hasData ? 'success' : 'partial',
+    lang,
   );
 
   runStatus.successCount++;
@@ -563,8 +541,14 @@ export async function runSingleGoalAnalysis(projectId: string): Promise<void> {
 
     // Force re-analysis by resetting both status and prompt_version so the
     // skip-on-current-version guard in analyzeProject doesn't bail out.
+    // Scoped to the ACTIVE language only — we don't want to invalidate the
+    // other language's cached analysis just because the user asked to redo
+    // this one.
     const db = getDb();
-    db.prepare("UPDATE project_goals SET status = 'pending', prompt_version = 0 WHERE project_id = ?").run(projectId);
+    const lang = getActiveOutputLanguage();
+    db.prepare(
+      "UPDATE project_goals SET status = 'pending', prompt_version = 0 WHERE project_id = ? AND output_language = ?"
+    ).run(projectId, lang);
 
     await analyzeProject(project);
     runStatus.processedProjects++;
@@ -607,15 +591,16 @@ export async function runGoalsAnalysis(): Promise<void> {
 
         // Save error state to DB
         const db = getDb();
+        const lang = getActiveOutputLanguage();
         db.prepare(`
-          INSERT INTO project_goals (project_id, project_name, region, gate, month_folder, source_files, status, error_message)
-          VALUES (?, ?, ?, ?, ?, ?, 'error', ?)
-          ON CONFLICT(project_id) DO UPDATE SET
+          INSERT INTO project_goals (project_id, project_name, region, gate, month_folder, source_files, status, error_message, output_language)
+          VALUES (?, ?, ?, ?, ?, ?, 'error', ?, ?)
+          ON CONFLICT(project_id, output_language) DO UPDATE SET
             status='error', error_message=?, analyzed_at=datetime('now')
         `).run(
           project.projectId, project.projectName, project.region, project.gate,
           project.monthFolders.join(', '), JSON.stringify(project.files),
-          msg, msg
+          msg, lang, msg
         );
       }
 
@@ -638,28 +623,32 @@ export function getGoalsStatus(): GoalsRunStatus {
   return { ...runStatus };
 }
 
-export function getGoalsList(filters?: { region?: string; gate?: string; status?: string }): ProjectGoals[] {
+export function getGoalsList(filters?: { region?: string; gate?: string; status?: string; outputLanguage?: OutputLanguage }): ProjectGoals[] {
   initGoalsSchema();
   const db = getDb();
+  const lang = filters?.outputLanguage ?? getActiveOutputLanguage();
 
-  // Auto-sync discovered projects into the DB
+  // Auto-sync discovered projects into the DB. Placeholders are seeded for
+  // the active language only — when the user toggles to the other one and
+  // visits Goals again, this same code path will seed placeholders for
+  // *that* language too. No cross-language clobbering.
   try {
     const scanned = scanProjects();
     const upsertStmt = db.prepare(`
-      INSERT INTO project_goals (project_id, project_name, region, gate, source_files, status, analyzed_at)
-      VALUES (?, ?, ?, ?, ?, 'pending', NULL)
-      ON CONFLICT(project_id) DO UPDATE SET
+      INSERT INTO project_goals (project_id, project_name, region, gate, source_files, status, analyzed_at, output_language)
+      VALUES (?, ?, ?, ?, ?, 'pending', NULL, ?)
+      ON CONFLICT(project_id, output_language) DO UPDATE SET
         source_files = excluded.source_files
     `);
     for (const p of scanned) {
-      upsertStmt.run(p.projectId, p.projectName, p.region, p.gate, JSON.stringify(p.files));
+      upsertStmt.run(p.projectId, p.projectName, p.region, p.gate, JSON.stringify(p.files), lang);
     }
   } catch (e) {
     console.error('Failed to sync projects into goals list:', e);
   }
 
-  let sql = 'SELECT * FROM project_goals WHERE 1=1';
-  const params: string[] = [];
+  let sql = 'SELECT * FROM project_goals WHERE output_language = ?';
+  const params: string[] = [lang];
 
   if (filters?.region) {
     sql += ' AND region = ?';
@@ -722,7 +711,11 @@ export function resetGoalsData(): void {
   }
 
   const db = getDb();
-  db.exec(`
+  const lang = getActiveOutputLanguage();
+  // Reset acts on the current language only. The other language's analysis
+  // (if any) is left untouched — users toggling FR↔EN expect "reset" to
+  // mean "clear what I'm currently looking at", not "nuke everything".
+  db.prepare(`
     UPDATE project_goals
     SET summary_one_line = '',
         digital_technologies = '',
@@ -744,7 +737,8 @@ export function resetGoalsData(): void {
         analyzed_at = NULL,
         status = 'pending',
         error_message = ''
-  `);
+    WHERE output_language = ?
+  `).run(lang);
 
   runStatus = {
     isRunning: false,

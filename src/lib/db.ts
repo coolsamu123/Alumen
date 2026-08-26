@@ -110,12 +110,21 @@ function initSchema(db: Database.Database) {
       created_at TEXT DEFAULT (datetime('now')),
       gio_services TEXT DEFAULT '[]',
       citations TEXT DEFAULT '[]',
-      UNIQUE(source_project_id, target_project_id, impact_type)
+      output_language TEXT NOT NULL DEFAULT 'en',
+      -- Includes gio_services + dds_entities in the dedup key so atomic
+      -- claim-materialised rows (Option 3, 2026-06-18) coexist as separate
+      -- entries for each entity instead of overwriting each other when several
+      -- claims share (impact_type, target_kind) but point at different
+      -- entities (e.g. HHC / Americas / CF all integration_required on DDS).
+      UNIQUE(source_project_id, target_project_id, impact_type, gio_services, dds_entities, output_language)
     );
 
     CREATE INDEX IF NOT EXISTS idx_impact_source ON projects_impact(source_project_id);
     CREATE INDEX IF NOT EXISTS idx_impact_target ON projects_impact(target_project_id);
     CREATE INDEX IF NOT EXISTS idx_impact_batch ON projects_impact(batch_id);
+    -- idx_impact_lang is created in migrateOutputLanguage() — it can't live
+    -- in this inline block because pre-migration DBs don't yet have the
+    -- output_language column when this DDL runs.
 
     CREATE TABLE IF NOT EXISTS drive_sheet_meta (
       id              INTEGER PRIMARY KEY CHECK (id = 1),
@@ -183,21 +192,23 @@ function initSchema(db: Database.Database) {
     );
 
     CREATE TABLE IF NOT EXISTS impact_deep_dives (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
-      project_id    TEXT NOT NULL,
-      kind          TEXT NOT NULL,
-      target        TEXT NOT NULL,
-      response_md   TEXT NOT NULL,
-      llm_provider  TEXT NOT NULL,
-      llm_model     TEXT NOT NULL,
-      generated_at  TEXT NOT NULL DEFAULT (datetime('now')),
-      source_sig    TEXT NOT NULL,
-      duration_ms   INTEGER,
-      sources_json  TEXT DEFAULT '[]',
-      UNIQUE(project_id, kind, target)
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id      TEXT NOT NULL,
+      kind            TEXT NOT NULL,
+      target          TEXT NOT NULL,
+      response_md     TEXT NOT NULL,
+      llm_provider    TEXT NOT NULL,
+      llm_model       TEXT NOT NULL,
+      generated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      source_sig      TEXT NOT NULL,
+      duration_ms     INTEGER,
+      sources_json    TEXT DEFAULT '[]',
+      output_language TEXT NOT NULL DEFAULT 'en',
+      UNIQUE(project_id, kind, target, output_language)
     );
 
     CREATE INDEX IF NOT EXISTS idx_deep_dives_project ON impact_deep_dives(project_id);
+    -- idx_deep_dives_lang created in migrateOutputLanguage() (same reason).
 
     CREATE TABLE IF NOT EXISTS project_goals (
       id                    INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -218,10 +229,13 @@ function initSchema(db: Database.Database) {
       source_files          TEXT DEFAULT '[]',
       analyzed_at           TEXT DEFAULT NULL,
       status                TEXT DEFAULT 'pending',
-      error_message         TEXT DEFAULT ''
+      error_message         TEXT DEFAULT '',
+      output_language       TEXT NOT NULL DEFAULT 'en'
     );
 
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_goals_project_id ON project_goals(project_id);
+    -- idx_goals_project_lang (composite UNIQUE) is created in
+    -- migrateOutputLanguage(). Pre-migration DBs don't yet have the
+    -- output_language column when this block runs.
     CREATE INDEX IF NOT EXISTS idx_goals_region ON project_goals(region);
     CREATE INDEX IF NOT EXISTS idx_goals_status ON project_goals(status);
   `);
@@ -247,6 +261,62 @@ function initSchema(db: Database.Database) {
     db.exec('ALTER TABLE projects_impact ADD COLUMN evidence_chain TEXT DEFAULT "[]"');
   } catch {
     // Ignore if column already exists
+  }
+
+  // 2026-06-18: relax UNIQUE on projects_impact to include gio_services + dds_entities.
+  // Pre-existing DBs were created with UNIQUE(source, target, impact_type, lang),
+  // which collapsed sibling claims (HHC / Americas / CF on same impact_type) to a
+  // single row. Detect the old constraint by name (the auto-generated
+  // sqlite_autoindex_projects_impact_1) and, if found, rebuild the table with the
+  // wider key. Idempotent: if the new constraint already includes the extra
+  // columns, do nothing.
+  try {
+    const idx = db.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name='projects_impact' AND sql IS NOT NULL"
+    ).all() as Array<{ sql: string }>;
+    const uniq = db.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='projects_impact'"
+    ).get() as { sql: string } | undefined;
+    const constraintIncludesEntities = (uniq?.sql || '').includes('gio_services, dds_entities')
+      || idx.some(r => r.sql?.includes('gio_services') && r.sql?.includes('dds_entities'));
+    if (!constraintIncludesEntities) {
+      console.log('[db] migrating projects_impact UNIQUE constraint to include gio_services + dds_entities');
+      db.exec(`
+        BEGIN;
+        ALTER TABLE projects_impact RENAME TO projects_impact_old;
+        CREATE TABLE projects_impact (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          source_project_id TEXT NOT NULL,
+          target_project_id TEXT NOT NULL,
+          impact_type TEXT NOT NULL,
+          direction TEXT NOT NULL,
+          severity TEXT NOT NULL,
+          explanation TEXT DEFAULT '',
+          batch_id TEXT DEFAULT '',
+          created_at TEXT DEFAULT (datetime('now')),
+          gio_services TEXT DEFAULT '[]',
+          dds_entities TEXT DEFAULT '[]',
+          citations TEXT DEFAULT '[]',
+          evidence_chain TEXT DEFAULT '[]',
+          output_language TEXT NOT NULL DEFAULT 'en',
+          UNIQUE(source_project_id, target_project_id, impact_type, gio_services, dds_entities, output_language)
+        );
+        INSERT INTO projects_impact
+          (id, source_project_id, target_project_id, impact_type, direction, severity, explanation,
+           batch_id, created_at, gio_services, dds_entities, citations, evidence_chain, output_language)
+        SELECT id, source_project_id, target_project_id, impact_type, direction, severity, explanation,
+               batch_id, created_at, gio_services, dds_entities, citations, evidence_chain, output_language
+          FROM projects_impact_old;
+        DROP TABLE projects_impact_old;
+        CREATE INDEX IF NOT EXISTS idx_impact_source ON projects_impact(source_project_id);
+        CREATE INDEX IF NOT EXISTS idx_impact_target ON projects_impact(target_project_id);
+        CREATE INDEX IF NOT EXISTS idx_impact_batch  ON projects_impact(batch_id);
+        CREATE INDEX IF NOT EXISTS idx_impact_lang   ON projects_impact(output_language);
+        COMMIT;
+      `);
+    }
+  } catch (err) {
+    console.error('[db] projects_impact UNIQUE migration failed:', err);
   }
   try {
     db.exec('ALTER TABLE projects ADD COLUMN services TEXT DEFAULT "[]"');
@@ -307,6 +377,140 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_goals_tech_tags ON project_goals(tech_tags);
     CREATE INDEX IF NOT EXISTS idx_goals_prompt_version ON project_goals(prompt_version);
   `);
+
+  // Dual EN/FR storage migrations. The column lives on both `project_goals`
+  // and `projects_impact`; existing rows are tagged 'en' (the historical
+  // reality). Uniqueness becomes (canonical_key, output_language) so the same
+  // project can carry one analysis per language without colliding.
+  migrateOutputLanguage(db);
+}
+
+function migrateOutputLanguage(db: Database.Database) {
+  // ── project_goals: single-column UNIQUE index → composite. ──────────────
+  // The constraint here lives on a separate UNIQUE INDEX (not inline in
+  // CREATE TABLE), so we can swap it without rebuilding the table.
+  try {
+    db.exec("ALTER TABLE project_goals ADD COLUMN output_language TEXT NOT NULL DEFAULT 'en'");
+  } catch {
+    // Column already exists.
+  }
+  try { db.exec('DROP INDEX IF EXISTS idx_goals_project_id'); } catch { /* ignore */ }
+  try {
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_goals_project_lang ON project_goals(project_id, output_language)');
+  } catch { /* ignore */ }
+
+  // ── projects_impact: inline UNIQUE constraint → table rebuild. ──────────
+  // The constraint sits inside CREATE TABLE, backed by an auto-index that
+  // SQLite refuses to drop directly. The canonical recipe is: create a new
+  // table with the desired shape, copy rows, drop old, rename. Guarded so
+  // it only runs once (when the column is still missing).
+  const hasLang = (() => {
+    try {
+      const cols = db.prepare("PRAGMA table_info(projects_impact)").all() as Array<{ name: string }>;
+      return cols.some(c => c.name === 'output_language');
+    } catch {
+      return true; // be defensive — if PRAGMA fails, do not attempt rebuild
+    }
+  })();
+
+  if (!hasLang) {
+    const rebuild = db.transaction(() => {
+      db.exec(`
+        CREATE TABLE projects_impact_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          source_project_id TEXT NOT NULL,
+          target_project_id TEXT NOT NULL,
+          impact_type TEXT NOT NULL,
+          direction TEXT NOT NULL,
+          severity TEXT NOT NULL,
+          explanation TEXT DEFAULT '',
+          batch_id TEXT DEFAULT '',
+          created_at TEXT DEFAULT (datetime('now')),
+          gio_services TEXT DEFAULT '[]',
+          dds_entities TEXT DEFAULT '[]',
+          citations TEXT DEFAULT '[]',
+          evidence_chain TEXT DEFAULT '[]',
+          output_language TEXT NOT NULL DEFAULT 'en',
+          UNIQUE(source_project_id, target_project_id, impact_type, output_language)
+        );
+
+        INSERT INTO projects_impact_new (
+          id, source_project_id, target_project_id, impact_type, direction, severity,
+          explanation, batch_id, created_at, gio_services, dds_entities, citations, evidence_chain
+        )
+        SELECT
+          id, source_project_id, target_project_id, impact_type, direction, severity,
+          COALESCE(explanation, ''),
+          COALESCE(batch_id, ''),
+          COALESCE(created_at, datetime('now')),
+          COALESCE(gio_services, '[]'),
+          COALESCE(dds_entities, '[]'),
+          COALESCE(citations, '[]'),
+          COALESCE(evidence_chain, '[]')
+        FROM projects_impact;
+
+        DROP TABLE projects_impact;
+        ALTER TABLE projects_impact_new RENAME TO projects_impact;
+
+        CREATE INDEX IF NOT EXISTS idx_impact_source ON projects_impact(source_project_id);
+        CREATE INDEX IF NOT EXISTS idx_impact_target ON projects_impact(target_project_id);
+        CREATE INDEX IF NOT EXISTS idx_impact_batch ON projects_impact(batch_id);
+        CREATE INDEX IF NOT EXISTS idx_impact_lang ON projects_impact(output_language);
+      `);
+    });
+    rebuild();
+  }
+
+  // ── impact_deep_dives: inline UNIQUE constraint → table rebuild. ────────
+  // Same recipe as projects_impact. Without this, a deep dive cached under
+  // EN would be served when the user toggles to FR.
+  const hasDiveLang = (() => {
+    try {
+      const cols = db.prepare("PRAGMA table_info(impact_deep_dives)").all() as Array<{ name: string }>;
+      return cols.some(c => c.name === 'output_language');
+    } catch {
+      return true;
+    }
+  })();
+
+  if (!hasDiveLang) {
+    const rebuild = db.transaction(() => {
+      db.exec(`
+        CREATE TABLE impact_deep_dives_new (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id      TEXT NOT NULL,
+          kind            TEXT NOT NULL,
+          target          TEXT NOT NULL,
+          response_md     TEXT NOT NULL,
+          llm_provider    TEXT NOT NULL,
+          llm_model       TEXT NOT NULL,
+          generated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+          source_sig      TEXT NOT NULL,
+          duration_ms     INTEGER,
+          sources_json    TEXT DEFAULT '[]',
+          output_language TEXT NOT NULL DEFAULT 'en',
+          UNIQUE(project_id, kind, target, output_language)
+        );
+
+        INSERT INTO impact_deep_dives_new (
+          id, project_id, kind, target, response_md, llm_provider, llm_model,
+          generated_at, source_sig, duration_ms, sources_json
+        )
+        SELECT
+          id, project_id, kind, target, response_md, llm_provider, llm_model,
+          generated_at, source_sig, duration_ms,
+          COALESCE(sources_json, '[]')
+        FROM impact_deep_dives;
+
+        DROP TABLE impact_deep_dives;
+        ALTER TABLE impact_deep_dives_new RENAME TO impact_deep_dives;
+
+        CREATE INDEX IF NOT EXISTS idx_deep_dives_project ON impact_deep_dives(project_id);
+        CREATE INDEX IF NOT EXISTS idx_deep_dives_lang ON impact_deep_dives(output_language);
+      `);
+    });
+    rebuild();
+  }
 }
 
 export function closeDb() {

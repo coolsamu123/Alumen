@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { getDb } from './db';
-import { generateContent } from './llm';
+import { generateContent, getActiveOutputLanguage, type OutputLanguage } from './llm';
 import { getProjectDocuments, getFileNamesForUrls } from './drive-engine';
 import { getProjectImpacts, aggregateImpacts } from './impact-engine';
 import { getTargetDefinition } from './target-catalog';
@@ -107,14 +107,14 @@ function computeSourceSig(goalsRow: GoalsRow | undefined): string {
 
 // ─── Cache lookup / write ────────────────────────────────────────────────────
 
-function readCache(projectId: string, kind: DeepDiveKind, target: string, sig: string): DeepDiveRow | undefined {
+function readCache(projectId: string, kind: DeepDiveKind, target: string, sig: string, lang: OutputLanguage): DeepDiveRow | undefined {
   const db = getDb();
   return db.prepare(`
     SELECT project_id, kind, target, response_md, llm_provider, llm_model,
            generated_at, source_sig, duration_ms, sources_json
     FROM impact_deep_dives
-    WHERE project_id = ? AND kind = ? AND target = ? AND source_sig = ?
-  `).get(projectId, kind, target, sig) as DeepDiveRow | undefined;
+    WHERE project_id = ? AND kind = ? AND target = ? AND source_sig = ? AND output_language = ?
+  `).get(projectId, kind, target, sig, lang) as DeepDiveRow | undefined;
 }
 
 function writeCache(row: {
@@ -127,13 +127,14 @@ function writeCache(row: {
   llmModel: string;
   sourceSig: string;
   durationMs: number;
+  outputLanguage: OutputLanguage;
 }): void {
   const db = getDb();
   db.prepare(`
     INSERT INTO impact_deep_dives
-      (project_id, kind, target, response_md, llm_provider, llm_model, source_sig, duration_ms, sources_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(project_id, kind, target) DO UPDATE SET
+      (project_id, kind, target, response_md, llm_provider, llm_model, source_sig, duration_ms, sources_json, output_language)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(project_id, kind, target, output_language) DO UPDATE SET
       response_md  = excluded.response_md,
       llm_provider = excluded.llm_provider,
       llm_model    = excluded.llm_model,
@@ -143,7 +144,8 @@ function writeCache(row: {
       generated_at = datetime('now')
   `).run(
     row.projectId, row.kind, row.target, row.responseMd,
-    row.llmProvider, row.llmModel, row.sourceSig, row.durationMs, row.sourcesJson
+    row.llmProvider, row.llmModel, row.sourceSig, row.durationMs, row.sourcesJson,
+    row.outputLanguage
   );
 }
 
@@ -243,9 +245,12 @@ function buildPrompt(args: {
     const companion = getDb().prepare(`
       SELECT p.name, p.dds, p.gate, g.summary_one_line
       FROM projects p
-      LEFT JOIN project_goals g ON g.project_id = p.project_id AND g.status = 'success'
+      LEFT JOIN project_goals g
+        ON g.project_id = p.project_id
+        AND g.status = 'success'
+        AND g.output_language = ?
       WHERE p.project_id = ? LIMIT 1
-    `).get(target) as { name?: string; dds?: string; gate?: string; summary_one_line?: string } | undefined;
+    `).get(getActiveOutputLanguage(), target) as { name?: string; dds?: string; gate?: string; summary_one_line?: string } | undefined;
     if (companion) {
       targetBlock = `COMPANION PROJECT "${target}"
 - Name: ${companion.name || '(unknown)'}
@@ -457,6 +462,10 @@ export async function getOrGenerateDeepDive(args: {
 }): Promise<DeepDiveResult> {
   const { projectId, kind, target, force = false } = args;
   const db = getDb();
+  // Active language captured once for both the goals read and the cache
+  // key. Without scoping to language, a deep dive cached in EN would be
+  // served when the user has toggled to FR.
+  const lang = getActiveOutputLanguage();
 
   // Load project + goals + docs in parallel-friendly fashion (sync queries).
   const project = db.prepare(`
@@ -481,15 +490,15 @@ export async function getOrGenerateDeepDive(args: {
            project_relations, out_of_scope, impact_claims, timeline_struct,
            region, source_files, analyzed_at
     FROM project_goals
-    WHERE project_id = ?
+    WHERE project_id = ? AND output_language = ?
     ORDER BY analyzed_at DESC
     LIMIT 1
-  `).get(projectId) as GoalsRow | undefined;
+  `).get(projectId, lang) as GoalsRow | undefined;
 
   // Cache lookup (skipped when force=true, e.g. user clicked Regenerate).
   const sig = computeSourceSig(goals);
   if (!force) {
-    const cached = readCache(projectId, kind, target, sig);
+    const cached = readCache(projectId, kind, target, sig, lang);
     if (cached) {
       return {
         projectId: cached.project_id,
@@ -552,6 +561,7 @@ export async function getOrGenerateDeepDive(args: {
     llmModel: modelUsed,
     sourceSig: sig,
     durationMs,
+    outputLanguage: lang,
   });
 
   return {
@@ -664,13 +674,14 @@ function enrichSources(sources: DeepDiveSource[]): DeepDiveSource[] {
 
 export function listDeepDivesForProject(projectId: string): DeepDiveResult[] {
   const db = getDb();
+  const lang = getActiveOutputLanguage();
   const rows = db.prepare(`
     SELECT project_id, kind, target, response_md, llm_provider, llm_model,
            generated_at, source_sig, duration_ms, sources_json
     FROM impact_deep_dives
-    WHERE project_id = ?
+    WHERE project_id = ? AND output_language = ?
     ORDER BY generated_at DESC
-  `).all(projectId) as DeepDiveRow[];
+  `).all(projectId, lang) as DeepDiveRow[];
 
   return rows.map(r => ({
     projectId: r.project_id,

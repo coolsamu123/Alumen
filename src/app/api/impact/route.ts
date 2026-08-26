@@ -6,13 +6,15 @@ import {
   aggregateImpacts,
   clearAllImpacts,
 } from '@/lib/impact-engine';
-import { isPublicHost } from '@/lib/public-host';
+import { isAnonymousExternal } from '@/lib/public-host';
 
 // Destructive / expensive actions (start a Gemini run, wipe stored impacts)
-// must not be triggerable from the public Cloudflare-tunnel host even if
-// somebody crafts the POST manually. Read-only "status" stays open.
+// must not be triggerable from the public hostname unless the caller has
+// passed the Basic Auth challenge in src/middleware.ts. Anonymous external
+// callers are rejected; authed externals and localhost go through. Read-only
+// "status" (GET below) stays open to everyone.
 function rejectFromPublic(request: NextRequest): NextResponse | null {
-  if (isPublicHost(request.headers.get('host'))) {
+  if (isAnonymousExternal(request.headers)) {
     return NextResponse.json(
       { error: 'This action is not available on the public endpoint.' },
       { status: 403 },

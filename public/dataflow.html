@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alumen — Data Flow</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #07090f;
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    color: #cbd5e1;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 16px 48px;
+    overflow-x: hidden;
+  }
+
+  h1 {
+    font-size: 1.35rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    color: #f1f5f9;
+    margin-bottom: 4px;
+  }
+  .subtitle {
+    font-size: .8rem;
+    color: #64748b;
+    margin-bottom: 32px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+
+  .diagram-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 1260px;
+  }
+
+  /* ── SVG canvas fills wrap ── */
+  #svg-lines {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    overflow: visible;
+  }
+
+  /* ── Sections ── */
+  .section {
+    position: relative;
+    border-radius: 16px;
+    padding: 18px 24px 24px;
+    margin-bottom: 0;
+  }
+  .section-external {
+    border: 1.5px dashed #2a3f5f;
+    background: rgba(10, 20, 45, .45);
+    backdrop-filter: blur(4px);
+    margin-bottom: 16px;
+  }
+  .section-alumen {
+    border: 1.5px solid #1e3a5f;
+    background: rgba(8, 16, 36, .6);
+    backdrop-filter: blur(4px);
+  }
+
+  .section-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    padding: 3px 10px;
+    border-radius: 999px;
+    margin-bottom: 18px;
+  }
+  .section-external .section-label {
+    background: rgba(42, 63, 95, .6);
+    color: #7ba3d0;
+    border: 1px solid #2a3f5f;
+  }
+  .section-alumen .section-label {
+    background: rgba(30, 58, 95, .6);
+    color: #60a5fa;
+    border: 1px solid #1e3a5f;
+  }
+
+  /* ── Rows ── */
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+  }
+  .row-pipeline { margin-top: 24px; justify-content: space-between; }
+  .row-storage  { margin-top: 36px; justify-content: center; }
+  .row-ui       { margin-top: 36px; }
+
+  /* ── Nodes ── */
+  .node {
+    position: relative;
+    border-radius: 12px;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    text-align: center;
+    transition: transform .2s, box-shadow .2s;
+    cursor: default;
+    flex-shrink: 0;
+  }
+  .node:hover { transform: translateY(-3px); }
+
+  /* Pulse glow on pipeline nodes */
+  @keyframes node-pulse {
+    0%,100% { box-shadow: 0 0 20px rgba(37,99,235,.2); }
+    50%      { box-shadow: 0 0 32px rgba(37,99,235,.45); }
+  }
+  @keyframes llm-pulse {
+    0%,100% { box-shadow: 0 0 22px rgba(124,58,237,.25); }
+    50%      { box-shadow: 0 0 40px rgba(124,58,237,.55); }
+  }
+  @keyframes db-pulse {
+    0%,100% { box-shadow: 0 0 24px rgba(22,163,74,.2); }
+    50%      { box-shadow: 0 0 40px rgba(22,163,74,.45); }
+  }
+  .node-pipeline { animation: node-pulse 3s ease-in-out infinite; }
+  .node-llm      { animation: llm-pulse  2.5s ease-in-out infinite; }
+  .node-storage  { animation: db-pulse   3.5s ease-in-out infinite; }
+
+  .node-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+    filter: drop-shadow(0 0 6px currentColor);
+  }
+  .node-title {
+    font-size: .75rem;
+    font-weight: 600;
+    color: #f1f5f9;
+    white-space: nowrap;
+  }
+  .node-sub {
+    font-size: .62rem;
+    color: #94a3b8;
+    white-space: nowrap;
+  }
+
+  /* Node colour themes */
+  .node-source {
+    background: rgba(30, 41, 59, .8);
+    border: 1.5px solid #334155;
+    box-shadow: 0 0 0 0 #334155;
+    width: 140px;
+  }
+  .node-gdrive {
+    background: rgba(21, 57, 96, .75);
+    border: 1.5px solid #1d6fb5;
+    box-shadow: 0 0 18px rgba(29,111,181,.18);
+    width: 170px;
+  }
+  .node-script {
+    background: rgba(20, 50, 30, .75);
+    border: 1.5px solid #22863a;
+    box-shadow: 0 0 14px rgba(34,134,58,.15);
+    width: 150px;
+  }
+  .node-pipeline {
+    background: rgba(15, 30, 70, .8);
+    border: 1.5px solid #2563eb;
+    box-shadow: 0 0 20px rgba(37,99,235,.2);
+    width: 168px;
+  }
+  .node-llm {
+    background: rgba(45, 16, 90, .8);
+    border: 1.5px solid #7c3aed;
+    box-shadow: 0 0 22px rgba(124,58,237,.25);
+    width: 148px;
+  }
+  .node-storage {
+    background: rgba(5, 46, 22, .75);
+    border: 1.5px solid #16a34a;
+    box-shadow: 0 0 24px rgba(22,163,74,.2);
+    width: 320px;
+    flex-direction: row;
+    gap: 12px;
+    padding: 14px 24px;
+  }
+  .node-storage .node-title { font-size: .82rem; }
+  .node-ui {
+    background: rgba(55, 23, 10, .75);
+    border: 1.5px solid #c2410c;
+    box-shadow: 0 0 14px rgba(194,65,12,.15);
+    width: 138px;
+    min-height: 70px;
+    justify-content: center;
+  }
+
+  /* ── Arrow between nodes ── */
+  .arrow {
+    display: flex;
+    align-items: center;
+    color: #334155;
+    font-size: .9rem;
+    padding: 0 6px;
+    flex-shrink: 0;
+    user-select: none;
+  }
+  .arrow svg { width: 28px; height: 14px; }
+
+  /* ── Service-account bridge ── */
+  .bridge-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    margin: 10px 0 6px;
+    position: relative;
+  }
+  .bridge-pill {
+    background: rgba(30, 30, 90, .8);
+    border: 1.5px dashed #4f46e5;
+    border-radius: 999px;
+    padding: 5px 18px;
+    font-size: .68rem;
+    font-weight: 600;
+    letter-spacing: .07em;
+    color: #818cf8;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 0 16px rgba(79,70,229,.2);
+  }
+  .bridge-line {
+    width: 60px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #4f46e5, transparent);
+    animation: pulse-line 2s ease-in-out infinite;
+  }
+  @keyframes pulse-line {
+    0%,100% { opacity: .4; }
+    50% { opacity: 1; }
+  }
+
+  /* ── Badge ── */
+  .badge {
+    position: absolute;
+    top: -9px; right: -9px;
+    background: #7c3aed;
+    border: 1.5px solid #a855f7;
+    border-radius: 999px;
+    font-size: .56rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    color: #e9d5ff;
+    padding: 2px 7px;
+    box-shadow: 0 0 8px rgba(124,58,237,.4);
+  }
+
+  /* ── Stage number ── */
+  .stage-num {
+    position: absolute;
+    top: -10px; left: 12px;
+    background: #1d4ed8;
+    border: 1.5px solid #3b82f6;
+    border-radius: 999px;
+    width: 20px; height: 20px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .6rem; font-weight: 800;
+    color: #bfdbfe;
+    box-shadow: 0 0 8px rgba(59,130,246,.4);
+  }
+
+  /* ── Spacer for alignment ── */
+  .spacer { flex: 1; }
+
+  /* ── Particle canvas overlay ── */
+  #particle-canvas {
+    position: absolute;
+    top: 0; left: 0;
+    pointer-events: none;
+    width: 100%; height: 100%;
+  }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-top: 28px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: .68rem;
+    color: #64748b;
+  }
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* ── Grid background ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(30,58,138,.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(30,58,138,.06) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+  body > * { position: relative; z-index: 1; }
+
+  /* ── Scrollable on small screens ── */
+  @media (max-width: 900px) {
+    .diagram-wrap { overflow-x: auto; }
+    .section { min-width: 900px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Alumen · Data Flow</h1>
+<p class="subtitle">Pipeline architecture &amp; processing</p>
+
+<div class="diagram-wrap" id="diagram-wrap">
+
+  <!-- ═══ SECTION: GESTÃO EXTERNA ═══ -->
+  <div class="section section-external" id="sec-external">
+    <div class="section-label">🌐 External Management (outside Alumen)</div>
+    <div class="row" id="row-external">
+
+      <div class="node node-source" id="n-sources" title="TADA · Gate Note (G1/G2) · OCDIO Position · Q&amp;A · Business Case · Charter · Architecture / SAD · Security / DRMT · Budget · Roadmap · Steerco · Contract Note">
+        <div class="node-icon">📁</div>
+        <div class="node-title">Corporate Files</div>
+        <div class="node-sub">TADA · Gate Note · OCDIO Position · Q&amp;A · Charter…</div>
+      </div>
+
+      <div class="arrow">
+        <svg viewBox="0 0 28 14" fill="none"><path d="M2 7h22M20 3l4 4-4 4" stroke="#475569" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+
+      <div class="node node-script" id="n-script">
+        <div class="node-icon">⚙️</div>
+        <div class="node-title">Google Apps Script</div>
+        <div class="node-sub">Collects &amp; centralizes files</div>
+      </div>
+
+      <div class="arrow">
+        <svg viewBox="0 0 28 14" fill="none"><path d="M2 7h22M20 3l4 4-4 4" stroke="#475569" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+
+      <div class="node node-gdrive" id="n-gdrive-ext">
+        <div class="node-icon">☁️</div>
+        <div class="node-title">Google Drive</div>
+        <div class="node-sub">Centralized folder per project</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══ SERVICE ACCOUNT BRIDGE ═══ -->
+  <div class="bridge-row" id="bridge-row">
+    <div class="bridge-line" style="transform:scaleX(-1)"></div>
+    <div class="bridge-pill">🔑 Service Account · OAuth 2.0 · Drive API v3</div>
+    <div class="bridge-line"></div>
+  </div>
+
+  <!-- ═══ SECTION: ALUMEN ═══ -->
+  <div class="section section-alumen" id="sec-alumen">
+    <div class="section-label">🔷 Alumen · Analysis Pipeline</div>
+
+    <!-- Pipeline stages -->
+    <div class="row row-pipeline" id="row-pipeline">
+
+      <div class="node node-pipeline" id="n-discover">
+        <div class="stage-num">1</div>
+        <div class="node-icon">🔍</div>
+        <div class="node-title">Discover</div>
+        <div class="node-sub">Scans PRJ-XXXXX folders</div>
+      </div>
+
+      <div class="node node-pipeline" id="n-download">
+        <div class="stage-num">2</div>
+        <div class="node-icon">⬇️</div>
+        <div class="node-title">Download</div>
+        <div class="node-sub">DOCX · XLSX · PDF · Docs</div>
+      </div>
+
+      <div class="node node-pipeline" id="n-goals">
+        <div class="stage-num">3</div>
+        <div class="badge">Gemini</div>
+        <div class="node-icon">🧠</div>
+        <div class="node-title">Goals Extraction</div>
+        <div class="node-sub">Technologies · DDS · GIO</div>
+      </div>
+
+      <div class="node node-pipeline" id="n-impact">
+        <div class="stage-num">4</div>
+        <div class="badge">Gemini</div>
+        <div class="node-icon">🔗</div>
+        <div class="node-title">Impact Analysis</div>
+        <div class="node-sub">Cross-project · Citations</div>
+      </div>
+
+      <div class="node node-llm" id="n-gemini">
+        <div class="node-icon">✨</div>
+        <div class="node-title">Google Gemini</div>
+        <div class="node-sub">LLM · FR / EN</div>
+      </div>
+
+    </div>
+
+    <!-- Storage -->
+    <div class="row row-storage" id="row-storage">
+      <div class="node node-storage" id="n-db">
+        <div class="node-icon" style="font-size:1.8rem">🗄️</div>
+        <div>
+          <div class="node-title">SQLite · cioo.db</div>
+          <div class="node-sub">projects · goals · impacts · documents_cache · auto_runs · llm_calls</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- UI outputs -->
+    <div class="row row-ui" id="row-ui">
+
+      <div class="node node-ui" id="n-ui-projects">
+        <div class="node-icon">📋</div>
+        <div class="node-title">Projects</div>
+        <div class="node-sub">Cards &amp; filters</div>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="node node-ui" id="n-ui-goals">
+        <div class="node-icon">🎯</div>
+        <div class="node-title">Goals</div>
+        <div class="node-sub">Metrics &amp; export</div>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="node node-ui" id="n-ui-graph">
+        <div class="node-icon">🕸️</div>
+        <div class="node-title">Impact Graph</div>
+        <div class="node-sub">Interactive graph</div>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="node node-ui" id="n-ui-matrix">
+        <div class="node-icon">📐</div>
+        <div class="node-title">Matrix</div>
+        <div class="node-sub">Heatmap DDS × GIO</div>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="node node-ui" id="n-ui-timeline">
+        <div class="node-icon">📅</div>
+        <div class="node-title">Timeline</div>
+        <div class="node-sub">Dependencies</div>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="node node-ui" id="n-ui-deepdive">
+        <div class="node-icon">🔬</div>
+        <div class="node-title">Deep Dive</div>
+        <div class="node-sub">AI narrative</div>
+      </div>
+
+    </div>
+
+  </div><!-- /section-alumen -->
+
+  <!-- SVG connection lines (drawn by JS) -->
+  <svg id="svg-lines" xmlns="http://www.w3.org/2000/svg"></svg>
+  <!-- Particle canvas -->
+  <canvas id="particle-canvas"></canvas>
+
+</div><!-- /diagram-wrap -->
+
+<!-- Legend -->
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#64748b"></div>Corporate files</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#1d6fb5"></div>Google Drive / API</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#2563eb"></div>Alumen pipeline</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#7c3aed"></div>Gemini LLM</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#16a34a"></div>SQLite storage</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#c2410c"></div>UI views</div>
+</div>
+
+<script>
+/* ──────────────────────────────────────────────
+   UTILITIES
+────────────────────────────────────────────── */
+function midRect(el) {
+  const wrap = document.getElementById('diagram-wrap');
+  const wr = wrap.getBoundingClientRect();
+  const er = el.getBoundingClientRect();
+  return {
+    x: er.left - wr.left + er.width / 2,
+    y: er.top  - wr.top  + er.height / 2,
+    top:    er.top    - wr.top,
+    bottom: er.bottom - wr.top,
+    left:   er.left   - wr.left,
+    right:  er.right  - wr.left,
+    w: er.width, h: er.height
+  };
+}
+
+/* Cubic Bezier interpolation */
+function cubicBezier(t, p0, p1, p2, p3) {
+  const mt = 1 - t;
+  return {
+    x: mt**3*p0.x + 3*mt**2*t*p1.x + 3*mt*t**2*p2.x + t**3*p3.x,
+    y: mt**3*p0.y + 3*mt**2*t*p1.y + 3*mt*t**2*p2.y + t**3*p3.y
+  };
+}
+
+/* ──────────────────────────────────────────────
+   SVG HELPERS
+────────────────────────────────────────────── */
+const svgNS = 'http://www.w3.org/2000/svg';
+const svg   = document.getElementById('svg-lines');
+
+function makeDef(id, color) {
+  let defs = svg.querySelector('defs');
+  if (!defs) { defs = document.createElementNS(svgNS, 'defs'); svg.appendChild(defs); }
+  const f = document.createElementNS(svgNS, 'filter');
+  f.setAttribute('id', id);
+  f.setAttribute('x', '-50%'); f.setAttribute('y', '-50%');
+  f.setAttribute('width', '200%'); f.setAttribute('height', '200%');
+  const blur = document.createElementNS(svgNS, 'feGaussianBlur');
+  blur.setAttribute('stdDeviation', '3');
+  blur.setAttribute('result', 'blur');
+  const merge = document.createElementNS(svgNS, 'feMerge');
+  ['blur','SourceGraphic'].forEach(n => {
+    const mn = document.createElementNS(svgNS, 'feMergeNode');
+    if (n === 'blur') mn.setAttribute('in', 'blur');
+    merge.appendChild(mn);
+  });
+  f.appendChild(blur); f.appendChild(merge);
+  defs.appendChild(f);
+}
+
+let pathIdCounter = 0;
+const pathRegistry = []; // { path, p0,p1,p2,p3, color, speed }
+
+function addPath(x0,y0,x1,y1, color, cpDx=0, cpDy=80, animated=true) {
+  const id = 'path-' + (pathIdCounter++);
+
+  // Control points (smooth S-curve)
+  const cp1 = { x: x0 + cpDx, y: y0 + cpDy };
+  const cp2 = { x: x1 - cpDx, y: y1 - cpDy };
+
+  const d = `M ${x0} ${y0} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${x1} ${y1}`;
+
+  // Glow layer
+  const glow = document.createElementNS(svgNS, 'path');
+  glow.setAttribute('d', d);
+  glow.setAttribute('fill', 'none');
+  glow.setAttribute('stroke', color);
+  glow.setAttribute('stroke-width', '4');
+  glow.setAttribute('opacity', '.18');
+  svg.appendChild(glow);
+
+  // Main line
+  const line = document.createElementNS(svgNS, 'path');
+  line.setAttribute('id', id);
+  line.setAttribute('d', d);
+  line.setAttribute('fill', 'none');
+  line.setAttribute('stroke', color);
+  line.setAttribute('stroke-width', '1.5');
+  line.setAttribute('opacity', '.55');
+
+  svg.appendChild(line);
+
+  if (animated) {
+    // Measure real path length AFTER adding to DOM
+    const len = line.getTotalLength();
+    line.setAttribute('stroke-dasharray', len);
+    line.setAttribute('stroke-dashoffset', len);
+    const anim = document.createElementNS(svgNS, 'animate');
+    anim.setAttribute('attributeName', 'stroke-dashoffset');
+    anim.setAttribute('values', `${len};0`);
+    const dur = 0.8 + Math.random() * 0.6;
+    anim.setAttribute('dur', `${dur}s`);
+    anim.setAttribute('fill', 'freeze');
+    line.appendChild(anim);
+  }
+
+  pathRegistry.push({
+    id, color,
+    p0: {x:x0,  y:y0},
+    p1: cp1,
+    p2: cp2,
+    p3: {x:x1,  y:y1},
+    speed: 0.004 + Math.random() * 0.003
+  });
+
+  return id;
+}
+
+/* ──────────────────────────────────────────────
+   PARTICLE SYSTEM
+────────────────────────────────────────────── */
+const canvas = document.getElementById('particle-canvas');
+const ctx    = canvas.getContext('2d');
+const particles = [];
+
+function spawnParticles() {
+  pathRegistry.forEach(({ p0,p1,p2,p3, color, speed }) => {
+    const count = 3 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < count; i++) {
+      particles.push({
+        t: Math.random(),
+        speed: speed * (0.7 + Math.random() * 0.6),
+        p0, p1, p2, p3, color,
+        size: 2.5 + Math.random() * 1.5,
+        alpha: 0.7 + Math.random() * 0.3
+      });
+    }
+  });
+}
+
+function drawFrame() {
+  canvas.width  = canvas.offsetWidth;
+  canvas.height = canvas.offsetHeight;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  for (const p of particles) {
+    p.t += p.speed;
+    if (p.t > 1) p.t = 0;
+
+    const pos = cubicBezier(p.t, p.p0, p.p1, p.p2, p.p3);
+
+    // Glow
+    const grad = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, p.size * 3.5);
+    grad.addColorStop(0, p.color + 'cc');
+    grad.addColorStop(1, p.color + '00');
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, p.size * 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Core dot
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, p.size, 0, Math.PI * 2);
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = p.alpha;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  requestAnimationFrame(drawFrame);
+}
+
+/* ──────────────────────────────────────────────
+   BUILD CONNECTIONS (after layout settles)
+────────────────────────────────────────────── */
+function buildConnections() {
+  svg.innerHTML = '';
+  pathRegistry.length = 0;
+  particles.length = 0;
+
+  // colour palette
+  const C = {
+    gray:   '#64748b',
+    green:  '#22c55e',
+    blue:   '#3b82f6',
+    indigo: '#6366f1',
+    violet: '#8b5cf6',
+    orange: '#f97316',
+    teal:   '#14b8a6',
+  };
+
+  const g   = id => midRect(document.getElementById(id));
+  const src = g('n-sources');
+  const scr = g('n-script');
+  const gde = g('n-gdrive-ext');
+  const dis = g('n-discover');
+  const dwn = g('n-download');
+  const gls = g('n-goals');
+  const imp = g('n-impact');
+  const gem = g('n-gemini');
+  const db  = g('n-db');
+  const ups = [
+    g('n-ui-projects'),
+    g('n-ui-goals'),
+    g('n-ui-graph'),
+    g('n-ui-matrix'),
+    g('n-ui-timeline'),
+    g('n-ui-deepdive'),
+  ];
+
+  // ── External row (sources → script → drive)
+  addPath(src.right, src.y, scr.left, scr.y, C.gray, 0, 0);
+  addPath(scr.right, scr.y, gde.left, gde.y, C.green, 0, 0);
+
+  // ── Drive → Discover (cross-section, vertical drop)
+  addPath(gde.x, gde.bottom, dis.x, dis.top, C.blue, 0, 60);
+
+  // ── Drive → Download direct (Drive API, download stage)
+  addPath(gde.right, gde.y + 12, dwn.x, dwn.top, C.blue, 80, 80);
+
+  // ── Pipeline: Discover → Download → Goals → Impact
+  addPath(dis.right, dis.y, dwn.left,  dwn.y,  C.blue, 0, 0);
+  addPath(dwn.right, dwn.y, gls.left,  gls.y,  C.blue, 0, 0);
+  addPath(gls.right, gls.y, imp.left,  imp.y,  C.blue, 0, 0);
+
+  // ── Goals & Impact → Gemini (arcs upward)
+  addPath(gls.right + 8, gls.y, gem.left, gem.y - 10, C.violet, 60, -40);
+  addPath(imp.right + 8, imp.y, gem.left, gem.y + 10, C.violet, 40, -20);
+
+  // ── Pipeline stages → DB
+  addPath(dis.x,  dis.bottom,  db.left  + 30, db.y, C.teal, 0, 60);
+  addPath(dwn.x,  dwn.bottom,  db.left  + 90, db.y, C.teal, 0, 50);
+  addPath(gls.x,  gls.bottom,  db.x - 30,    db.y, C.teal, 0, 50);
+  addPath(imp.x,  imp.bottom,  db.right - 40, db.y, C.teal, 0, 60);
+
+  // ── DB → UI outputs
+  ups.forEach((ui, i) => {
+    addPath(db.left + 40 + i * 48, db.bottom, ui.x, ui.top, C.orange, 0, 50);
+  });
+
+  spawnParticles();
+}
+
+/* ──────────────────────────────────────────────
+   INIT
+────────────────────────────────────────────── */
+function init() {
+  const wrap = document.getElementById('diagram-wrap');
+  canvas.style.position = 'absolute';
+  canvas.style.top = '0'; canvas.style.left = '0';
+  canvas.style.pointerEvents = 'none';
+  canvas.width  = wrap.offsetWidth;
+  canvas.height = wrap.offsetHeight;
+
+  // Wait two frames so CSS layout completes
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    buildConnections();
+    drawFrame();
+  }));
+}
+
+window.addEventListener('load', init);
+window.addEventListener('resize', () => {
+  const wrap = document.getElementById('diagram-wrap');
+  canvas.width  = wrap.offsetWidth;
+  canvas.height = wrap.offsetHeight;
+  buildConnections();
+});
+</script>
+</body>
+</html>

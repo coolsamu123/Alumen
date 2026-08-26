@@ -9,9 +9,13 @@ const GEMINI_META = {
   helpLabel: 'aistudio.google.com/apikey',
 };
 
+type OutputLanguage = 'en' | 'fr';
+
 export default function AdminPage() {
   const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState('gemini-3-pro');
+  const [outputLanguage, setOutputLanguage] = useState<OutputLanguage>('en');
+  const [langStatus, setLangStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [geminiState, setGeminiState] = useState<{ masked: string; isConfigured: boolean }>({
     masked: 'Not configured',
     isConfigured: false,
@@ -49,9 +53,33 @@ export default function AdminPage() {
       .then(data => {
         if (data.keys?.gemini) setGeminiState(data.keys.gemini);
         if (typeof data.model === 'string') setModel(data.model);
+        if (data.outputLanguage === 'fr' || data.outputLanguage === 'en') setOutputLanguage(data.outputLanguage);
         setStats(data.stats || null);
       })
       .catch(() => {});
+  };
+
+  const handleLangChange = async (next: OutputLanguage) => {
+    if (next === outputLanguage) return;
+    const prev = outputLanguage;
+    setOutputLanguage(next);
+    setLangStatus('saving');
+    try {
+      const res = await fetch('/api/admin/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outputLanguage: next }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Save failed');
+      // Leave the 'saved' banner up until the user makes another change — the
+      // confirmation is the whole point of the panel; auto-dismissing it makes
+      // people unsure whether their click actually persisted.
+      setLangStatus('saved');
+    } catch {
+      setOutputLanguage(prev);
+      setLangStatus('error');
+    }
   };
 
   const refreshServiceAccount = () => {
@@ -303,6 +331,41 @@ export default function AdminPage() {
       {/* Content */}
       <div style={{ maxWidth: 640, margin: '0 auto', padding: 32, display: 'flex', flexDirection: 'column', gap: 24 }}>
 
+        {/* Target Catalog */}
+        <a
+          href="/admin/catalog"
+          style={{
+            ...panelStyle,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 16,
+            textDecoration: 'none',
+            color: 'inherit',
+            transition: 'border-color 0.15s ease',
+          }}
+        >
+          <div style={{
+            width: 44,
+            height: 44,
+            borderRadius: 10,
+            background: 'linear-gradient(135deg, #7c3aed44, #0284c744)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 22,
+            flexShrink: 0,
+          }}>
+            ✦
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink-1)' }}>Target Catalog</div>
+            <div style={{ fontSize: 13, color: 'var(--ink-muted)', marginTop: 2 }}>
+              Edit descriptions and role/impact-type bias hints for the 5 GIO Service Lines and 20 DDS Entities.
+            </div>
+          </div>
+          <div style={{ fontSize: 18, color: 'var(--ink-faint)' }}>→</div>
+        </a>
+
         {/* Gemini Configuration */}
         <div style={panelStyle}>
           <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink-1)', marginBottom: 4 }}>Gemini Configuration</div>
@@ -357,6 +420,83 @@ export default function AdminPage() {
               {GEMINI_META.helpLabel}
             </a>
           </div>
+        </div>
+
+        {/* Output Language */}
+        <div style={panelStyle}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink-1)', marginBottom: 4 }}>Output Language</div>
+          <div style={{ fontSize: 13, color: 'var(--ink-muted)', marginBottom: 20 }}>
+            Language Gemini uses for free-form fields (summaries, narratives, deep dives).
+            Canonical names (GIO services, DDS entities, tech tags, project IDs) and JSON keys
+            always stay in English so downstream parsing keeps working. Goals and impact rows
+            are stored per language — switching back to a language you previously analysed
+            reuses that cached analysis instantly.
+          </div>
+
+          {/* Live status — mirrors the "CURRENT STATUS" pattern used by the Gemini panel. */}
+          <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: 14, marginBottom: 16 }}>
+            <div style={{ fontSize: 10, color: 'var(--ink-faint)', fontWeight: 700, letterSpacing: '0.08em', marginBottom: 8 }}>CURRENT STATUS</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{
+                width: 10, height: 10, borderRadius: '50%',
+                background: outputLanguage === 'fr' ? '#38bdf8' : '#22c55e',
+              }} />
+              <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>
+                Active output language: <strong style={{ color: 'var(--ink-1)' }}>{outputLanguage === 'fr' ? 'Français (FR)' : 'English (EN)'}</strong>
+                {' · '}
+                <span style={{ color: 'var(--ink-muted)' }}>
+                  written to <code style={{ color: 'var(--ink-4)' }}>config.json</code>; takes effect on the next analysis
+                </span>
+              </span>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8 }}>
+            {([
+              { value: 'en' as const, label: 'English', sub: 'EN' },
+              { value: 'fr' as const, label: 'Français', sub: 'FR' },
+            ]).map(opt => {
+              const active = outputLanguage === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  onClick={() => handleLangChange(opt.value)}
+                  disabled={langStatus === 'saving'}
+                  style={{
+                    flex: 1,
+                    padding: '12px 16px',
+                    borderRadius: 8,
+                    border: `1px solid ${active ? 'var(--accent-hover)' : 'var(--border-strong)'}`,
+                    background: active ? 'var(--accent-hover)' : 'var(--surface-2)',
+                    color: active ? 'white' : 'var(--ink-3)',
+                    fontWeight: 600,
+                    fontSize: 14,
+                    cursor: langStatus === 'saving' ? 'default' : 'pointer',
+                    opacity: langStatus === 'saving' ? 0.6 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 10,
+                  }}
+                >
+                  <span style={{ fontSize: 11, opacity: 0.7, fontFamily: "'DM Mono', monospace" }}>{opt.sub}</span>
+                  <span>{opt.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          {langStatus === 'saving' && (
+            <div style={{ fontSize: 13, color: 'var(--ink-muted)', marginTop: 10 }}>Saving…</div>
+          )}
+          {langStatus === 'saved' && (
+            <div style={{ fontSize: 13, color: '#4ade80', marginTop: 10 }}>
+              ✓ Saved. New analyses will be generated in {outputLanguage === 'fr' ? 'French' : 'English'}.
+              Previous analyses stay in their original language — re-run them to get the new translation.
+            </div>
+          )}
+          {langStatus === 'error' && (
+            <div style={{ fontSize: 13, color: '#f87171', marginTop: 10 }}>Could not save language preference.</div>
+          )}
         </div>
 
         {/* Test Connection */}

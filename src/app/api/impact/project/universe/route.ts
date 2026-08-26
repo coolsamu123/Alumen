@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getProjectImpacts, aggregateImpacts } from '@/lib/impact-engine';
+import { composeNarrative } from '@/lib/impact-narrative';
+import { getActiveOutputLanguage } from '@/lib/llm';
 import type { ProjectImpact, ImpactCitation } from '@/lib/types';
 
 interface ProjectMeta {
@@ -27,6 +29,11 @@ interface PseudoNodeImpact {
   // per-message badges instead of only the unioned card-level badges.
   impactTypeByExplanation: string[];
   severityByExplanation: string[];
+  // Parallel: synthesised "Why this matters" narrative composed from
+  // project name + direction + target + impact_type + severity + summary.
+  // Renders as the headline of the Reason tab; the original verbatim quote
+  // (explanations[i]) becomes the audit-grade "Evidence" companion.
+  narrativeByExplanation: string[];
   // The "primary" explanation (longest at highest severity)
   explanation: string;
 }
@@ -51,12 +58,16 @@ interface ProjectEdge {
   citationsByExplanation: ImpactCitation[][];
   impactTypeByExplanation: string[];
   severityByExplanation: string[];
+  // Same role as PseudoNodeImpact.narrativeByExplanation — see comment there.
+  narrativeByExplanation: string[];
   explanation: string;
   count: number;
   bidirectional: boolean;
 }
 
-const SEVERITY_RANK: Record<string, number> = { high: 3, medium: 2, low: 1 };
+// Two-tier severity rank. `medium` is aliased to `low` so any stray legacy row
+// sorts as low rather than landing in the unknown-zero bucket.
+const SEVERITY_RANK: Record<string, number> = { high: 2, low: 1, medium: 1 };
 
 function pickMaxSeverity(items: { severity: string }[]): string {
   let best = 'low';
@@ -68,11 +79,25 @@ function pickMaxSeverity(items: { severity: string }[]): string {
   return best;
 }
 
+function pickMaxSeverityFromList(severities: string[]): string {
+  let best = 'low';
+  let rank = 0;
+  for (const s of severities) {
+    const r = SEVERITY_RANK[s] ?? 0;
+    if (r > rank) { rank = r; best = s; }
+  }
+  return best;
+}
+
 function fanOutPseudo(
   impacts: ProjectImpact[],
   pseudoTarget: 'GIO_SERVICES' | 'DDS_IMPACTS',
   pickList: (imp: ProjectImpact) => string[],
   pickPerExplanation: (imp: ProjectImpact) => string[][] | undefined,
+  // Per-source-project summary lookup used to compose the narrative. Keyed
+  // by sourceProjectId; missing entries → narrative skips the project-context
+  // sentence (the relationship + classifier sentences still render).
+  projectInfo: Map<string, { name: string; summary: string }>,
 ): PseudoNode[] {
   const byName = new Map<string, PseudoNodeImpact[]>();
 
@@ -85,6 +110,15 @@ function fanOutPseudo(
     const itbe = imp.impactTypeByExplanation ?? explanations.map(() => imp.impactType);
     const sbe = imp.severityByExplanation ?? explanations.map(() => imp.severity);
     const perExpLists = pickPerExplanation(imp);
+
+    // Source project context — for GIO/DDS fan-out the "source" is whichever
+    // side isn't the pseudo target. In practice that's always the centered
+    // project, but resolve generically so we cope with legacy rows where
+    // direction was inverted.
+    const sourceProjectId = imp.sourceProjectId === pseudoTarget ? imp.targetProjectId : imp.sourceProjectId;
+    const sourceInfo = projectInfo.get(sourceProjectId);
+    const sourceName = sourceInfo?.name || sourceProjectId;
+    const sourceSummary = sourceInfo?.summary || '';
 
     for (const name of names) {
       // Filter explanations to those whose ORIGINATING raw row pointed at
@@ -103,16 +137,39 @@ function fanOutPseudo(
         keepIdx = explanations.map((_, i) => i);
       }
 
+      // Per-node severity/impactTypes must reflect ONLY the rows that originated
+      // at this specific service/entity — NOT the aggregated row's primary
+      // severity. Without this re-derivation, the aggregator's "primary"
+      // (highest-severity row in the unordered project_pair group) leaks into
+      // every sibling node fan-out: a project with one high-severity claim on
+      // Security & Compliance and one medium-severity claim on User Workplace
+      // would draw BOTH edges in red because both share the same aggregated
+      // primary. The original raw severities live in severityByExplanation[],
+      // already filtered to this node by keepIdx — recompute the max from
+      // there, and union the per-node impact_types the same way.
+      const kept_sbe = keepIdx.map(i => sbe[i] ?? imp.severity);
+      const kept_itbe = keepIdx.map(i => itbe[i] ?? imp.impactType);
+      const nodeSeverity = kept_sbe.length > 0 ? pickMaxSeverityFromList(kept_sbe) : imp.severity;
+      const nodeImpactTypes = Array.from(new Set(kept_itbe.filter(Boolean)));
+
       const arr = byName.get(name) ?? [];
       arr.push({
         impactId: imp.id,
-        severity: imp.severity,
+        severity: nodeSeverity,
         direction: imp.direction,
-        impactTypes: imp.impactTypes ?? [imp.impactType],
+        impactTypes: nodeImpactTypes.length > 0 ? nodeImpactTypes : [imp.impactType],
         explanations: keepIdx.map(i => explanations[i]),
         citationsByExplanation: keepIdx.map(i => cbe[i] ?? []),
-        impactTypeByExplanation: keepIdx.map(i => itbe[i] ?? imp.impactType),
-        severityByExplanation: keepIdx.map(i => sbe[i] ?? imp.severity),
+        impactTypeByExplanation: kept_itbe,
+        severityByExplanation: kept_sbe,
+        narrativeByExplanation: keepIdx.map(i => composeNarrative({
+          sourceProjectName: sourceName,
+          sourceSummary,
+          targetName: name,
+          direction: imp.direction,
+          impactType: itbe[i] ?? imp.impactType,
+          severity: sbe[i] ?? imp.severity,
+        })),
         explanation: imp.explanation,
       });
       byName.set(name, arr);
@@ -224,6 +281,58 @@ function enrichEmptyCitations(impacts: ProjectImpact[]): void {
   }
 }
 
+// Latest summary_one_line per project from project_goals, scoped to the
+// active output language so the narrative matches the language of the impact
+// rows we're rendering. Used by composeNarrative for the "Why this matters"
+// project-context sentence. Falls back gracefully when a project has no
+// extracted goal row in the active language — narrative omits that sentence.
+function lookupProjectSummaries(
+  projectIds: string[],
+  lang: string,
+): Map<string, { name: string; summary: string }> {
+  if (projectIds.length === 0) return new Map();
+  const db = getDb();
+  const placeholders = projectIds.map(() => '?').join(',');
+  // First pass: rows in the active language. Most recent first.
+  const rows = db.prepare(`
+    SELECT project_id, project_name, summary_one_line, analyzed_at
+    FROM project_goals
+    WHERE project_id IN (${placeholders})
+      AND status = 'success'
+      AND output_language = ?
+    ORDER BY analyzed_at DESC
+  `).all(...projectIds, lang) as Array<{ project_id: string; project_name: string; summary_one_line: string; analyzed_at: string }>;
+
+  const out = new Map<string, { name: string; summary: string }>();
+  for (const r of rows) {
+    if (out.has(r.project_id)) continue;
+    out.set(r.project_id, {
+      name: r.project_name || r.project_id,
+      summary: r.summary_one_line || '',
+    });
+  }
+  // Fallback: any-language row for projects that don't have an entry in the
+  // active language (e.g. analysed only in EN but user switched to FR).
+  const missing = projectIds.filter(id => !out.has(id));
+  if (missing.length > 0) {
+    const ph2 = missing.map(() => '?').join(',');
+    const fallback = db.prepare(`
+      SELECT project_id, project_name, summary_one_line
+      FROM project_goals
+      WHERE project_id IN (${ph2}) AND status = 'success'
+      ORDER BY analyzed_at DESC
+    `).all(...missing) as Array<{ project_id: string; project_name: string; summary_one_line: string }>;
+    for (const r of fallback) {
+      if (out.has(r.project_id)) continue;
+      out.set(r.project_id, {
+        name: r.project_name || r.project_id,
+        summary: r.summary_one_line || '',
+      });
+    }
+  }
+  return out;
+}
+
 function lookupProjectMeta(projectIds: string[]): Map<string, ProjectMeta> {
   if (projectIds.length === 0) return new Map();
   const db = getDb();
@@ -287,19 +396,30 @@ export async function GET(request: NextRequest) {
       description: '',
     };
 
-    // 3) Fan out GIO services into nodes — pick the union of services AND
+    // 3) Look up summary_one_line for every source project referenced by any
+    //    aggregated row. Used by composeNarrative to add a project-context
+    //    sentence ("X is a study to evaluate…") to each "Why this matters".
+    const allSourceIds = Array.from(new Set(
+      aggregated.flatMap(imp => [imp.sourceProjectId, imp.targetProjectId])
+        .filter(id => id !== 'GIO_SERVICES' && id !== 'DDS_IMPACTS')
+    ));
+    const projectInfo = lookupProjectSummaries(allSourceIds, getActiveOutputLanguage());
+
+    // 4) Fan out GIO services into nodes — pick the union of services AND
     //    the per-explanation services so each node card filters down to only
     //    its own messages instead of receiving the project's whole union.
     const gioNodes = fanOutPseudo(aggregated, 'GIO_SERVICES',
       imp => imp.gioServices ?? [],
-      imp => imp.gioServicesByExplanation);
+      imp => imp.gioServicesByExplanation,
+      projectInfo);
 
-    // 4) Fan out DDS entities into nodes
+    // 5) Fan out DDS entities into nodes
     const ddsNodes = fanOutPseudo(aggregated, 'DDS_IMPACTS',
       imp => imp.ddsEntities ?? [],
-      imp => imp.ddsEntitiesByExplanation);
+      imp => imp.ddsEntitiesByExplanation,
+      projectInfo);
 
-    // 5) Project-to-project edges (exclude pseudo-targets)
+    // 6) Project-to-project edges (exclude pseudo-targets)
     const projectEdgeRaw = aggregated.filter(imp =>
       imp.sourceProjectId !== 'GIO_SERVICES' && imp.targetProjectId !== 'GIO_SERVICES' &&
       imp.sourceProjectId !== 'DDS_IMPACTS'  && imp.targetProjectId !== 'DDS_IMPACTS'
@@ -317,6 +437,16 @@ export async function GET(request: NextRequest) {
       const explanations = imp.explanations ?? [imp.explanation];
       const cbe = imp.citationsByExplanation
         ?? explanations.map((_, i) => (i === 0 ? (imp.citations ?? []) : []));
+      const itbe = imp.impactTypeByExplanation ?? explanations.map(() => imp.impactType);
+      const sbe = imp.severityByExplanation ?? explanations.map(() => imp.severity);
+      // For project-to-project edges the narrative speaks from the row's
+      // *actual* source side (which may be the centered project OR the other
+      // project, depending on direction).
+      const srcInfo = projectInfo.get(imp.sourceProjectId);
+      const tgtInfo = projectInfo.get(imp.targetProjectId);
+      const sourceName = srcInfo?.name || imp.sourceProjectId;
+      const targetName = tgtInfo?.name || imp.targetProjectId;
+      const sourceSummary = srcInfo?.summary || '';
       return {
         otherProjectId: otherId,
         otherProjectName: meta?.name || otherId,
@@ -326,8 +456,16 @@ export async function GET(request: NextRequest) {
         impactTypes: imp.impactTypes ?? [imp.impactType],
         explanations,
         citationsByExplanation: cbe,
-        impactTypeByExplanation: imp.impactTypeByExplanation ?? explanations.map(() => imp.impactType),
-        severityByExplanation: imp.severityByExplanation ?? explanations.map(() => imp.severity),
+        impactTypeByExplanation: itbe,
+        severityByExplanation: sbe,
+        narrativeByExplanation: explanations.map((_, i) => composeNarrative({
+          sourceProjectName: sourceName,
+          sourceSummary,
+          targetName,
+          direction: imp.direction,
+          impactType: itbe[i] ?? imp.impactType,
+          severity: sbe[i] ?? imp.severity,
+        })),
         explanation: imp.explanation,
         count: imp.count ?? 1,
         bidirectional: imp.bidirectional ?? false,

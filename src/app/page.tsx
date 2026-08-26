@@ -39,11 +39,19 @@ export default function Home() {
     setVisited(prev => (prev.has(view) ? prev : new Set(prev).add(view)));
   }, [view]);
 
-  // Public hosts can't reach Drive Sync / Goals / Strom / Universe. Bounce back
-  // to Details if someone (e.g. a stale link) lands on a restricted view.
+  // Public hosts can't reach Drive Sync / Goals / Strom / Universe without
+  // first passing the Basic Auth challenge in src/middleware.ts. We only bounce
+  // back to Details on initial mount (e.g. a stale localStorage view from a
+  // previous authed session); subsequent clicks on protected nav items are
+  // allowed through so the protected view's data fetch triggers the browser's
+  // native password prompt — that's the user-facing "click Admin / Drive Sync
+  // → password dialog" flow.
   useEffect(() => {
     if (isPublic && !PUBLIC_VIEWS.includes(view)) setView('detail');
-  }, [isPublic, view, setView]);
+    // Intentional: only react to isPublic flipping, not to subsequent view
+    // changes — see comment above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPublic]);
 
   // No projects yet — either the initial fetch is in flight or the DB is empty.
   // Either way, show a soft loading state instead of the deprecated Excel-upload

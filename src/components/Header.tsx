@@ -13,13 +13,20 @@ const NAV_ITEMS: { key: ViewType; label: string }[] = [
   { key: 'strom', label: '✦ Alumen' },
 ];
 
+// Views that don't fetch anything the Basic Auth middleware protects. Anonymous
+// external visitors can land on these directly; clicking the gated views still
+// works — the protected APIs return 401 and the browser shows the native
+// Basic Auth prompt, after which the view loads normally.
 const PUBLIC_VIEWS: ViewType[] = ['graph', 'timeline', 'detail', 'impact'];
 
 export default function Header() {
   const { view, setView, isPublic, theme, toggleTheme } = useProjectContext();
-  const navItems = isPublic
-    ? NAV_ITEMS.filter(n => PUBLIC_VIEWS.includes(n.key))
-    : NAV_ITEMS;
+  // All nav items are always visible — including protected ones — so clicking
+  // them can trigger the Basic Auth dialog when needed. The Admin link is the
+  // only thing we keep hidden in the anonymous-public state (it's a top-level
+  // navigation rather than a view switch, and showing a dead-end button beside
+  // the view switcher is worse UX than a single sign-in CTA on the page).
+  const navItems = NAV_ITEMS;
 
   return (
     <div className="px-6 py-3 border-b border-line flex items-center gap-4 bg-surface">
@@ -59,17 +66,14 @@ export default function Header() {
         <span className="text-base leading-none">{theme === 'dark' ? '☀' : '☾'}</span>
       </button>
 
-      {!isPublic && (
-        <>
-          <div className="w-px h-6 bg-surface-3" />
-          <a
-            href="/admin"
-            className="px-4 py-1.5 rounded-md border border-line-strong text-[13px] font-medium text-ink-4 hover:bg-surface-2 hover:text-ink-2 transition-all"
-          >
-            Admin
-          </a>
-        </>
-      )}
+      <div className="w-px h-6 bg-surface-3" />
+      <a
+        href="/admin"
+        title={isPublic ? 'Sign in required' : 'Admin'}
+        className="px-4 py-1.5 rounded-md border border-line-strong text-[13px] font-medium text-ink-4 hover:bg-surface-2 hover:text-ink-2 transition-all"
+      >
+        {isPublic ? '🔒 Admin' : 'Admin'}
+      </a>
     </div>
   );
 }

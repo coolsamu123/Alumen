@@ -98,7 +98,7 @@ STRUCTURED CROSS-PROJECT SIGNAL (Onda 2 refactor):
       "target_kind": "gio" | "dds",
       "target": "Security & Compliance",                  // MUST be a canonical name from the lists in #10 / #11
       "role": "primary_provider" | "downstream_consumer" | "regional_executor" | "risk_owner" | "blocked_by",
-      "severity": "high" | "medium" | "low",
+      "severity": "high" | "low",
       "impact_type": "infrastructure_shared" | "platform_shared" | "technology_dependency" | "vendor_shared" | "security_dependency" | "organizational" | "regional_rollout" | "integration_required" | "timeline_blocking" | "resource_contention",
       "evidence_file": "filename (same string as in the Documents block)",
       "evidence_quote": "verbatim span from that file, ≤200 chars, first sentence of supporting paragraph",
@@ -178,33 +178,21 @@ Global Infrastructure Operations (GIO) provides these key services:
 4. Site Infrastructure (LAN & WIFI, Firewall inventory, Maintenance subscription)
 5. Cloud Services (G&SM/Service Catalog, E&I S/4 HANA Upgrade, T&O Problem management, APAC Citrix Developer workspace, SAP Basis operations)
 
-If a project's description, technology, or "GIO Impacts" indicates it will probably or definitely need any of these services, you MUST create an impact relationship with:
-- "source": The Project ID
-- "target": "GIO_SERVICES"
-- "impact_type": "infrastructure_shared"
-- "direction": "requires_coordination"
-- "severity": "high" or "medium"
-- "explanation": Briefly explain exactly which GIO service is needed. Incorporate specific details from 'GIO Impacts', 'GIO Workload', 'Security Impacts', and 'Business Apps/CIs' directly into your explanation string to provide maximum context.
-- "gio_services": A list containing any of these exact strings that apply: ["Security & Compliance", "Command Center", "User Workplace", "Site Infrastructure", "Cloud Services"]. Leave empty [] if target is not GIO_SERVICES.
-- "dds_entities": [] (leave empty for GIO_SERVICES rows)
+GIO / DDS pseudo-target rows are MATERIALISED automatically from each project's
+"Atomic impact claims" (see the ATOMIC IMPACT CLAIMS section below). You MUST
+NOT emit any "target": "GIO_SERVICES" or "target": "DDS_IMPACTS" rows in your
+response — the post-processing step would either duplicate or override them.
+The CANONICAL lists below are reference only, useful when reasoning about
+PROJECT-TO-PROJECT relations (e.g. "PRJ A and PRJ B both share Cloud Services
+infrastructure" → emit a project_id→project_id row of type "infrastructure_shared",
+not a GIO_SERVICES row).
 
-CRITICAL - DDS / ENTITY IMPACTS:
-Air Liquide projects also impact DDS (Digital & Data Solutions) entities — geographic zones, business divisions, and functional app groups. The CANONICAL list of DDS entities is (use these EXACT strings, do not invent variations):
+CANONICAL DDS ENTITIES (reference):
 - Geographic zones: "Americas", "Europe", "APAC", "AMEI"
 - Business divisions / SBUs: "CF", "GM&T", "E&C", "HC D&IT", "Alizent", "GDO", "SEPPIC", "Airgas", "HHC"
 - App / functional groups: "Industrial Apps", "Enterprise Apps", "Data & AI Apps", "Digital Factory", "InnoTech", "CDIO Office", "IDD"
 
-If the project's "Regional Impacts", "GIO/SL/DDS Impacts", "DDS/GIO Workload", or "Change Management" fields indicate that one or more DDS entities will be affected (rollout phase, FTE allocation, change management coordination, regional adoption, integration with division apps, etc.), you MUST create an additional impact relationship with:
-- "source": The Project ID
-- "target": "DDS_IMPACTS"
-- "impact_type": one of [regional_rollout, organizational, resource_contention, integration_required]
-- "direction": one of [requires_coordination, blocks, enables, shares_resource]
-- "severity": "high" / "medium" / "low" depending on magnitude (number of FTEs, rollout scope, business criticality)
-- "explanation": 1-2 sentences explaining WHY each listed DDS entity is impacted. Pull specifics directly from "Regional Impacts", "GIO/SL/DDS Impacts", "DDS/GIO Workload" — name the rollout phase, FTE estimate, division app affected, etc.
-- "dds_entities": Array of one or more EXACT canonical DDS names from the list above. Leave [] if target is not DDS_IMPACTS.
-- "gio_services": [] (leave empty for DDS_IMPACTS rows)
-
-NOTE: A single project can produce BOTH a GIO_SERVICES row AND a DDS_IMPACTS row (and project-to-project rows). Emit them as separate JSON entries.
+CANONICAL GIO SERVICE LINES (reference): "Security & Compliance", "Command Center", "User Workplace", "Site Infrastructure", "Cloud Services"
 
 PRE-EXTRACTED PROJECT RELATIONS (NEW — trust as ground truth):
 Each project's block may include a "Pre-extracted project relations (from Goals)" section listing edges already mined from its documents in a prior pass:
@@ -214,32 +202,15 @@ These are GROUNDED in verbatim quotes. For each such relation, you MUST emit a m
   - target = the target PRJ id
   - impact_type derived from kind (shares_platform → "platform_shared"; shares_vendor → "vendor_shared"; blocked_by/blocking → "timeline_blocking"; replaces/predecessor/successor → "technology_dependency"; parallel → "requires_coordination"; extends → "integration_required")
   - direction derived from kind (blocked_by/predecessor → "depends_on"; blocking/successor → "blocks"; replaces → "supersedes"; parallel/shares_* → "requires_coordination"; extends → "depends_on")
-  - severity = "high" if confidence=stated AND kind is in {blocked_by, blocking, replaces}; else "medium"
+  - severity = "high" if confidence=stated AND kind is in {blocked_by, blocking, replaces}; else "low"
   - explanation = reuse the evidence_quote verbatim if it's a self-contained sentence; otherwise compose a 1-line summary
   - citations = [{ doc_url, snippet: evidence_quote }] resolving the doc_url from the source_file name against the Documents block
 
 EXCLUSIONS (NEW — hard negative signal):
 A project's block may include an "EXCLUSIONS:" section listing topics the project EXPLICITLY does NOT cover (e.g., "OT industrial systems"). Do NOT emit any impact whose explanation or target would contradict the exclusion. If you were about to emit such an impact, drop it instead.
 
-ATOMIC IMPACT CLAIMS (Onda 3 — authoritative source for GIO/DDS edges):
-A project's block may include an "Atomic impact claims (from Goals)" section. Each line is a pre-extracted, evidence-anchored claim of the form:
-    • GIO "Security & Compliance" role=primary_provider sev=high type=infrastructure_shared (stated): "..." (in Gate_1_Note...)
-For EACH such claim, emit EXACTLY ONE impact row:
-  - source = current project_id
-  - target = "GIO_SERVICES" if target_kind=GIO, else "DDS_IMPACTS"
-  - impact_type = the type field of the claim (verbatim)
-  - direction derived from role:
-      primary_provider     → "provides_to"
-      downstream_consumer  → "depends_on"
-      regional_executor    → "requires_coordination"
-      risk_owner           → "requires_coordination"
-      blocked_by           → "depends_on"
-  - severity = the severity field of the claim (verbatim)
-  - explanation = the evidence_quote (verbatim if it is a self-contained sentence, otherwise rephrase minimally to be a complete clause)
-  - gio_services = [target] when target_kind=GIO; []  otherwise
-  - dds_entities = [target] when target_kind=DDS; []  otherwise
-  - citations = [{ doc_url: <resolve evidence_file against the Documents block>, snippet: evidence_quote }]
-DO NOT emit additional speculative GIO/DDS rows beyond the claims listed. The claims ARE the surface area for this project's GIO/DDS impacts — if a claim is missing, that's intentional (no evidence).
+ATOMIC IMPACT CLAIMS (Onda 3 — DO NOT re-emit):
+A project's block may include an "Atomic impact claims (from Goals)" section. These claims describe the project's relationships to specific GIO Service Lines and DDS entities, with verbatim evidence. They are listed FOR CONTEXT ONLY — the engine materialises these claims directly into impact rows in a post-processing step (see materializeClaimsAsImpacts in impact-engine.ts). You MUST NOT emit your own GIO_SERVICES / DDS_IMPACTS rows mirroring these claims; doing so would create duplicates that override the deterministic materialised version. Read them, take their content into account when assessing cross-project relations below, but emit nothing for them yourself.
 
 TIMELINE (Onda 3):
 When a project's block includes a "Timeline:" section with "must_complete_before" or "blocked_by" entries, emit project-to-project rows of type "timeline_blocking" with appropriate direction (blocks / depends_on) and reuse the evidence_quote as explanation + citation.
@@ -260,7 +231,7 @@ Each object must have these exact fields:
 - "target": project ID OR "GIO_SERVICES" OR "DDS_IMPACTS"
 - "impact_type": one of [technology_dependency, infrastructure_shared, data_dependency, timeline_blocking, resource_contention, organizational, platform_shared, vendor_shared, integration_required, security_dependency, regional_rollout]
 - "direction": one of [blocks, enables, shares_resource, feeds_data, competes_with, requires_coordination]
-- "severity": one of [high, medium, low]
+- "severity": one of [high, low]
 - "explanation": 1-2 sentences why
 - "gio_services": array of strings — only populated when target="GIO_SERVICES", else []
 - "dds_entities": array of strings — only populated when target="DDS_IMPACTS", else []

@@ -9,9 +9,16 @@ const PLACEHOLDER_KEYS = new Set([
   'your_gemini_api_key_here',
 ]);
 
+type OutputLanguage = 'en' | 'fr';
+
 interface AppConfig {
   geminiApiKey?: string;
   model?: string;
+  outputLanguage?: OutputLanguage;
+}
+
+function normalizeLanguage(value: unknown): OutputLanguage {
+  return value === 'fr' ? 'fr' : 'en';
 }
 
 function readConfig(): AppConfig {
@@ -48,6 +55,7 @@ export async function GET() {
   return NextResponse.json({
     provider: 'gemini',
     model: cfg.model || 'gemini-3-pro',
+    outputLanguage: normalizeLanguage(cfg.outputLanguage),
     apiKeyMasked: maskKey(geminiKey),
     isConfigured: isConfigured(geminiKey),
     keys: {
@@ -59,7 +67,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json() as { apiKey?: string; model?: string };
+    const body = await request.json() as { apiKey?: string; model?: string; outputLanguage?: string };
 
     const patch: AppConfig = {};
     if (typeof body.apiKey === 'string' && body.apiKey.trim()) {
@@ -68,17 +76,22 @@ export async function POST(request: NextRequest) {
     if (typeof body.model === 'string' && body.model.trim()) {
       patch.model = body.model.trim();
     }
+    if (body.outputLanguage !== undefined) {
+      patch.outputLanguage = normalizeLanguage(body.outputLanguage);
+    }
 
     if (Object.keys(patch).length === 0) {
       return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
     }
 
     writeConfig(patch);
+    const after = readConfig();
 
     return NextResponse.json({
       success: true,
       provider: 'gemini',
-      apiKeyMasked: maskKey(patch.geminiApiKey ?? readConfig().geminiApiKey),
+      apiKeyMasked: maskKey(patch.geminiApiKey ?? after.geminiApiKey),
+      outputLanguage: normalizeLanguage(after.outputLanguage),
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
