@@ -13,9 +13,12 @@ export interface StromStats {
   deepDives: number;
 }
 
+type SubTab = 'architecture' | 'dataflow';
+
 export default function StromArchitecture() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [stats, setStats] = useState<StromStats | null>(null);
+  const [subTab, setSubTab] = useState<SubTab>('architecture');
   const selectedStage = selectedId ? getStage(selectedId) : null;
 
   // Live stats — polled lightly. Cheap query, ~1KB response.
@@ -33,28 +36,57 @@ export default function StromArchitecture() {
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden">
-      <Header stats={stats} />
+      <Header stats={stats} subTab={subTab} onSubTab={setSubTab} />
       <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 min-w-0">
-          <ArchitectureCanvas selectedId={selectedId} onSelect={setSelectedId} />
-        </div>
-        {selectedStage && (
-          <DetailPanel stage={selectedStage} stats={stats} onClose={() => setSelectedId(null)} />
+        {subTab === 'architecture' ? (
+          <>
+            <div className="flex-1 min-w-0">
+              <ArchitectureCanvas selectedId={selectedId} onSelect={setSelectedId} />
+            </div>
+            {selectedStage && (
+              <DetailPanel stage={selectedStage} stats={stats} onClose={() => setSelectedId(null)} />
+            )}
+          </>
+        ) : (
+          <iframe
+            src="/dataflow.html"
+            className="flex-1 border-0"
+            title="Alumen Data Flow"
+          />
         )}
       </div>
     </div>
   );
 }
 
-function Header({ stats }: { stats: StromStats | null }) {
+function Header({ stats, subTab, onSubTab }: { stats: StromStats | null; subTab: SubTab; onSubTab: (t: SubTab) => void }) {
   return (
     <div className="shrink-0 px-6 py-3 border-b border-line bg-surface-1">
       <div className="flex items-center justify-between gap-6 flex-wrap">
-        <div>
-          <h1 className="text-lg font-bold text-ink-1">Alumen Pipeline Architecture</h1>
-          <p className="text-[11px] text-ink-muted mt-0.5">
-            Click any stage to inspect inputs, outputs, code, and run controls.
-          </p>
+        <div className="flex items-center gap-4">
+          <div>
+            <h1 className="text-lg font-bold text-ink-1">Alumen</h1>
+            <p className="text-[11px] text-ink-muted mt-0.5">
+              {subTab === 'architecture'
+                ? 'Click any stage to inspect inputs, outputs, code, and run controls.'
+                : 'Animated data flow through the Alumen pipeline.'}
+            </p>
+          </div>
+          <div className="flex items-center gap-1 ml-2">
+            {(['architecture', 'dataflow'] as SubTab[]).map(t => (
+              <button
+                key={t}
+                onClick={() => onSubTab(t)}
+                className={`px-3 py-1 rounded text-[12px] font-medium transition-all cursor-pointer
+                  ${subTab === t
+                    ? 'bg-accent-soft border border-accent-border text-accent-text'
+                    : 'text-ink-4 hover:bg-surface-2 border border-transparent'
+                  }`}
+              >
+                {t === 'architecture' ? '⬡ Pipeline' : '⟶ Data Flow'}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex items-center gap-5 text-xs">
           <Counter label="Projects" value={stats?.projects} tone="cyan" />
