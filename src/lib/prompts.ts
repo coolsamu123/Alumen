@@ -230,7 +230,7 @@ Each object must have these exact fields:
 - "source": project ID (e.g. "PRJ0004517")
 - "target": project ID OR "GIO_SERVICES" OR "DDS_IMPACTS"
 - "impact_type": one of [technology_dependency, infrastructure_shared, data_dependency, timeline_blocking, resource_contention, organizational, platform_shared, vendor_shared, integration_required, security_dependency, regional_rollout]
-- "direction": one of [blocks, enables, shares_resource, feeds_data, competes_with, requires_coordination]
+- "direction": one of [blocks, enables, depends_on, supersedes, shares_resource, feeds_data, competes_with, requires_coordination]
 - "severity": one of [high, low]
 - "explanation": 1-2 sentences why
 - "gio_services": array of strings — only populated when target="GIO_SERVICES", else []

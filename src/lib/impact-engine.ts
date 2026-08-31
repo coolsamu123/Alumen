@@ -5,6 +5,7 @@ import { getProjectDocuments, getFileNamesForUrls } from './drive-engine';
 import { getPrompts } from './prompts';
 import { generateContent, getActiveOutputLanguage, type OutputLanguage } from './llm';
 import { normalizeDdsList } from './dds-catalog';
+import { isCanonicalTarget, IMPACT_TYPES, IMPACT_DIRECTIONS } from './target-catalog';
 import type { CIOOProject, CIOOService, ProjectImpact, ProjectSummary, ImpactAnalysisStatus } from './types';
 
 // ─── Module-level state for tracking analysis progress ───────────────────────
@@ -44,6 +45,7 @@ let analysisStatus: ImpactAnalysisStatus = {
   totalImpacts: 0,
   currentBatchDDS: '',
   errors: [],
+  warnings: [],
 };
 
 // ─── Fetch all project summaries from DB ─────────────────────────────────────
@@ -372,23 +374,106 @@ interface Batch {
   projects: ProjectFullRecord[];
 }
 
-function buildFullCoverageBatches(
-  records: ProjectFullRecord[],
-  batchSize = 22
-): Batch[] {
-  const N = records.length;
-  if (N === 0) return [];
-  if (N <= batchSize) {
-    return [{ label: `All projects (${N})`, projects: records }];
-  }
+const MAX_BATCHES = 200;
 
-  const uncovered = new Set<string>();
+interface CoveragePlan {
+  batches: Batch[];
+  /** Pairs the safety cap left unanalysed. 0 means the target set was covered. */
+  uncoveredPairs: number;
+  /** 'full' = every pair was targeted; 'filtered' = only plausibly-related ones. */
+  mode: 'full' | 'filtered';
+  /** Pairs excluded by the relatedness prefilter (0 when mode is 'full'). */
+  filteredOutPairs: number;
+}
+
+/**
+ * Cheap relatedness test used to thin the pair set when full coverage does not
+ * fit the batch cap. Two projects are worth an LLM call if they share a
+ * technology, a vendor, a GIO service line, or if one names the other.
+ *
+ * Chosen by measuring every candidate signal against real data (61 projects,
+ * 1830 pairs, 30 pairs with a real project→project impact):
+ *
+ *   tech OR vendor OR mention          → 28.6% of pairs, 28/30 impacts kept
+ *   ...OR GIO service                  → 46.9% of pairs, 29/30 impacts kept
+ *   ...OR DDS entity                   → 60.7% of pairs, 29/30 impacts kept
+ *
+ * DDS is deliberately excluded: it costs a fifth of the pair budget and
+ * recovers nothing, because its values are too common to discriminate (Airgas
+ * in 19 of 61 projects, Americas in 17).
+ *
+ * A project with no signals at all is treated as related to everything — it
+ * cannot be filtered on evidence we do not have, and silently excluding it
+ * would be the same silent-omission bug this whole exercise is about.
+ */
+interface PairSignals {
+  tech: Set<string>;
+  vendors: Set<string>;
+  gio: Set<string>;
+  mentions: Set<string>;
+  blank: boolean;
+}
+
+function extractPairSignals(records: ProjectFullRecord[]): PairSignals[] {
+  return records.map(r => {
+    const g = r.goalEntries[0];
+    const tech = new Set(g?.tech_tags ?? []);
+    const vendors = new Set(g?.vendors ?? []);
+    const gio = new Set(g?.gio_services_touched ?? []);
+    const mentions = new Set<string>([
+      ...(g?.mentioned_projects ?? []),
+      ...(g?.project_relations ?? []).map(p => p.project_id).filter(Boolean),
+    ]);
+    return {
+      tech, vendors, gio, mentions,
+      blank: tech.size === 0 && vendors.size === 0 && gio.size === 0 && mentions.size === 0,
+    };
+  });
+}
+
+function shareAny(a: Set<string>, b: Set<string>): boolean {
+  for (const x of a) if (b.has(x)) return true;
+  return false;
+}
+
+function pairsWorthAnalysing(records: ProjectFullRecord[]): Set<string> {
+  const sig = extractPairSignals(records);
+  const N = records.length;
+  const keep = new Set<string>();
   for (let i = 0; i < N; i++) {
     for (let j = i + 1; j < N; j++) {
-      uncovered.add(`${i}|${j}`);
+      const a = sig[i], b = sig[j];
+      const related =
+        a.blank || b.blank ||
+        shareAny(a.tech, b.tech) ||
+        shareAny(a.vendors, b.vendors) ||
+        shareAny(a.gio, b.gio) ||
+        a.mentions.has(records[j].projectId) ||
+        b.mentions.has(records[i].projectId);
+      if (related) keep.add(`${i}|${j}`);
     }
   }
+  return keep;
+}
 
+/**
+ * Packs projects into batches until every pair in `targetPairs` has appeared
+ * together in at least one batch.
+ *
+ * `pad` fills a short batch up to batchSize with arbitrary extra projects. That
+ * is worth it when covering every pair (a fuller batch covers more pairs), but
+ * counterproductive on a thinned pair set, where the padding adds prompt content
+ * — and therefore eats into every project's share of the prompt budget — while
+ * covering no pair anyone asked for.
+ */
+function packBatches(
+  records: ProjectFullRecord[],
+  targetPairs: Set<string>,
+  batchSize: number,
+  pad: boolean,
+): Pick<CoveragePlan, 'batches' | 'uncoveredPairs'> {
+  const N = records.length;
+  const uncovered = new Set(targetPairs);
   const batches: Batch[] = [];
   let round = 1;
 
@@ -424,7 +509,7 @@ function buildFullCoverageBatches(
       if (bestGain === 0) break;
     }
 
-    if (inBatch.length < batchSize) {
+    if (pad && inBatch.length < batchSize) {
       for (let cand = 0; cand < N && inBatch.length < batchSize; cand++) {
         if (!inBatch.includes(cand)) inBatch.push(cand);
       }
@@ -443,25 +528,100 @@ function buildFullCoverageBatches(
       projects: inBatch.map(idx => records[idx]),
     });
 
-    if (batches.length > 200) {
-      console.warn('[Impact] buildFullCoverageBatches hit 200-batch safety cap');
+    // Safety cap: every batch is one LLM call, against a daily budget of
+    // STROM_LLM_DAILY_CAP (default 500). Hitting it means the result is NOT the
+    // coverage that was asked for, which the caller must be able to say out loud
+    // rather than leaving it to a console line nobody reads.
+    if (batches.length >= MAX_BATCHES) {
+      console.warn(
+        `[Impact] packBatches hit the ${MAX_BATCHES}-batch safety cap ` +
+        `with ${uncovered.size} pair(s) still uncovered`
+      );
       break;
     }
   }
 
-  return batches;
+  return { batches, uncoveredPairs: uncovered.size };
+}
+
+/**
+ * Plans the batches for a run, degrading automatically.
+ *
+ * Full pairwise coverage is attempted first and kept whenever it fits, so
+ * nothing changes for a portfolio small enough to afford it. Only when the cap
+ * would truncate the run — silently dropping pairs that the bookkeeping counted
+ * as analysed — do we fall back to covering just the plausibly-related pairs.
+ * Losing the pairs that share no technology, vendor, service line or mention is
+ * a far better trade than losing an arbitrary tail of whatever the packer
+ * happened to reach last.
+ */
+function buildFullCoverageBatches(
+  records: ProjectFullRecord[],
+  batchSize = 22
+): CoveragePlan {
+  const N = records.length;
+  if (N === 0) return { batches: [], uncoveredPairs: 0, mode: 'full', filteredOutPairs: 0 };
+  if (N <= batchSize) {
+    return {
+      batches: [{ label: `All projects (${N})`, projects: records }],
+      uncoveredPairs: 0,
+      mode: 'full',
+      filteredOutPairs: 0,
+    };
+  }
+
+  const allPairs = new Set<string>();
+  for (let i = 0; i < N; i++) {
+    for (let j = i + 1; j < N; j++) allPairs.add(`${i}|${j}`);
+  }
+
+  const full = packBatches(records, allPairs, batchSize, true);
+  if (full.uncoveredPairs === 0) {
+    return { ...full, mode: 'full', filteredOutPairs: 0 };
+  }
+
+  const related = pairsWorthAnalysing(records);
+  const filteredOutPairs = allPairs.size - related.size;
+  console.warn(
+    `[Impact] full coverage needs more than ${MAX_BATCHES} batches for ${N} projects ` +
+    `(${allPairs.size} pairs) — falling back to related pairs only (${related.size}, ` +
+    `${((related.size / allPairs.size) * 100).toFixed(1)}%)`
+  );
+
+  const filtered = packBatches(records, related, batchSize, false);
+  return { ...filtered, mode: 'filtered', filteredOutPairs };
 }
 
 // ─── Build prompt for a batch ────────────────────────────────────────────────
 
-function buildImpactPrompt(records: ProjectFullRecord[]): string {
+interface BuiltImpactPrompt {
+  prompt: string;
+  /** Projects whose structured content had to be trimmed to fit the budget. */
+  truncated: string[];
+}
+
+// Every project handed to this function is GUARANTEED to appear in the output.
+// `buildFullCoverageBatches` marks a pair (i,j) as covered the moment it puts
+// both projects in a batch, so a project silently dropped here would leave that
+// pair permanently unanalysed while the bookkeeping claims the opposite — and
+// deterministically so, meaning a re-run never repairs it. We therefore truncate
+// content to fit rather than drop projects: a pair analysed with less context
+// degrades gracefully, a pair never sent to the LLM is a silent lie.
+function buildImpactPrompt(records: ProjectFullRecord[]): BuiltImpactPrompt {
   const MAX_PROMPT_CHARS = 200_000;
   const DOC_SLICE = 4000;
   const DOCS_TOTAL = 8000;
 
+  // Per-project slice of the budget. The structured head (ids, tags, atomic
+  // claims, relations, goal analyses) has priority and documents absorb only
+  // what is left over, because the head is what cross-project reasoning runs on.
+  const perProject = records.length > 0
+    ? Math.floor(MAX_PROMPT_CHARS / records.length)
+    : MAX_PROMPT_CHARS;
+
   const entries: string[] = [];
-  let used = 0;
-  let dropped = 0;
+  const truncated: string[] = [];
+  let docsSqueezed = 0;
 
   const emit = (field: string, value: string | number | null | undefined): string => {
     if (value === null || value === undefined || value === '') return '';
@@ -550,8 +710,28 @@ function buildImpactPrompt(records: ProjectFullRecord[]): string {
     if (r.linkFolder) parts.push(emit('Link (Folder)', r.linkFolder));
     if (r.linkCIOO) parts.push(emit('Link (CIOO)', r.linkCIOO));
 
-    r.goalEntries.forEach((g, idx) => {
-      const header = `\n  Goal analysis ${idx + 1}${g.month_folder ? ` [${g.month_folder}]` : ''}${g.analyzed_at ? ` (${g.analyzed_at})` : ''}:`;
+    // `goalEntries` is the goals×projects fan-out, not a list of analyses:
+    // `project_goals` holds ONE row per (project, language) — see the
+    // idx_goals_project_lang UNIQUE index in db.ts — while `projects` holds one
+    // row per committee review, so the LEFT JOIN in IMPACT_ANALYSIS_QUERY repeats
+    // the same goal analysis once per review. Every field emitted below comes
+    // from the goals side, so without this dedup the identical block is repeated
+    // K times: it burns prompt budget and reads to the LLM as K independent
+    // analyses corroborating each other.
+    //
+    // Dedup ONLY here. `goalEntries` deliberately keeps all K entries because
+    // fetchProjectSummariesForViews builds `history` (TimelineView dots) and
+    // `reviewCount` from them — collapsing it at the source empties both.
+    const seenGoalIds = new Set<number>();
+    const distinctGoals = r.goalEntries.filter(g => {
+      if (seenGoalIds.has(g.goal_id)) return false;
+      seenGoalIds.add(g.goal_id);
+      return true;
+    });
+
+    distinctGoals.forEach((g, idx) => {
+      const ordinal = distinctGoals.length > 1 ? ` ${idx + 1}` : '';
+      const header = `\n  Goal analysis${ordinal}${g.month_folder ? ` [${g.month_folder}]` : ''}${g.analyzed_at ? ` (${g.analyzed_at})` : ''}:`;
       const body = [
         emit('    Region', g.region),
         emit('    Digital Technologies', g.digital_technologies),
@@ -567,8 +747,20 @@ function buildImpactPrompt(records: ProjectFullRecord[]): string {
       if (body) parts.push(header + body);
     });
 
+    // Head assembled. Enforce this project's budget before appending documents,
+    // so one verbose project can never crowd a later one out of the prompt.
+    let entry = parts.filter(Boolean).join('');
+    if (entry.length > perProject) {
+      entry = entry.slice(0, perProject);
+      truncated.push(r.projectId);
+    }
+
+    // Documents absorb whatever this project has left of its budget.
+    const docBudget = Math.max(0, Math.min(DOCS_TOTAL, perProject - entry.length));
     try {
-      const docs = getProjectDocuments(r.projectId);
+      // DOC_SLICE is the per-document cap applied below, so let SQLite do the
+      // truncation rather than reading whole documents just to discard them.
+      const docs = getProjectDocuments(r.projectId, DOC_SLICE);
       // Label each document chunk with its URL + file name so the LLM can
       // produce verifiable citations. The bracketed "[doc_url=..., file_name=...]"
       // header is the exact key the model echoes back in the citations array.
@@ -576,28 +768,28 @@ function buildImpactPrompt(records: ProjectFullRecord[]): string {
         .filter(d => d.status === 'success' && d.content)
         .map(d => `[doc_url=${d.url}, file_name=${d.fileName || '(unknown)'}]\n${d.content.slice(0, DOC_SLICE)}`)
         .join('\n---\n')
-        .slice(0, DOCS_TOTAL);
-      if (labelled) parts.push(`\n  Documents:\n${labelled}`);
+        .slice(0, docBudget);
+      if (labelled) {
+        entry += `\n  Documents:\n${labelled}`;
+      } else if (docBudget === 0 && docs.some(d => d.status === 'success' && d.content)) {
+        docsSqueezed++;
+      }
     } catch { /* no docs */ }
 
-    const entry = parts.filter(Boolean).join('');
-    if (used + entry.length > MAX_PROMPT_CHARS) {
-      dropped++;
-      continue;
-    }
     entries.push(entry);
-    used += entry.length;
   }
 
-  if (dropped > 0) {
+  if (truncated.length > 0 || docsSqueezed > 0) {
     console.warn(
-      `[Impact] buildImpactPrompt dropped ${dropped}/${records.length} projects due to ${MAX_PROMPT_CHARS}-char cap (used=${used})`
+      `[Impact] buildImpactPrompt: all ${records.length} projects kept — ` +
+      `${truncated.length} structurally truncated, ${docsSqueezed} left without document context ` +
+      `(budget ${perProject} chars/project)`
     );
   }
 
   const projectList = entries.join('\n\n');
   const { impactPrompt } = getPrompts();
-  return impactPrompt.replace('{{PROJECTS_LIST}}', projectList);
+  return { prompt: impactPrompt.replace('{{PROJECTS_LIST}}', projectList), truncated };
 }
 
 // ─── Parse Gemini response robustly ──────────────────────────────────────────
@@ -646,6 +838,18 @@ function normalizeImpactTarget(raw: string): string {
   return '';
 }
 
+// Controlled-vocabulary matching for `impact_type` / `direction`. The LLM drifts
+// on formatting far more often than on meaning ("Platform Shared",
+// "platform-shared"), so fold that away before deciding a value is unusable.
+// Returns the canonical member, or null when there is no safe mapping.
+const IMPACT_TYPE_SET: ReadonlySet<string> = new Set(IMPACT_TYPES);
+const IMPACT_DIRECTION_SET: ReadonlySet<string> = new Set(IMPACT_DIRECTIONS);
+
+function canonicalise(raw: string, allowed: ReadonlySet<string>): string | null {
+  const folded = raw.trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return allowed.has(folded) ? folded : null;
+}
+
 function normalizeImpactSource(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) return '';
@@ -674,7 +878,9 @@ function parseImpactResponse(text: string): RawImpact[] {
     }
 
     let droppedTarget = 0;
-    let normalisedTarget = 0;
+    let droppedPseudo = 0;
+    const droppedVocab: string[] = [];
+    let coercedDirection = 0;
 
     const out: RawImpact[] = [];
     for (const raw of parsed as Record<string, unknown>[]) {
@@ -694,15 +900,56 @@ function parseImpactResponse(text: string): RawImpact[] {
         droppedTarget++;
         continue;
       }
-      if (target !== rawTarget.trim() && (target === 'DDS_IMPACTS' || target === 'GIO_SERVICES')) {
-        normalisedTarget++;
+      // GIO / DDS pseudo-target rows are materialised deterministically from
+      // project_goals.impact_claims (materializeClaimsAsImpacts), so anything
+      // the LLM emits for them is at best a duplicate. It cannot be relied on to
+      // lose that race either: the UNIQUE key includes gio_services +
+      // dds_entities (db.ts), so an LLM row naming a different entity set does
+      // NOT collide with the materialised one and would survive alongside it as
+      // a phantom edge. The prompt already forbids these rows (prompts.ts) —
+      // this is the enforcement half of that contract, because "the LLM
+      // disobeys" is precisely what motivated materialising them in the first
+      // place. Note we drop AFTER normalisation on purpose: that is what catches
+      // corrupted spellings like "DDS_IMPAcripts" instead of letting them
+      // through as phantom project satellites.
+      if (target === 'GIO_SERVICES' || target === 'DDS_IMPACTS') {
+        droppedPseudo++;
+        continue;
       }
+
+      // `impact_type` is part of the UNIQUE key, so an off-vocabulary value does
+      // not merely mislabel the row — it opens a separate key slot, so the same
+      // semantic edge lands twice. Normalise obvious drift (case, spaces,
+      // hyphens) and drop what still doesn't match.
+      //
+      // Measured against 197 real rows (2026-08-31): the only off-vocabulary
+      // value was `requires_coordination` — a *direction* value placed in the
+      // type field — on 6 rows, 5 of which already had a correctly-typed sibling
+      // row for the same pair. So these are usually, but NOT always, redundant:
+      // one row was the pair's only edge. Falling back to a default type instead
+      // of dropping would not help, since the fallback opens its own key slot and
+      // keeps the duplicate while adding a wrong label. We drop, but log the
+      // source→target so a genuinely lost edge is auditable rather than silent.
+      const rawType = String(raw.impact_type || raw.impactType || raw.type || 'technology_dependency');
+      const impactType = canonicalise(rawType, IMPACT_TYPE_SET);
+      if (!impactType) {
+        droppedVocab.push(`${source}→${target} (${rawType.trim()})`);
+        continue;
+      }
+
+      // `direction` is NOT part of the UNIQUE key: a bad value costs a vague
+      // "relates to" in the narrative, nothing structural. Dropping a real
+      // cross-project finding over its label would lose more than it protects,
+      // so this one falls back to the pre-existing default instead.
+      const rawDirection = String(raw.direction || raw.relationship || 'requires_coordination');
+      const direction = canonicalise(rawDirection, IMPACT_DIRECTION_SET) ?? 'requires_coordination';
+      if (direction !== rawDirection.trim()) coercedDirection++;
 
       out.push({
         source,
         target,
-        impact_type: (raw.impact_type || raw.impactType || raw.type || 'technology_dependency') as string,
-        direction: (raw.direction || raw.relationship || 'requires_coordination') as string,
+        impact_type: impactType,
+        direction,
         // Normalise to the 2-tier scale. Default missing severities to 'low'
         // and fold legacy 'medium' values into 'low' (2026-06-18 collapse).
         severity: ((): string => {
@@ -715,8 +962,15 @@ function parseImpactResponse(text: string): RawImpact[] {
         citations,
       });
     }
-    if (droppedTarget > 0 || normalisedTarget > 0) {
-      console.log(`[Impact] parseImpactResponse: dropped=${droppedTarget} fuzzy-fixed=${normalisedTarget} (of ${parsed.length} rows)`);
+    if (droppedTarget > 0 || droppedPseudo > 0 || droppedVocab.length > 0 || coercedDirection > 0) {
+      console.log(
+        `[Impact] parseImpactResponse: kept=${out.length} unparseable-target=${droppedTarget} ` +
+        `pseudo-target=${droppedPseudo} (materialised separately) off-vocabulary-type=${droppedVocab.length} ` +
+        `direction-coerced=${coercedDirection} — of ${parsed.length} rows`
+      );
+      if (droppedVocab.length > 0) {
+        console.log(`[Impact]   off-vocabulary rows dropped: ${droppedVocab.join('; ')}`);
+      }
     }
     return out;
   } catch (err) {
@@ -888,10 +1142,13 @@ function materializeClaimsAsImpacts(
       if (!c.target || !c.impact_type || !c.role) continue;
 
       // Validate target against the canonical catalog. Should always pass
-      // because sanitizeImpactClaims (goals-analyzer.ts) already filters, but
-      // belt-and-braces in case the JSON was hand-edited.
-      const target = c.target_kind === 'gio' ? c.target : c.target;
-      if (!target) { claimsDroppedBadTarget++; continue; }
+      // because sanitizeImpactClaims (goals-analyzer.ts) already filters on the
+      // write path, but belt-and-braces: `project_goals.impact_claims` is JSON
+      // that survives across schema changes, and the catalog behind
+      // isCanonicalTarget is editable at runtime via /admin/catalog — so a value
+      // that was canonical when it was stored may not be canonical now.
+      const target = c.target;
+      if (!isCanonicalTarget(c.target_kind, target)) { claimsDroppedBadTarget++; continue; }
 
       const pseudoTarget = c.target_kind === 'gio' ? 'GIO_SERVICES' : 'DDS_IMPACTS';
       const direction = ROLE_TO_DIRECTION[c.role] ?? 'requires_coordination';
@@ -928,27 +1185,105 @@ function materializeClaimsAsImpacts(
   return out;
 }
 
-/**
- * Standalone re-materialisation of claim-derived impact rows for a given
- * language. Useful as a quick fix-up after a buggy LLM run: it walks every
- * project's `impact_claims` and INSERT-OR-REPLACEs the corresponding rows,
- * deterministically. Does NOT run any LLM calls. Returns the inserted count.
- *
- * Caller is responsible for clearing any obsolete corrupted rows separately
- * (e.g. rows with malformed pseudo-targets) — this function only writes the
- * canonical claim-derived ones.
- */
-export function rematerializeClaimsForLanguage(lang: OutputLanguage): number {
-  const records = fetchAllProjectRecords(lang);
-  const materialised = materializeClaimsAsImpacts(records);
-  if (materialised.length === 0) return 0;
-  return storeImpacts(materialised, 'rematerialise-' + Date.now(), lang);
+// ─── Run journal (impact_runs) ───────────────────────────────────────────────
+// `analysisStatus` above lives in module memory and dies with the process, so
+// these mirror the run into SQLite. A row left in 'running' is reclaimed as
+// 'aborted' on the next boot (see reclaimOrphanedImpactRuns in db.ts) — that is
+// what makes an OOM-killed or redeployed run visible after the fact.
+
+function startRunRecord(
+  batchId: string,
+  lang: OutputLanguage,
+  totalProjects: number,
+  totalBatches: number,
+): number | null {
+  try {
+    const result = getDb().prepare(`
+      INSERT INTO impact_runs (batch_id, output_language, status, total_projects, total_batches)
+      VALUES (?, ?, 'running', ?, ?)
+    `).run(batchId, lang, totalProjects, totalBatches);
+    return Number(result.lastInsertRowid);
+  } catch (err) {
+    // The journal is observability, never a reason to fail the analysis.
+    console.error('[Impact] could not open run journal entry:', err);
+    return null;
+  }
+}
+
+function updateRunProgress(runId: number | null, status: ImpactAnalysisStatus): void {
+  if (runId === null) return;
+  try {
+    getDb().prepare(
+      'UPDATE impact_runs SET completed_batches = ?, total_impacts = ? WHERE id = ?'
+    ).run(status.completedBatches, status.totalImpacts, runId);
+  } catch { /* observability only */ }
+}
+
+function finishRunRecord(
+  runId: number | null,
+  status: 'complete' | 'failed',
+  s: ImpactAnalysisStatus,
+): void {
+  if (runId === null) return;
+  try {
+    getDb().prepare(`
+      UPDATE impact_runs
+         SET status = ?, finished_at = datetime('now'),
+             completed_batches = ?, total_impacts = ?,
+             errors_json = ?, warnings_json = ?
+       WHERE id = ?
+    `).run(
+      status,
+      s.completedBatches,
+      s.totalImpacts,
+      JSON.stringify(s.errors),
+      JSON.stringify(s.warnings),
+      runId,
+    );
+  } catch { /* observability only */ }
+}
+
+interface ImpactRunRow {
+  status: string;
+  started_at: string;
+  finished_at: string | null;
+  completed_batches: number;
+  total_batches: number;
+  total_impacts: number;
+}
+
+function readLastRun(): ImpactAnalysisStatus['lastRun'] {
+  try {
+    const row = getDb().prepare(
+      'SELECT status, started_at, finished_at, completed_batches, total_batches, total_impacts FROM impact_runs ORDER BY id DESC LIMIT 1'
+    ).get() as ImpactRunRow | undefined;
+    if (!row) return null;
+    return {
+      status: row.status,
+      startedAt: row.started_at,
+      finishedAt: row.finished_at,
+      completedBatches: row.completed_batches,
+      totalBatches: row.total_batches,
+      totalImpacts: row.total_impacts,
+    };
+  } catch {
+    return null;
+  }
 }
 
 // ─── Process a single batch via Gemini ───────────────────────────────────────
 
 async function processBatch(batch: Batch, batchId: string, lang: OutputLanguage): Promise<number> {
-  const prompt = buildImpactPrompt(batch.projects);
+  const { prompt, truncated } = buildImpactPrompt(batch.projects);
+
+  // Surface budget pressure in the run status. Kept out of `errors` so the
+  // UI's error count keeps meaning "something failed" — every project here
+  // still made it into the prompt, just with less context.
+  if (truncated.length > 0) {
+    analysisStatus.warnings.push(
+      `Batch "${batch.label}": prompt budget trimmed the structured content of ${truncated.length} project(s) — ${truncated.join(', ')}`
+    );
+  }
 
   const { text } = await generateContent({
     prompt,
@@ -984,7 +1319,10 @@ export async function runFullImpactAnalysis(): Promise<void> {
     totalImpacts: 0,
     currentBatchDDS: 'Initializing...',
     errors: [],
+    warnings: [],
   };
+
+  let runRowId: number | null = null;
 
   try {
     // Capture language once per run — see goals-analyzer for the same
@@ -993,10 +1331,29 @@ export async function runFullImpactAnalysis(): Promise<void> {
     const records = fetchAllProjectRecords(lang);
     analysisStatus.totalProjects = records.length;
 
-    const allBatches = buildFullCoverageBatches(records, 22);
+    const plan = buildFullCoverageBatches(records, 22);
+    const allBatches = plan.batches;
     analysisStatus.totalBatches = allBatches.length;
 
+    // Whatever the batcher had to give up on, say it. The difference between
+    // "no impact found between A and B" and "A and B were never compared" is
+    // invisible in the UI, so it has to be stated here.
+    if (plan.mode === 'filtered') {
+      analysisStatus.warnings.push(
+        `Full pairwise coverage did not fit the ${MAX_BATCHES}-batch budget for ${records.length} projects. ` +
+        `Compared only project pairs sharing a technology, vendor, GIO service line or explicit mention — ` +
+        `${plan.filteredOutPairs} unrelated pair(s) were skipped. Absence of an impact between two projects ` +
+        `does not mean they were analysed.`
+      );
+    }
+    if (plan.uncoveredPairs > 0) {
+      analysisStatus.warnings.push(
+        `Partial coverage: the ${MAX_BATCHES}-batch cap left ${plan.uncoveredPairs} targeted pair(s) uncompared.`
+      );
+    }
+
     const runBatchId = uuidv4();
+    runRowId = startRunRecord(runBatchId, lang, records.length, allBatches.length);
 
     for (let i = 0; i < allBatches.length; i++) {
       const batch = allBatches[i];
@@ -1011,6 +1368,9 @@ export async function runFullImpactAnalysis(): Promise<void> {
       }
 
       analysisStatus.completedBatches = i + 1;
+      // Persist progress per batch: if the process is killed here, the journal
+      // still shows how far it got instead of resetting to zero.
+      updateRunProgress(runRowId, analysisStatus);
 
       // Small delay to avoid rate limiting
       if (i < allBatches.length - 1) {
@@ -1019,11 +1379,19 @@ export async function runFullImpactAnalysis(): Promise<void> {
     }
 
     // Materialise atomic impact_claims directly into rows AFTER the LLM batches.
-    // INSERT OR REPLACE on (source, target, impact_type, lang) means these rows
-    // win over any LLM-emitted equivalents — fixing the class of bugs where the
-    // LLM merged sibling claims (e.g. HHC+Americas+CF collapsed onto one CF row),
-    // corrupted pseudo-targets ("DDS_IMPACTS" → "DDS_IMPAcripts"), or dropped a
-    // claim entirely. Claim-derived rows are deterministic by construction.
+    // Claim-derived rows are deterministic by construction, which fixes the class
+    // of bugs where the LLM merged sibling claims (e.g. HHC+Americas+CF collapsed
+    // onto one CF row), corrupted pseudo-targets ("DDS_IMPACTS" →
+    // "DDS_IMPAcripts"), or dropped a claim entirely.
+    //
+    // These rows do NOT rely on out-competing LLM output. An earlier version of
+    // this comment claimed INSERT OR REPLACE on (source, target, impact_type,
+    // lang) let them overwrite any LLM equivalent; that stopped being true when
+    // the UNIQUE key was widened to include gio_services + dds_entities
+    // (2026-06-18, db.ts) — an LLM row naming a different entity set simply does
+    // not collide. The guarantee now comes from the other end: parseImpactResponse
+    // drops every pseudo-target row before it can reach the DB, so this is the
+    // only writer of GIO_SERVICES / DDS_IMPACTS edges.
     analysisStatus.currentBatchDDS = 'Materialising atomic claims';
     try {
       const materialised = materializeClaimsAsImpacts(records);
@@ -1043,9 +1411,11 @@ export async function runFullImpactAnalysis(): Promise<void> {
     analysisStatus.totalImpacts = countRow.cnt;
 
     analysisStatus.currentBatchDDS = 'Complete';
+    finishRunRecord(runRowId, 'complete', analysisStatus);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     analysisStatus.errors.push(`Fatal: ${msg}`);
+    finishRunRecord(runRowId, 'failed', analysisStatus);
   } finally {
     analysisStatus.isRunning = false;
   }
@@ -1068,7 +1438,10 @@ export function getImpactStatus(): ImpactAnalysisStatus {
       // ignore
     }
   }
-  return { ...analysisStatus };
+  // Read straight from the journal rather than from memory: after a restart the
+  // in-memory status is blank, and the journal is the only thing that still
+  // knows the previous run was killed mid-flight.
+  return { ...analysisStatus, lastRun: readLastRun() };
 }
 
 // ─── Get impacts for a specific project ──────────────────────────────────────

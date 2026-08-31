@@ -109,6 +109,7 @@ function initSchema(db: Database.Database) {
       batch_id TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now')),
       gio_services TEXT DEFAULT '[]',
+      dds_entities TEXT DEFAULT '[]',
       citations TEXT DEFAULT '[]',
       output_language TEXT NOT NULL DEFAULT 'en',
       -- Includes gio_services + dds_entities in the dedup key so atomic
@@ -238,7 +239,33 @@ function initSchema(db: Database.Database) {
     -- output_language column when this block runs.
     CREATE INDEX IF NOT EXISTS idx_goals_region ON project_goals(region);
     CREATE INDEX IF NOT EXISTS idx_goals_status ON project_goals(status);
+
+    -- Impact run journal. The in-memory analysisStatus in impact-engine.ts dies
+    -- with the process, so a run killed mid-flight (OOM, deploy, restart) used
+    -- to vanish without a trace: nothing distinguished "never ran" from "died at
+    -- batch 7 of 21", and its partial rows sat in projects_impact
+    -- indistinguishable from a complete run's.
+    -- (No backticks in this block: it lives inside a JS template literal.)
+    CREATE TABLE IF NOT EXISTS impact_runs (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      batch_id          TEXT NOT NULL,
+      output_language   TEXT NOT NULL DEFAULT 'en',
+      status            TEXT NOT NULL DEFAULT 'running',  -- running | complete | failed | aborted
+      started_at        TEXT NOT NULL DEFAULT (datetime('now')),
+      finished_at       TEXT,
+      total_projects    INTEGER DEFAULT 0,
+      total_batches     INTEGER DEFAULT 0,
+      completed_batches INTEGER DEFAULT 0,
+      total_impacts     INTEGER DEFAULT 0,
+      errors_json       TEXT DEFAULT '[]',
+      warnings_json     TEXT DEFAULT '[]'
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_impact_runs_started ON impact_runs(started_at);
+    CREATE INDEX IF NOT EXISTS idx_impact_runs_status ON impact_runs(status);
   `);
+
+  reclaimOrphanedImpactRuns(db);
 
   try {
     db.exec('ALTER TABLE projects_impact ADD COLUMN gio_services TEXT DEFAULT "[]"');
@@ -383,6 +410,32 @@ function initSchema(db: Database.Database) {
   // reality). Uniqueness becomes (canonical_key, output_language) so the same
   // project can carry one analysis per language without colliding.
   migrateOutputLanguage(db);
+}
+
+/**
+ * Startup recovery for the impact run journal.
+ *
+ * A run's live state exists only in module memory, so a row still marked
+ * 'running' when a fresh process boots cannot belong to a live run — the run
+ * that wrote it is gone. Mark those aborted so the UI can say "your last run
+ * died at batch 7 of 21" instead of silently showing nothing.
+ *
+ * ASSUMES A SINGLE WRITER PROCESS. That holds for this deployment (one Next
+ * server behind nginx). If the app is ever scaled to multiple workers sharing
+ * this SQLite file, a booting worker would wrongly abort a sibling's live run,
+ * and this needs a process/owner token instead.
+ */
+function reclaimOrphanedImpactRuns(db: Database.Database) {
+  try {
+    const result = db.prepare(
+      "UPDATE impact_runs SET status = 'aborted', finished_at = datetime('now') WHERE status = 'running'"
+    ).run();
+    if (result.changes > 0) {
+      console.warn(`[db] marked ${result.changes} orphaned impact run(s) as aborted`);
+    }
+  } catch (err) {
+    console.error('[db] failed to reclaim orphaned impact runs:', err);
+  }
 }
 
 function migrateOutputLanguage(db: Database.Database) {

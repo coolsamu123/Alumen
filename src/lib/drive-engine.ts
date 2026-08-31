@@ -872,17 +872,35 @@ export function getFileNamesForUrls(urls: string[]): Map<string, string> {
   return out;
 }
 
-export function getProjectDocuments(projectId: string): { url: string; content: string; status: string; fileName: string }[] {
+/**
+ * Documents for a project, newest-name-first.
+ *
+ * `maxChars` truncates `content` in SQL instead of in JS. Callers that only need
+ * a prefix should pass it: the Impact engine caps each document at a few
+ * thousand chars and calls this once per project *per batch*, so a project's
+ * full document text was being read out of SQLite and discarded roughly
+ * N/batchSize times per run. Omit it to get the whole text (deep dive, evidence).
+ */
+export function getProjectDocuments(
+  projectId: string,
+  maxChars?: number,
+): { url: string; content: string; status: string; fileName: string }[] {
   const db = getDb();
   // Per-file rows: each downloaded file is its own row keyed by project_id +
   // GDrive file URL. Skipped rows (deprecated / cross-PRJ / duplicate) are
   // excluded — the LLM only sees clean canonical content.
-  const rows = db.prepare(`
-    SELECT url, content_text, fetch_status, file_name
+  const sql = (contentExpr: string) => `
+    SELECT url, ${contentExpr} AS content_text, fetch_status, file_name
     FROM documents_cache
     WHERE project_id = ? AND fetch_status NOT LIKE 'skipped_%'
     ORDER BY file_name
-  `).all(projectId) as { url: string; content_text: string; fetch_status: string; file_name: string }[];
+  `;
+
+  const sliced = typeof maxChars === 'number' && maxChars > 0;
+  const rows = (sliced
+    ? db.prepare(sql('substr(content_text, 1, ?)')).all(maxChars, projectId)
+    : db.prepare(sql('content_text')).all(projectId)
+  ) as { url: string; content_text: string; fetch_status: string; file_name: string }[];
 
   return rows.map(r => ({
     url: r.url,

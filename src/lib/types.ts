@@ -194,4 +194,20 @@ export interface ImpactAnalysisStatus {
   totalImpacts: number;
   currentBatchDDS: string;
   errors: string[];
+  /** Non-fatal notices from the run (e.g. a project whose content was trimmed
+   *  to fit the prompt budget). Separate from `errors` so the error count the
+   *  UI shows keeps meaning "something actually failed". */
+  warnings: string[];
+  /** Last entry in the `impact_runs` journal, so a run that died mid-flight
+   *  (OOM, restart) stays visible after the in-memory state is gone.
+   *  `status: 'aborted'` means exactly that. Null when no run was ever
+   *  journalled. */
+  lastRun?: {
+    status: string;
+    startedAt: string;
+    finishedAt: string | null;
+    completedBatches: number;
+    totalBatches: number;
+    totalImpacts: number;
+  } | null;
 }

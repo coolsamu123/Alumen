@@ -53,6 +53,35 @@ export const IMPACT_TYPES = [
   'regional_rollout',
 ] as const;
 
+// Controlled vocabulary for `projects_impact.direction`. Single source of truth:
+// this column has THREE producers that used to disagree, which is how
+// `feeds_data` / `competes_with` ended up renderable as "relates to" in the
+// narrative while `depends_on` / `supersedes` were being written to the DB
+// without appearing in the prompt's own enum.
+//
+//   1. ROLE_TO_DIRECTION (impact-engine.ts) — materialised claim rows:
+//      provides_to, depends_on, requires_coordination
+//   2. The project-relations mapping in the impact prompt:
+//      depends_on, blocks, supersedes, requires_coordination
+//   3. The impact prompt's explicit enum for emitted rows:
+//      blocks, enables, shares_resource, feeds_data, competes_with,
+//      requires_coordination
+//
+// Anything stored must be in this union, and impact-narrative.ts must have a
+// verb phrase for every entry — otherwise the row renders as a vague
+// "relates to" in the "Why this matters" panel.
+export const IMPACT_DIRECTIONS = [
+  'provides_to',
+  'depends_on',
+  'requires_coordination',
+  'blocks',
+  'enables',
+  'supersedes',
+  'shares_resource',
+  'feeds_data',
+  'competes_with',
+] as const;
+
 export interface TargetDefinition {
   name: string;
   description: string;

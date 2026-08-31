@@ -51,15 +51,22 @@ export interface NarrativeContext {
 //   blocking/successor                → blocks
 //   replaces                          → supersedes
 //   extends                           → depends_on
+// Must cover every value in IMPACT_DIRECTIONS (target-catalog.ts) — a missing
+// entry silently degrades the sentence to "relates to". The extra keys below
+// (blocked_by, shares_platform, shares_vendor) are not in that union; they are
+// kept as tolerance for legacy rows written before the vocabulary was unified.
 const DIRECTION_VERBS: Record<string, string> = {
   provides_to: 'provides services to',
   depends_on: 'depends on',
   requires_coordination: 'requires coordination with',
   blocks: 'blocks',
-  blocked_by: 'is blocked by',
   enables: 'enables',
   supersedes: 'supersedes',
   shares_resource: 'shares resources with',
+  feeds_data: 'feeds data to',
+  competes_with: 'competes for resources with',
+  // Legacy / defensive.
+  blocked_by: 'is blocked by',
   shares_platform: 'shares a platform with',
   shares_vendor: 'shares a vendor with',
 };

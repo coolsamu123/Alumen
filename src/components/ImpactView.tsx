@@ -183,6 +183,16 @@ export default function ImpactView() {
           )}
         </div>
 
+        {/* A run that was killed mid-flight (OOM, restart, deploy) leaves no
+            trace in memory — only the impact_runs journal knows. Surface it,
+            otherwise the partial rows it wrote look like a complete analysis. */}
+        {!status?.isRunning && status?.lastRun?.status === 'aborted' && (
+          <div className="text-xs text-amber-400 mt-2">
+            Last run was interrupted at batch {status.lastRun.completedBatches}/{status.lastRun.totalBatches}
+            {status.lastRun.startedAt ? ` (started ${status.lastRun.startedAt})` : ''}. Results below may be partial — re-run to complete.
+          </div>
+        )}
+
         {/* Progress */}
         {status?.isRunning && (
           <div className="space-y-2">
@@ -201,6 +211,11 @@ export default function ImpactView() {
             {status.errors.length > 0 && (
               <div className="text-xs text-red-400 mt-1">
                 {status.errors.length} error(s): {status.errors[status.errors.length - 1]}
+              </div>
+            )}
+            {status.warnings?.length > 0 && (
+              <div className="text-xs text-amber-400 mt-1">
+                {status.warnings.length} warning(s): {status.warnings[status.warnings.length - 1]}
               </div>
             )}
           </div>
