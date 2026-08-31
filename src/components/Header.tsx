@@ -17,7 +17,6 @@ const NAV_ITEMS: { key: ViewType; label: string }[] = [
 // external visitors can land on these directly; clicking the gated views still
 // works — the protected APIs return 401 and the browser shows the native
 // Basic Auth prompt, after which the view loads normally.
-const PUBLIC_VIEWS: ViewType[] = ['graph', 'timeline', 'detail', 'impact'];
 
 export default function Header() {
   const { view, setView, isPublic, theme, toggleTheme } = useProjectContext();

@@ -1,0 +1,39 @@
+[Unit]
+Description=Alumen — Portfolio Intelligence (Next.js)
+Documentation=file:///home/ec2-user/Alumen/EC2_SETUP.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ec2-user
+Group=ec2-user
+WorkingDirectory=/home/ec2-user/Alumen
+
+# Production server. The dev server was holding ~1.3 GB RSS and recompiling on
+# demand (26-52s first hits); it is also what the OOM killer took down.
+Environment=NODE_ENV=production
+Environment=PORT=3333
+Environment=PATH=/home/ec2-user/.nvm/versions/node/v24.20.0/bin:/usr/local/bin:/usr/bin:/bin
+# Heap ceiling below total RAM so V8 collects instead of letting the kernel
+# choose a victim. 4 GiB of swap absorbs spikes above this.
+Environment=NODE_OPTIONS=--max-old-space-size=1536
+ExecStart=/home/ec2-user/.nvm/versions/node/v24.20.0/bin/npm run start -- -p 3333
+
+# Stay up. Restart on any exit, including an OOM kill, but give up if it is
+# crash-looping so a broken deploy is visible instead of silently thrashing.
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# If memory has to be reclaimed, this process is the right victim: nginx and
+# sshd must survive so the box stays reachable and serving an error page.
+OOMScoreAdjust=500
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=alumen
+
+[Install]
+WantedBy=multi-user.target

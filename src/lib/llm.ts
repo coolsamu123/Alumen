@@ -158,7 +158,14 @@ export function getActiveProvider(): LLMProvider {
   return 'gemini';
 }
 
-export function resolveModelName(_slot: ModelSlot, _provider: LLMProvider = 'gemini'): string {
+/**
+ * The model to call. Config carries a single model, so the `fast` / `pro` slot
+ * a caller asks for does not change the answer — the parameter was accepted and
+ * ignored, which is why it is gone. `ModelSlot` stays part of
+ * `generateContent`'s surface so callers keep expressing intent, and so
+ * reintroducing per-slot models later is a change here rather than everywhere.
+ */
+export function resolveModelName(): string {
   return readConfig().model || DEFAULT_MODEL;
 }
 
@@ -214,14 +221,16 @@ export interface GenerateContentResult {
 
 export async function generateContent({
   prompt,
-  model = 'fast',
+  // `model` is intentionally not destructured: config carries a single model, so
+  // the slot does not affect resolution today. It stays on the params type so
+  // callers keep declaring intent — see resolveModelName.
   json = false,
   context = 'unspecified',
   temperature,
   outputLanguage,
 }: GenerateContentParams): Promise<GenerateContentResult> {
   const provider: LLMProvider = 'gemini';
-  const modelName = resolveModelName(model, provider);
+  const modelName = resolveModelName();
   const lang = outputLanguage ?? getActiveOutputLanguage();
 
   // Daily cap check — runs before the API call so a runaway loop can't blow past the budget.
@@ -273,7 +282,7 @@ async function callGemini(prompt: string, modelName: string, json: boolean, temp
 
 export async function pingProvider(): Promise<{ provider: LLMProvider; model: string; reply: string }> {
   const provider: LLMProvider = 'gemini';
-  const modelName = resolveModelName('fast', provider);
+  const modelName = resolveModelName();
   const expected = `Gemini connection OK. Model: ${modelName}.`;
   const { text } = await generateContent({
     prompt: `Reply with exactly: "${expected}" Nothing else.`,

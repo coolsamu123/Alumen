@@ -170,7 +170,7 @@ function InputsTab({ stage }: { stage: StageDef }) {
   if (!stage.inputs.length) {
     return (
       <div className="p-5 text-sm text-ink-muted italic">
-        This stage takes no parameters — it's a data store or external source.
+        This stage takes no parameters — it&apos;s a data store or external source.
       </div>
     );
   }
