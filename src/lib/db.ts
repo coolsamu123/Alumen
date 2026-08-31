@@ -263,9 +263,30 @@ function initSchema(db: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_impact_runs_started ON impact_runs(started_at);
     CREATE INDEX IF NOT EXISTS idx_impact_runs_status ON impact_runs(status);
+
+    -- Same journal for the Goals extractor, and for the same reason: its run
+    -- state lived only in module memory, so an interrupted extraction left no
+    -- record of how far it got.
+    CREATE TABLE IF NOT EXISTS goals_runs (
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      output_language    TEXT NOT NULL DEFAULT 'en',
+      scope              TEXT NOT NULL DEFAULT 'all',  -- all | single:<project_id>
+      status             TEXT NOT NULL DEFAULT 'running',
+      started_at         TEXT NOT NULL DEFAULT (datetime('now')),
+      finished_at        TEXT,
+      total_projects     INTEGER DEFAULT 0,
+      processed_projects INTEGER DEFAULT 0,
+      success_count      INTEGER DEFAULT 0,
+      error_count        INTEGER DEFAULT 0,
+      skipped_count      INTEGER DEFAULT 0,
+      errors_json        TEXT DEFAULT '[]'
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_goals_runs_started ON goals_runs(started_at);
+    CREATE INDEX IF NOT EXISTS idx_goals_runs_status ON goals_runs(status);
   `);
 
-  reclaimOrphanedImpactRuns(db);
+  reclaimOrphanedRuns(db);
 
   try {
     db.exec('ALTER TABLE projects_impact ADD COLUMN gio_services TEXT DEFAULT "[]"');
@@ -417,7 +438,7 @@ function initSchema(db: Database.Database) {
 }
 
 /**
- * Startup recovery for the impact run journal.
+ * Startup recovery for the run journals.
  *
  * A run's live state exists only in module memory, so a row still marked
  * 'running' when a fresh process boots cannot belong to a live run — the run
@@ -427,18 +448,23 @@ function initSchema(db: Database.Database) {
  * ASSUMES A SINGLE WRITER PROCESS. That holds for this deployment (one Next
  * server behind nginx). If the app is ever scaled to multiple workers sharing
  * this SQLite file, a booting worker would wrongly abort a sibling's live run,
- * and this needs a process/owner token instead.
+ * and this needs a process/owner token instead. (`auto_runs` takes the other
+ * approach — a lazy heal with a 30-minute grace period in drive-panel-state —
+ * which is safer under concurrency but leaves a dead run looking alive until
+ * the timeout passes.)
  */
-function reclaimOrphanedImpactRuns(db: Database.Database) {
-  try {
-    const result = db.prepare(
-      "UPDATE impact_runs SET status = 'aborted', finished_at = datetime('now') WHERE status = 'running'"
-    ).run();
-    if (result.changes > 0) {
-      console.warn(`[db] marked ${result.changes} orphaned impact run(s) as aborted`);
+function reclaimOrphanedRuns(db: Database.Database) {
+  for (const table of ['impact_runs', 'goals_runs']) {
+    try {
+      const result = db.prepare(
+        `UPDATE ${table} SET status = 'aborted', finished_at = datetime('now') WHERE status = 'running'`
+      ).run();
+      if (result.changes > 0) {
+        console.warn(`[db] marked ${result.changes} orphaned row(s) in ${table} as aborted`);
+      }
+    } catch (err) {
+      console.error(`[db] failed to reclaim orphaned runs in ${table}:`, err);
     }
-  } catch (err) {
-    console.error('[db] failed to reclaim orphaned impact runs:', err);
   }
 }
 

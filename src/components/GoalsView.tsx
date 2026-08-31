@@ -25,11 +25,34 @@ interface ProjectGoals {
   vendors: string;                  // JSON
   data_classifications: string;     // JSON
   mentioned_projects: string;       // JSON
+  // Onda 2/3 output. Extracted, validated and consumed by the Impact engine
+  // since mid-2026, but never shown here until 2026-08-31 — which meant the
+  // most auditable part of the extraction (every item carries the verbatim
+  // sentence it came from) was invisible to the people checking it.
+  project_relations: string;        // JSON [{project_id, kind, relation, source_file, evidence_quote, confidence}]
+  out_of_scope: string;             // JSON [{topic, evidence_quote, source_file}]
+  impact_claims: string;            // JSON [{target_kind, target, role, severity, impact_type, evidence_file, evidence_quote, confidence}]
+  timeline_struct: string;          // JSON {gate1_actual, gate2_target, go_live_target, must_complete_before[], blocked_by[]}
   prompt_version: number;
   source_files: string;
   analyzed_at: string;
   status: string;
   error_message: string;
+}
+
+interface ImpactClaim {
+  target_kind: string; target: string; role: string; severity: string;
+  impact_type: string; evidence_file: string; evidence_quote: string; confidence: string;
+}
+interface ProjectRelation {
+  project_id: string; kind: string; relation: string;
+  source_file: string; evidence_quote: string; confidence: string;
+}
+interface OutOfScope { topic: string; evidence_quote: string; source_file: string }
+interface TimelineDep { project_id: string; reason: string; evidence_file: string; evidence_quote: string }
+interface TimelineStruct {
+  gate1_actual: string | null; gate2_target: string | null; go_live_target: string | null;
+  must_complete_before?: TimelineDep[]; blocked_by?: TimelineDep[];
 }
 
 function parseJsonArray(raw: string | null | undefined): string[] {
@@ -38,14 +61,56 @@ function parseJsonArray(raw: string | null | undefined): string[] {
   catch { return []; }
 }
 
+function parseObjArray<T>(raw: string | null | undefined): T[] {
+  if (!raw) return [];
+  try { const v = JSON.parse(raw); return Array.isArray(v) ? v as T[] : []; }
+  catch { return []; }
+}
+
+function parseTimeline(raw: string | null | undefined): TimelineStruct | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw);
+    return v && typeof v === 'object' && !Array.isArray(v) ? v as TimelineStruct : null;
+  } catch { return null; }
+}
+
+/** The verbatim sentence an extracted item was grounded in. Rendering it is the
+ *  whole point of this section: without the quote a claim is unauditable. */
+function Evidence({ quote, file }: { quote?: string; file?: string }) {
+  if (!quote) return null;
+  return (
+    <div className="mt-1 pl-3 border-l-2 border-line-strong">
+      <span className="text-[11px] text-ink-faint italic leading-relaxed">&ldquo;{quote}&rdquo;</span>
+      {file && <span className="ml-2 text-[10px] text-ink-muted font-mono">{file}</span>}
+    </div>
+  );
+}
+
 interface RunStatus {
   isRunning: boolean;
   totalProjects: number;
   processedProjects: number;
   successCount: number;
   errorCount: number;
+  /** Projects left alone because their documents did not change. Counted apart
+   *  from successes, which used to absorb them — including skipped error rows. */
+  skippedCount: number;
   currentProject: string;
   errors: string[];
+  /** Last row of the `goals_runs` journal. Survives the process, so an
+   *  extraction killed mid-flight is still visible afterwards. */
+  lastRun?: {
+    status: string;
+    scope: string;
+    startedAt: string;
+    finishedAt: string | null;
+    processedProjects: number;
+    totalProjects: number;
+    successCount: number;
+    errorCount: number;
+    skippedCount: number;
+  } | null;
 }
 
 const FIELDS = [
@@ -209,12 +274,24 @@ export default function GoalsView() {
             <div className="flex gap-4 mt-2 text-xs text-accent-text2">
               <span>Success: {status.successCount}</span>
               <span>Errors: {status.errorCount}</span>
+              <span>Unchanged: {status.skippedCount}</span>
             </div>
             {status.errors.length > 0 && (
               <div className="mt-2 text-xs text-red-400 max-h-20 overflow-y-auto">
                 {status.errors.slice(-5).map((e, i) => <div key={i}>{e}</div>)}
               </div>
             )}
+          </div>
+        )}
+
+        {/* A run killed mid-flight (OOM, restart, deploy) leaves nothing in
+            memory — only the goals_runs journal knows it happened. */}
+        {!status?.isRunning && status?.lastRun?.status === 'aborted' && (
+          <div className="bg-surface-1 border border-amber-800/50 rounded-lg p-3 mb-6 text-xs text-amber-400">
+            Last extraction was interrupted after {status.lastRun.processedProjects} of{' '}
+            {status.lastRun.totalProjects} projects
+            {status.lastRun.startedAt ? ` (started ${status.lastRun.startedAt})` : ''}. Projects that
+            never ran still have no goals — start the analysis again to finish them.
           </div>
         )}
 
@@ -355,6 +432,105 @@ export default function GoalsView() {
                                   ))}
                                 </div>
                               ))}
+                            </div>
+                          );
+                        })()}
+
+                        {/* Evidence-anchored extraction (Onda 2/3). Every item
+                            below carries the sentence it came from, which is
+                            what makes the Impact graph auditable. */}
+                        {(() => {
+                          const claims = parseObjArray<ImpactClaim>(g.impact_claims);
+                          const relations = parseObjArray<ProjectRelation>(g.project_relations);
+                          const exclusions = parseObjArray<OutOfScope>(g.out_of_scope);
+                          const tl = parseTimeline(g.timeline_struct);
+                          const mcb = tl?.must_complete_before ?? [];
+                          const blocked = tl?.blocked_by ?? [];
+                          const hasTimeline = !!tl && (tl.gate1_actual || tl.gate2_target || tl.go_live_target || mcb.length > 0 || blocked.length > 0);
+                          if (!claims.length && !relations.length && !exclusions.length && !hasTimeline) return null;
+
+                          const Section = ({ title, count, children }: { title: string; count: number; children: React.ReactNode }) => (
+                            <div className="bg-surface-1 rounded-lg border border-line-strong p-4">
+                              <div className="text-[10px] font-bold tracking-widest text-ink-muted uppercase mb-3">
+                                {title} <span className="text-ink-faint">({count})</span>
+                              </div>
+                              <div className="space-y-3">{children}</div>
+                            </div>
+                          );
+
+                          return (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                              {claims.length > 0 && (
+                                <Section title="Impact claims" count={claims.length}>
+                                  {claims.map((c, i) => (
+                                    <div key={i} className="text-sm">
+                                      <div className="flex flex-wrap gap-1.5 items-center">
+                                        <span className={`px-2 py-0.5 rounded text-[11px] font-mono border ${c.target_kind === 'gio' ? 'bg-cyan-900/40 text-cyan-200 border-cyan-800/60' : 'bg-emerald-900/40 text-emerald-200 border-emerald-800/60'}`}>{c.target}</span>
+                                        <span className="text-[11px] text-ink-3">{(c.role || '').replace(/_/g, ' ')}</span>
+                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase border ${c.severity === 'high' ? 'bg-red-900/40 text-red-200 border-red-800/60' : 'bg-surface-2 text-ink-3 border-line-strong'}`}>{c.severity}</span>
+                                        <span className="text-[10px] text-ink-muted font-mono">{(c.impact_type || '').replace(/_/g, ' ')}</span>
+                                        {c.confidence === 'inferred' && <span className="text-[10px] text-amber-300/80 italic">inferred</span>}
+                                      </div>
+                                      <Evidence quote={c.evidence_quote} file={c.evidence_file} />
+                                    </div>
+                                  ))}
+                                </Section>
+                              )}
+
+                              {relations.length > 0 && (
+                                <Section title="Project relations" count={relations.length}>
+                                  {relations.map((r, i) => (
+                                    <div key={i} className="text-sm">
+                                      <div className="flex flex-wrap gap-1.5 items-center">
+                                        <span className="px-2 py-0.5 rounded text-[11px] font-mono border bg-surface-2 text-ink-3 border-line-strong">{r.project_id}</span>
+                                        <span className="text-[11px] text-ink-3">{(r.kind || '').replace(/_/g, ' ')}</span>
+                                        {r.confidence === 'inferred' && <span className="text-[10px] text-amber-300/80 italic">inferred</span>}
+                                      </div>
+                                      {r.relation && <div className="text-[11px] text-ink-3 mt-0.5">{r.relation}</div>}
+                                      <Evidence quote={r.evidence_quote} file={r.source_file} />
+                                    </div>
+                                  ))}
+                                </Section>
+                              )}
+
+                              {exclusions.length > 0 && (
+                                <Section title="Explicitly out of scope" count={exclusions.length}>
+                                  {exclusions.map((o, i) => (
+                                    <div key={i} className="text-sm">
+                                      <span className="text-[12px] text-ink-3 font-medium">{o.topic}</span>
+                                      <Evidence quote={o.evidence_quote} file={o.source_file} />
+                                    </div>
+                                  ))}
+                                </Section>
+                              )}
+
+                              {hasTimeline && (
+                                <Section title="Timeline" count={mcb.length + blocked.length}>
+                                  {(tl!.gate1_actual || tl!.gate2_target || tl!.go_live_target) && (
+                                    <div className="flex flex-wrap gap-3 text-[11px] text-ink-3">
+                                      {tl!.gate1_actual   && <span>Gate 1 <span className="font-mono text-ink-2">{tl!.gate1_actual}</span></span>}
+                                      {tl!.gate2_target   && <span>Gate 2 <span className="font-mono text-ink-2">{tl!.gate2_target}</span></span>}
+                                      {tl!.go_live_target && <span>Go-live <span className="font-mono text-ink-2">{tl!.go_live_target}</span></span>}
+                                    </div>
+                                  )}
+                                  {blocked.map((d, i) => (
+                                    <div key={`b${i}`} className="text-sm">
+                                      <span className="text-[11px] text-red-300">blocked by</span>{' '}
+                                      <span className="text-[11px] font-mono text-ink-3">{d.project_id}</span>
+                                      {d.reason && <span className="text-[11px] text-ink-muted"> — {d.reason}</span>}
+                                      <Evidence quote={d.evidence_quote} file={d.evidence_file} />
+                                    </div>
+                                  ))}
+                                  {mcb.map((d, i) => (
+                                    <div key={`m${i}`} className="text-sm">
+                                      <span className="text-[11px] text-ink-3">must complete before</span>{' '}
+                                      <span className="text-[11px] font-mono text-ink-3">{d.project_id}</span>
+                                      {d.reason && <span className="text-[11px] text-ink-muted"> — {d.reason}</span>}
+                                      <Evidence quote={d.evidence_quote} file={d.evidence_file} />
+                                    </div>
+                                  ))}
+                                </Section>
+                              )}
                             </div>
                           );
                         })()}

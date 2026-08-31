@@ -3,7 +3,30 @@ import path from 'path';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 
-const MAX_TEXT_LENGTH = 80000; // Gemini pro context budget per project
+/**
+ * Character budget for one project's documents.
+ *
+ * Was 80 000, a figure inherited from a much smaller context window. Measured
+ * across the 61 extracted projects on 2026-08-31:
+ *
+ *   11 of 61 projects (18%) exceeded it
+ *   2 900 588 chars of source text in total
+ *   670 458 of those — 23% — were never shown to the model
+ *
+ * The worst case was PRJ0020336 at 225 843 chars, losing 65% of its material;
+ * PRJ0010712, which the impact analysis shows connecting to four other
+ * projects, was losing 63%. The median project sits at 33 383 chars and is
+ * unaffected either way.
+ *
+ * 300 000 chars is roughly 75k tokens — comfortable for a model with a
+ * million-token window, covers every project in the current portfolio with
+ * headroom, and leaves the ranking + truncation below as the safety net for
+ * genuinely oversized ones. Tune with STROM_GOALS_MAX_CHARS.
+ */
+const MAX_TEXT_LENGTH = (() => {
+  const raw = parseInt(process.env.STROM_GOALS_MAX_CHARS || '', 10);
+  return Number.isFinite(raw) && raw >= 10_000 ? raw : 300_000;
+})();
 
 export async function extractText(filePath: string): Promise<string> {
   const ext = path.extname(filePath).toLowerCase();

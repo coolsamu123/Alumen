@@ -40,11 +40,11 @@ Nenhum campo sai sempre vazio, e todas as 61 linhas estão em
 | 5 | 🟡 Média | `goals-scanner.ts:75` vs `impact-engine.ts` | PGM meio-suportado: scanner aceita, análise descarta | ✅ **feito** |
 | 6 | 🟡 Média | `goals-analyzer.ts:357` | `successCount` conta linhas `error`/`partial` como sucesso | ✅ **feito** |
 | 7 | 🟡 Média | `goals-analyzer.ts:103` | JSON quebrado indistinguível de extração vazia | ✅ **feito** |
-| 8 | 🟡 Média | `goals-analyzer.ts:66` | Estado do run só em memória (mesmo bug já corrigido no Impact) | ⬜ |
+| 8 | 🟡 Média | `goals-analyzer.ts:66` | Estado do run só em memória (mesmo bug já corrigido no Impact) | ✅ **feito** |
 | 9 | 🟢 Baixa | `goals-extractor.ts:95` | Penalidades do ranking de arquivos quase nunca aplicam | ✅ **feito** |
-| 10 | 🟢 Baixa | `goals-extractor.ts:6` | `MAX_TEXT_LENGTH` de 80k chars é muito conservador | ⬜ |
-| 11 | 🟢 Baixa | `goals-analyzer.ts:610` | Sequencial com sleep fixo de 1,5s | ⬜ |
-| 12 | 🟢 Baixa | `GoalsView.tsx` | Campos das Ondas 2/3 nunca são exibidos | ⬜ |
+| 10 | 🟢 Baixa | `goals-extractor.ts:6` | `MAX_TEXT_LENGTH` de 80k chars é muito conservador | ✅ **feito** |
+| 11 | 🟢 Baixa | `goals-analyzer.ts:610` | Sequencial com sleep fixo de 1,5s | ✅ **feito** |
+| 12 | 🟢 Baixa | `GoalsView.tsx` | Campos das Ondas 2/3 nunca são exibidos | ✅ **feito** |
 | 13 | 🟢 Baixa | ingestão | 12 `project_id` malformados vindos da planilha | ✅ **feito** |
 
 ## Lotes
@@ -54,8 +54,8 @@ Nenhum campo sai sempre vazio, e todas as 61 linhas estão em
 | **A** ✅ | ~~#3, #4, #6, #7, #9~~ — concluído | Baixo | Sim — mecânico, spec fechado |
 | **B** ✅ | ~~#1~~ — concluído | **Alto** | Armadilha 1.3 confirmada e evitada; ver 1.5 |
 | **C** ✅ | ~~#2, #5, #13~~ — concluído | Médio | Decisão de 2.4 tomada pelo usuário |
-| **D** | #8, #11 | Baixo | Sim — independentes |
-| **E** | #10, #12 | Baixo | Decisão de produto |
+| **D** ✅ | ~~#8, #11~~ — concluído | Baixo | Sim — independentes |
+| **E** ✅ | ~~#10, #12~~ — concluído | Baixo | Decisão de produto, tomada por medição |
 
 ---
 
@@ -314,18 +314,31 @@ Mesmo problema já resolvido no Impact: `runStatus` (`goals-analyzer.ts:66`) viv
 só em memória e morre com o processo. Um OOM (já observado nesta máquina) ou um
 deploy perde o run sem deixar rastro.
 
-- [ ] Reaproveitar o padrão de `impact_runs` (ver PLAN_IMPACT_FIXES 6.1/D.1):
-      tabela de journal, progresso gravado por projeto, reclaim de órfãos no boot
-- [ ] Expor `lastRun` no status e na aba Goals
+- [x] Tabela `goals_runs`, progresso gravado a cada projeto. O reclaim de órfãos
+      virou `reclaimOrphanedRuns`, cobrindo `impact_runs` e `goals_runs`.
+- [x] `lastRun` no status + aviso âmbar na aba Goals.
+
+Testado com o cenário do OOM: linha `running` órfã (23/61) → reload → `aborted`
+com `finished_at`, progresso preservado, e `lastRun` na API. Linha removida.
+
+Nota de convenção: `auto_runs` usa heal preguiçoso com carência de 30 min
+(`drive-panel-state`), enquanto `impact_runs`/`goals_runs` usam reclaim no boot.
+Os dois estão documentados; o do boot é mais imediato mas assume um único
+processo escritor.
 
 ### D.2 — #11 Paralelizar
 
 `await new Promise(r => setTimeout(r, 1500))` entre projetos, sequencial. Os 61
 projetos levaram ~1h de relógio. Com 301 vira o gargalo do pipeline.
 
-- [ ] Usar `p-limit` (já é dependência do projeto) com concorrência pequena,
-      respeitando o cap diário de LLM
-- [ ] Trocar o sleep fixo por backoff só em caso de rate-limit
+- [x] `p-limit` com `GOALS_CONCURRENCY` (default **3**, via
+      `STROM_GOALS_CONCURRENCY`). O sleep fixo de 1,5s foi removido.
+
+**Por que 3 e não 10** (o `drive-engine` usa 10 para downloads): cada slot
+segura uma extração de texto em memória — buffer do arquivo + até
+`MAX_TEXT_LENGTH` de texto parseado de .docx/.pdf — e esta máquina tem 3,7 GB
+de RAM com histórico de OOM killer derrubando o servidor. Download é I/O;
+extração é CPU e memória.
 
 ---
 
@@ -338,8 +351,32 @@ context budget per project"*. O modelo em uso (`gemini-3.1-pro-preview`) tem
 contexto de ordem de 1M tokens. Toda a máquina de ranking + truncamento de
 `goals-extractor.ts` existe por causa desse teto.
 
-- [ ] Medir quantos projetos hoje estouram 80k (quanto está sendo descartado)
-- [ ] Decidir novo teto pesando custo por token vs informação perdida
+- [x] Medido, extraindo o texto real dos 61 projetos:
+
+```
+estouram o teto de 80k : 11 de 61 (18%)
+texto total            : 2.900.588 chars
+o LLM via              : 2.230.130 (76,9%)
+DESCARTADO             :   670.458 chars (23%)
+
+maiores:  PRJ0020336  225.843 chars  -> cortava 145.843 (65% do material)
+          PRJ0010712  215.623 chars  -> cortava 135.623
+          PRJ0018921  208.888 chars  -> cortava 128.888
+mediana: 33.383  |  p90: 120.816
+```
+
+`PRJ0010712` é o projeto que a análise de impacto mostra conectando a 4 outros
+— e estava perdendo 63% da sua documentação.
+
+- [x] Novo teto: **300.000** chars (~75k tokens), via `STROM_GOALS_MAX_CHARS`.
+      Cobre todo o portfólio atual com folga e é confortável para um modelo de
+      1M tokens. A mediana (33k) não é afetada; só os 11 grandes mudam.
+
+⚠️ **Só vale para extrações NOVAS.** A assinatura de arquivos não muda ao subir
+o teto, então os 11 projetos truncados não re-rodam sozinhos. Os 240 projetos
+ainda sem goals já nascem com o teto novo. Para reprocessar os 11 existentes é
+preciso forçar (bump de `GOALS_PROMPT_VERSION` ou re-run individual) — decisão
+de custo, não tomada aqui.
 
 ### E.2 — #12 Exibir os campos das Ondas 2/3
 
@@ -348,8 +385,14 @@ extraídos, validados, gravados e consumidos pelo Impact — mas `GoalsView.tsx`
 não renderiza nenhum deles. A saída mais densa e mais auditável do extractor é
 invisível para quem usa a aba.
 
-- [ ] Renderizar os 4 campos, com a `evidence_quote` visível — é o que permite
-      auditar se a claim é real
+- [x] Os 4 campos renderizados em seções próprias, cada item com a
+      `evidence_quote` verbatim e o arquivo de origem — que é o que permite
+      auditar se a claim é real. Severidade e `confidence: inferred` destacados.
+- [x] `ProjectGoals` (server) também não declarava esses campos, apesar de o
+      `SELECT *` retorná-los. Corrigido.
+
+Confirmado via API que os dados chegam: impact_claims 54/61, out_of_scope 58/61,
+timeline_struct 61/61, project_relations 11/61.
 
 ### E.3 — #13 Normalizar IDs na ingestão
 
@@ -400,3 +443,11 @@ referências não resolve se a tabela `projects` também está torta.
   nós-fantasma, conforme decisão do usuário.
 - `2026-08-31` — **Restam #8, #10, #11, #12** (Lotes D e E). Nenhum é bug de
   correção: são journal do run, teto de contexto, paralelismo e exibição na UI.
+- `2026-08-31` — **Lotes D e E concluídos — os 13 achados estão fechados.**
+  `goals_runs` + reclaim unificado (#8); `p-limit` com concorrência 3, escolhida
+  pela memória da máquina e não pelo throughput (#11); teto de contexto de 80k
+  para 300k, decidido medindo os 23% de texto que estavam sendo descartados
+  (#10); campos das Ondas 2/3 exibidos com evidência verbatim (#12).
+  **Pendência de custo, não de código:** o teto novo só afeta extrações novas;
+  os 11 projetos hoje truncados precisam de um re-run forçado para se
+  beneficiar.

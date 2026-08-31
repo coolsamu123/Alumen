@@ -1,3 +1,4 @@
+import pLimit from 'p-limit';
 import { getDb } from './db';
 import { scanProjects, fileSignature, type ScannedProject } from './goals-scanner';
 import { extractAllTexts } from './goals-extractor';
@@ -18,6 +19,20 @@ import { normalizeProjectId, sameProject } from './project-id';
 // (with target_kind/target/role/severity/impact_type/evidence) and structured
 // `timeline_struct`. All rows with version<4 get re-analyzed on next run.
 export const GOALS_PROMPT_VERSION = 4;
+
+/**
+ * How many projects to extract at once.
+ *
+ * Deliberately small. Each slot holds a document-text extraction in memory (up
+ * to MAX_TEXT_LENGTH of parsed .docx/.pdf, plus the raw file buffer while
+ * parsing) and this host has 3.7 GB of RAM and a history of the OOM killer
+ * taking down the server. It also shares one provider quota with every other
+ * caller. Raise via STROM_GOALS_CONCURRENCY only with the memory in view.
+ */
+const GOALS_CONCURRENCY = (() => {
+  const raw = parseInt(process.env.STROM_GOALS_CONCURRENCY || '', 10);
+  return Number.isFinite(raw) && raw > 0 && raw <= 16 ? raw : 3;
+})();
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -45,6 +60,14 @@ export interface ProjectGoals {
   vendors: string;                  // JSON array
   data_classifications: string;     // JSON array
   mentioned_projects: string;       // JSON array (regex-extracted, not from LLM)
+  // Onda 2/3. Present in the table and returned by `SELECT *` since mid-2026,
+  // but missing from this interface until 2026-08-31 — which is part of why the
+  // Goals UI never rendered them.
+  project_relations: string;        // JSON array of objects
+  out_of_scope: string;             // JSON array of objects
+  impact_claims: string;            // JSON array of objects
+  timeline_struct: string;          // JSON object
+  source_signature: string;
   prompt_version: number;
   raw_gemini_response: string;
   source_files: string;
@@ -66,6 +89,20 @@ export interface GoalsRunStatus {
   skippedCount: number;
   currentProject: string;
   errors: string[];
+  /** Last entry in the `goals_runs` journal, so a run killed mid-flight stays
+   *  visible after the in-memory state is gone. `status: 'aborted'` means the
+   *  process died before finishing. Null when no run was ever journalled. */
+  lastRun?: {
+    status: string;
+    scope: string;
+    startedAt: string;
+    finishedAt: string | null;
+    processedProjects: number;
+    totalProjects: number;
+    successCount: number;
+    errorCount: number;
+    skippedCount: number;
+  } | null;
 }
 
 let runStatus: GoalsRunStatus = {
@@ -342,6 +379,76 @@ function sanitizeTimeline(raw: unknown): TimelineStruct {
 
 // ─── Pipeline ───────────────────────────────────────────────────────────────
 
+// ─── Run journal (goals_runs) ────────────────────────────────────────────────
+// `runStatus` above lives in module memory and dies with the process. These
+// mirror the run into SQLite; a row left in 'running' is reclaimed as 'aborted'
+// on the next boot (reclaimOrphanedRuns in db.ts). Journal writes are never
+// allowed to fail the extraction — they are observability, not the job.
+
+function startGoalsRun(lang: OutputLanguage, scope: string, totalProjects: number): number | null {
+  try {
+    const result = getDb().prepare(
+      "INSERT INTO goals_runs (output_language, scope, status, total_projects) VALUES (?, ?, 'running', ?)"
+    ).run(lang, scope, totalProjects);
+    return Number(result.lastInsertRowid);
+  } catch (err) {
+    console.error('[Goals] could not open run journal entry:', err);
+    return null;
+  }
+}
+
+function updateGoalsRun(runId: number | null, s: GoalsRunStatus): void {
+  if (runId === null) return;
+  try {
+    getDb().prepare(`
+      UPDATE goals_runs SET processed_projects = ?, success_count = ?, error_count = ?, skipped_count = ?
+       WHERE id = ?
+    `).run(s.processedProjects, s.successCount, s.errorCount, s.skippedCount, runId);
+  } catch { /* observability only */ }
+}
+
+function finishGoalsRun(runId: number | null, status: 'complete' | 'failed', s: GoalsRunStatus): void {
+  if (runId === null) return;
+  try {
+    getDb().prepare(`
+      UPDATE goals_runs
+         SET status = ?, finished_at = datetime('now'),
+             processed_projects = ?, success_count = ?, error_count = ?, skipped_count = ?,
+             errors_json = ?
+       WHERE id = ?
+    `).run(status, s.processedProjects, s.successCount, s.errorCount, s.skippedCount,
+           JSON.stringify(s.errors), runId);
+  } catch { /* observability only */ }
+}
+
+function readLastGoalsRun(): GoalsRunStatus['lastRun'] {
+  try {
+    const row = getDb().prepare(`
+      SELECT status, scope, started_at, finished_at, processed_projects, total_projects,
+             success_count, error_count, skipped_count
+        FROM goals_runs ORDER BY id DESC LIMIT 1
+    `).get() as {
+      status: string; scope: string; started_at: string; finished_at: string | null;
+      processed_projects: number; total_projects: number;
+      success_count: number; error_count: number; skipped_count: number;
+    } | undefined;
+    if (!row) return null;
+    return {
+      status: row.status,
+      scope: row.scope,
+      startedAt: row.started_at,
+      finishedAt: row.finished_at,
+      processedProjects: row.processed_projects,
+      totalProjects: row.total_projects,
+      successCount: row.success_count,
+      errorCount: row.error_count,
+      skippedCount: row.skipped_count,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Accounts for a project we skipped because nothing changed, using the status
  * the stored row actually has. The previous code incremented `successCount`
@@ -595,14 +702,17 @@ export async function runSingleGoalAnalysis(projectId: string): Promise<void> {
     errors: [],
   };
 
+  let runRowId: number | null = null;
+
   try {
     initGoalsSchema();
     const projects = scanProjects();
     const project = projects.find(p => p.projectId === projectId);
-    
+
     if (!project) {
       throw new Error(`No local files found in data/drive for project ${projectId}`);
     }
+    runRowId = startGoalsRun(getActiveOutputLanguage(), `single:${projectId}`, 1);
 
     // Force re-analysis by resetting both status and prompt_version so the
     // skip-on-current-version guard in analyzeProject doesn't bail out.
@@ -618,9 +728,12 @@ export async function runSingleGoalAnalysis(projectId: string): Promise<void> {
     await analyzeProject(project);
     runStatus.processedProjects++;
     runStatus.currentProject = 'Complete';
+    finishGoalsRun(runRowId, 'complete', runStatus);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     runStatus.errors.push(`Fatal: ${msg}`);
+    runStatus.errorCount++;
+    finishGoalsRun(runRowId, 'failed', runStatus);
   } finally {
     runStatus.isRunning = false;
   }
@@ -642,12 +755,27 @@ export async function runGoalsAnalysis(): Promise<void> {
     errors: [],
   };
 
+  let runRowId: number | null = null;
+
   try {
     initGoalsSchema();
+    const lang = getActiveOutputLanguage();
     const projects = scanProjects();
     runStatus.totalProjects = projects.length;
+    runRowId = startGoalsRun(lang, 'all', projects.length);
 
-    for (const project of projects) {
+    // Concurrency. Was strictly sequential with a fixed 1.5s sleep between
+    // projects, which put the 61-project run in the region of an hour of wall
+    // clock — and 240 more projects are waiting for their first extraction.
+    //
+    // Kept deliberately small: each project is one `model: 'pro'` call over up
+    // to MAX_TEXT_LENGTH of document text, and the whole pipeline shares one
+    // provider quota (STROM_LLM_DAILY_CAP, plus whatever per-minute limit the
+    // provider enforces). GOALS_CONCURRENCY exists so this can be tuned without
+    // a code change if the provider pushes back.
+    const limit = pLimit(GOALS_CONCURRENCY);
+
+    await Promise.all(projects.map(project => limit(async () => {
       try {
         await analyzeProject(project);
       } catch (err) {
@@ -657,7 +785,6 @@ export async function runGoalsAnalysis(): Promise<void> {
 
         // Save error state to DB
         const db = getDb();
-        const lang = getActiveOutputLanguage();
         db.prepare(`
           INSERT INTO project_goals (project_id, project_name, region, gate, month_folder, source_files, status, error_message, output_language)
           VALUES (?, ?, ?, ?, ?, ?, 'error', ?, ?)
@@ -671,22 +798,24 @@ export async function runGoalsAnalysis(): Promise<void> {
       }
 
       runStatus.processedProjects++;
-
-      // Rate limit: 1.5s between Gemini calls
-      await new Promise(resolve => setTimeout(resolve, 1500));
-    }
+      updateGoalsRun(runRowId, runStatus);
+    })));
 
     runStatus.currentProject = 'Complete';
+    finishGoalsRun(runRowId, 'complete', runStatus);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     runStatus.errors.push(`Fatal: ${msg}`);
+    finishGoalsRun(runRowId, 'failed', runStatus);
   } finally {
     runStatus.isRunning = false;
   }
 }
 
 export function getGoalsStatus(): GoalsRunStatus {
-  return { ...runStatus };
+  // Journal read, not memory: after a restart the in-memory status is blank and
+  // the journal is the only thing that still knows the last run was killed.
+  return { ...runStatus, lastRun: readLastGoalsRun() };
 }
 
 export function getGoalsList(filters?: { region?: string; gate?: string; status?: string; outputLanguage?: OutputLanguage }): ProjectGoals[] {
