@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb } from './db';
 import { excelDateToISO, parseCost } from './date-utils';
+import { normalizeProjectId } from './project-id';
 
 interface RawRow {
   [key: string]: string | number | null | undefined;
@@ -77,6 +78,28 @@ export function parseExcelBuffer(buffer: Buffer): {
   const rawRows: ProjectInsert[] = format === 'cdio'
     ? parseCdioSheet(worksheet)
     : parseCiooLegacySheet(worksheet);
+
+  // Canonicalise ids BEFORE deduping, so `PRJ001395` and `PRJ0001395` collapse
+  // into one project instead of two. Cells the sheet uses as process
+  // placeholders ("N/A", "PRJ code to be created", "Contract Note") or that
+  // follow another scheme entirely ("X1_6896", "FR_7346") cannot be
+  // canonicalised; they are kept verbatim so nothing silently disappears from
+  // the portfolio, but reported so they can be fixed at the source.
+  const unnormalisable: string[] = [];
+  for (const row of rawRows) {
+    const canonical = normalizeProjectId(row.projectId);
+    if (canonical) {
+      row.projectId = canonical;
+    } else if (row.projectId) {
+      unnormalisable.push(row.projectId);
+    }
+  }
+  if (unnormalisable.length > 0) {
+    console.warn(
+      `[excel] ${unnormalisable.length} row(s) have a project id that is not canonical and was left as-is: ` +
+      unnormalisable.map(v => JSON.stringify(v)).join(', ')
+    );
+  }
 
   // The CDIO sheet lists the same project across multiple review cycles, so the
   // same project_id can appear in several rows. Keep only the one with the most

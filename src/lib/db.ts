@@ -399,6 +399,10 @@ function initSchema(db: Database.Database) {
   // as the authoritative source for GIO/DDS edges) + structured timeline.
   addGoalCol('impact_claims',         "TEXT DEFAULT '[]'");
   addGoalCol('timeline_struct',       "TEXT DEFAULT '{}'");
+  // Fingerprint of the document set this row was extracted from. Empty on rows
+  // written before 2026-08-31; analyzeProject backfills those in place without
+  // re-running the LLM, so adding this column never triggers a re-analysis.
+  addGoalCol('source_signature',      "TEXT DEFAULT ''");
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_goals_tech_tags ON project_goals(tech_tags);

@@ -1,3 +1,5 @@
+import { extractProjectIds } from './project-id';
+
 // Canonical catalogs the Goals Extractor normalises against.
 // All values are lowercase, hyphen-separated. The Impact engine treats them as
 // opaque identifiers — overlap between two projects on the same canonical tag
@@ -154,19 +156,15 @@ export function filterToGioServices(raw: unknown): string[] {
   return out;
 }
 
-// Regex used to detect PRJxxxx mentions inside extracted document text.
-// Same pattern used by drive-engine for discovery — capturing the digit body
-// and optional alpha suffix.
-export const PRJ_MENTION_REGEX = /PRJ[\s\-_]*([0-9]+)([A-Z]{0,4})/gi;
-
+/**
+ * Project ids mentioned inside extracted document text.
+ *
+ * Delegates to the shared canonicaliser in `project-id.ts`. The previous
+ * inline regex accepted any digit count and upper-cased whatever followed, so
+ * the template placeholder `PRJ00XXXX` was recorded as a real project three
+ * times in the live database, and `PRJ17301` never matched the `PRJ0017301`
+ * that the CDIO sheet actually holds.
+ */
 export function extractMentionedProjects(text: string, excludeProjectId: string): string[] {
-  if (!text) return [];
-  const out = new Set<string>();
-  let m: RegExpExecArray | null;
-  const re = new RegExp(PRJ_MENTION_REGEX);
-  while ((m = re.exec(text)) !== null) {
-    const canonical = `PRJ${m[1]}${(m[2] || '').toUpperCase()}`;
-    if (canonical !== excludeProjectId) out.add(canonical);
-  }
-  return [...out];
+  return extractProjectIds(text, excludeProjectId);
 }

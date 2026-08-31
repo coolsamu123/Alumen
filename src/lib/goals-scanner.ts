@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { createHash } from 'crypto';
 import { getDb } from './db';
 
 const DRIVE_LOCAL_ROOT = path.join(process.cwd(), 'data', 'drive');
@@ -73,6 +74,33 @@ function monthFolderFromReview(reviewDate: string | null): string[] {
 // Matches PRJxxxxxxx and PGMxxxxxxx folder names (PGM = portfolio-level
 // programme grouping used by CDIO alongside individual projects).
 const PRJ_FOLDER_NAME = /^((?:PRJ|PGM)[\s\-_]*[0-9]+[A-Z]{0,4})[_\- ]?(.*)$/i;
+
+/**
+ * Stable fingerprint of a project's document set, used to decide whether its
+ * goals need re-extracting.
+ *
+ * Deliberately NOT the raw `JSON.stringify(files)` that `source_files` stores:
+ * that is an ordered list of ABSOLUTE paths straight from `readdirSync`, whose
+ * order is not guaranteed and which changes wholesale if `data/drive` ever
+ * moves. Comparing it would report "changed" for every project at once — and
+ * with 301 projects, a false positive costs 301 LLM calls against a daily cap
+ * of 500.
+ *
+ * So: relative paths, sorted, plus each file's size. Size catches an edited
+ * document without churning when the Drive sync re-downloads an identical file
+ * (which an mtime would). The known gap is an edit that leaves the byte count
+ * untouched; that is the price of not re-analysing the whole portfolio on a
+ * re-sync.
+ */
+export function fileSignature(files: string[]): string {
+  const parts = files.map(f => {
+    let size = -1;
+    try { size = fs.statSync(f).size; } catch { /* unreadable → -1, still stable */ }
+    return `${path.relative(DRIVE_LOCAL_ROOT, f).split(path.sep).join('/')}:${size}`;
+  });
+  parts.sort();
+  return createHash('sha256').update(parts.join('|')).digest('hex').slice(0, 32);
+}
 
 export function scanProjects(): ScannedProject[] {
   const projectMap = new Map<string, ScannedProject>();

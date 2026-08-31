@@ -160,6 +160,13 @@ export interface ProjectImpact {
   // back to fetching the underlying claim's evidence_quote + evidence_file via
   // this chain. Shape: [{goal_id, claim_idx?|relation_idx?, source}]
   evidenceChain?: EvidenceChainEntry[];
+  // False when `targetProjectId` names a project that is not in the portfolio
+  // (`projects`). Documents legitimately reference projects outside the CDIO
+  // sheet — measured 2026-08-31, 14 of 23 extracted references were such — so
+  // the edge is kept rather than dropped, but flagged: it is real evidence of
+  // an external dependency, not a portfolio node, and the graph must not draw
+  // it as one. Always true for the GIO_SERVICES / DDS_IMPACTS pseudo-targets.
+  targetResolved?: boolean;
   // ─── Aggregation extras ───
   // When the API returns aggregated rows (default), one row represents all raw
   // edges between the same pair of projects (regardless of direction). The

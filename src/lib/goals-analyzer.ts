@@ -1,5 +1,5 @@
 import { getDb } from './db';
-import { scanProjects, type ScannedProject } from './goals-scanner';
+import { scanProjects, fileSignature, type ScannedProject } from './goals-scanner';
 import { extractAllTexts } from './goals-extractor';
 import { getPrompts } from './prompts';
 import { generateContent, getActiveOutputLanguage, type OutputLanguage } from './llm';
@@ -9,6 +9,7 @@ import {
   filterToGioServices,
   extractMentionedProjects,
 } from './tech-catalog';
+import { normalizeProjectId, sameProject } from './project-id';
 
 // Bump this when the prompt schema changes in a way that requires
 // re-analysing existing successful rows. The pipeline skip-logic compares
@@ -59,6 +60,10 @@ export interface GoalsRunStatus {
   processedProjects: number;
   successCount: number;
   errorCount: number;
+  /** Projects left untouched because nothing changed since the last run.
+   *  Kept apart from successCount so "skipped an error row" never reads as a
+   *  success in the UI. */
+  skippedCount: number;
   currentProject: string;
   errors: string[];
 }
@@ -69,6 +74,7 @@ let runStatus: GoalsRunStatus = {
   processedProjects: 0,
   successCount: 0,
   errorCount: 0,
+  skippedCount: 0,
   currentProject: '',
   errors: [],
 };
@@ -100,7 +106,16 @@ MONTHS REVIEWED: ${project.monthFolders.join(', ')}`;
   return prompt;
 }
 
-function parseGoalsResponse(text: string): Record<string, unknown> {
+/**
+ * Parses the model's JSON envelope.
+ *
+ * Returns null — NOT an empty object — when the response cannot be read, so the
+ * caller can tell "the model returned something unparseable" apart from "the
+ * documents genuinely contained nothing". Both used to collapse into a
+ * `status='partial'` row with no error message, which made a broken response
+ * indistinguishable from a thin project.
+ */
+function parseGoalsResponse(text: string): Record<string, unknown> | null {
   try {
     let clean = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
     const start = clean.indexOf('{');
@@ -108,9 +123,12 @@ function parseGoalsResponse(text: string): Record<string, unknown> {
     if (start >= 0 && end > start) {
       clean = clean.slice(start, end + 1);
     }
-    return JSON.parse(clean);
+    const parsed = JSON.parse(clean);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
   } catch {
-    return {};
+    return null;
   }
 }
 
@@ -140,11 +158,11 @@ function sanitizeProjectRelations(raw: unknown, ownProjectId: string): ProjectRe
   for (const item of raw) {
     if (!item || typeof item !== 'object') continue;
     const r = item as Record<string, unknown>;
-    const pidRaw = String(r.project_id || '').trim();
-    const pidMatch = pidRaw.match(/^(PRJ[\s\-_]*\d+)([A-Z]{0,4})$/i);
-    if (!pidMatch) continue;
-    const pid = `PRJ${pidMatch[1].replace(/[^\d]/g, '')}${(pidMatch[2] || '').toUpperCase()}`;
-    if (pid === ownProjectId || pid === ownProjectId.replace(/[^\dPRJ]/gi, '')) continue;
+    // Canonicalise so padding and PGM/PROG spelling differences don't create a
+    // second identity for a project we already know (see project-id.ts).
+    const pid = normalizeProjectId(r.project_id);
+    if (!pid) continue;
+    if (sameProject(pid, ownProjectId)) continue;
     const kind = String(r.kind || '').toLowerCase().trim();
     if (!RELATION_KINDS.has(kind)) continue;
     const evidence = String(r.evidence_quote || '').trim();
@@ -298,10 +316,8 @@ function sanitizeTimeline(raw: unknown): TimelineStruct {
     for (const item of val) {
       if (!item || typeof item !== 'object') continue;
       const d = item as Record<string, unknown>;
-      const pidRaw = String(d.project_id || '').trim();
-      const m = pidRaw.match(/^(PRJ[\s\-_]*\d+)([A-Z]{0,4})$/i);
-      if (!m) continue;
-      const pid = `PRJ${m[1].replace(/[^\d]/g, '')}${(m[2] || '').toUpperCase()}`;
+      const pid = normalizeProjectId(d.project_id);
+      if (!pid) continue;
       if (seen.has(pid)) continue;
       seen.add(pid);
       const evidence = String(d.evidence_quote || '').trim();
@@ -326,6 +342,18 @@ function sanitizeTimeline(raw: unknown): TimelineStruct {
 
 // ─── Pipeline ───────────────────────────────────────────────────────────────
 
+/**
+ * Accounts for a project we skipped because nothing changed, using the status
+ * the stored row actually has. The previous code incremented `successCount`
+ * unconditionally here, so a run that skipped a batch of `error` rows reported
+ * them to the user as successes.
+ */
+function countSkip(status: string): void {
+  if (status === 'success') runStatus.successCount++;
+  else if (status === 'error') runStatus.errorCount++;
+  else runStatus.skippedCount++;
+}
+
 async function analyzeProject(project: ScannedProject): Promise<void> {
   const db = getDb();
   initGoalsSchema();
@@ -335,28 +363,40 @@ async function analyzeProject(project: ScannedProject): Promise<void> {
   // generated under the old directive).
   const lang = getActiveOutputLanguage();
 
-  // Skip conditions:
-  //   1. Already succeeded at the CURRENT prompt version with the SAME source files → no work
-  //   2. Last attempt failed/partial but source files unchanged → no point retrying
-  // Both checks fail (i.e. we run) when:
-  //   - the prompt was bumped (prompt_version is older / NULL)
-  //   - new files were synced
-  //   - the active language differs from what we have on disk for this project
+  // We re-run when any of these changed since the stored row was written:
+  //   - the prompt version was bumped
+  //   - the document set changed (compared via fileSignature, NOT the raw path
+  //     list — see goals-scanner for why)
+  //   - the active language differs from the row we have
+  //
+  // Until 2026-08-31 the first condition below was just
+  // `status === 'success' && versionOk`, with no file comparison at all, so a
+  // project that had once succeeded was skipped forever no matter how many new
+  // documents arrived — while the comment claimed the opposite.
   const existing = db.prepare(
-    "SELECT status, source_files, prompt_version FROM project_goals WHERE project_id = ? AND output_language = ?"
+    "SELECT status, source_files, source_signature, prompt_version FROM project_goals WHERE project_id = ? AND output_language = ?"
   ).get(project.projectId, lang) as
-    { status: string; source_files: string; prompt_version: number | null } | undefined;
+    { status: string; source_files: string; source_signature: string | null; prompt_version: number | null } | undefined;
 
   const filesJson = JSON.stringify(project.files);
+  const signature = fileSignature(project.files);
   const versionOk = (existing?.prompt_version ?? 0) >= GOALS_PROMPT_VERSION;
 
-  if (existing?.status === 'success' && versionOk) {
-    runStatus.successCount++;
-    return;
-  }
-  if (existing && existing.source_files === filesJson && versionOk) {
-    runStatus.successCount++;
-    return;
+  if (existing && versionOk) {
+    // Legacy row from before signatures existed. Backfill in place and trust
+    // its status: re-analysing every pre-existing project just to learn its
+    // fingerprint would cost one LLM call per project for no new information.
+    if (!existing.source_signature) {
+      db.prepare(
+        'UPDATE project_goals SET source_signature = ? WHERE project_id = ? AND output_language = ?'
+      ).run(signature, project.projectId, lang);
+      countSkip(existing.status);
+      return;
+    }
+    if (existing.source_signature === signature) {
+      countSkip(existing.status);
+      return;
+    }
   }
 
   runStatus.currentProject = `${project.projectId}: ${project.projectName.slice(0, 40)}`;
@@ -389,7 +429,29 @@ async function analyzeProject(project: ScannedProject): Promise<void> {
     context: 'goals',
     outputLanguage: lang,
   });
-  const parsed = parseGoalsResponse(responseText);
+  const parsedOrNull = parseGoalsResponse(responseText);
+
+  // An unreadable response is an error, not a thin extraction. Record it as
+  // such — the raw text is kept so the failure can be inspected afterwards.
+  if (parsedOrNull === null) {
+    db.prepare(`
+      INSERT INTO project_goals (project_id, project_name, region, gate, month_folder, source_files, status, error_message, prompt_version, output_language, raw_gemini_response)
+      VALUES (?, ?, ?, ?, ?, ?, 'error', ?, ?, ?, ?)
+      ON CONFLICT(project_id, output_language) DO UPDATE SET
+        project_name=excluded.project_name, region=excluded.region, gate=excluded.gate,
+        month_folder=excluded.month_folder, source_files=excluded.source_files,
+        status='error', error_message=excluded.error_message,
+        raw_gemini_response=excluded.raw_gemini_response,
+        analyzed_at=datetime('now'), prompt_version=excluded.prompt_version
+    `).run(
+      project.projectId, project.projectName, project.region, project.gate,
+      project.monthFolders.join(', '), filesJson,
+      'LLM response could not be parsed as JSON', GOALS_PROMPT_VERSION, lang, responseText,
+    );
+    runStatus.errorCount++;
+    return;
+  }
+  const parsed = parsedOrNull;
 
   // Sanitise canonical array fields against catalogs — drops anything the LLM
   // invented outside the allowed lists.
@@ -447,10 +509,10 @@ async function analyzeProject(project: ScannedProject): Promise<void> {
       project_relations, out_of_scope,
       impact_claims, timeline_struct,
       prompt_version,
-      raw_gemini_response, source_files, status,
+      raw_gemini_response, source_files, source_signature, status,
       output_language,
       error_message
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '')
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '')
     ON CONFLICT(project_id, output_language) DO UPDATE SET
       project_name=excluded.project_name, region=excluded.region, gate=excluded.gate,
       month_folder=excluded.month_folder,
@@ -476,6 +538,7 @@ async function analyzeProject(project: ScannedProject): Promise<void> {
       prompt_version=excluded.prompt_version,
       raw_gemini_response=excluded.raw_gemini_response,
       source_files=excluded.source_files,
+      source_signature=excluded.source_signature,
       status=excluded.status,
       analyzed_at=datetime('now'),
       error_message=''
@@ -506,6 +569,7 @@ async function analyzeProject(project: ScannedProject): Promise<void> {
     GOALS_PROMPT_VERSION,
     responseText,
     filesJson,
+    signature,
     hasData ? 'success' : 'partial',
     lang,
   );
@@ -526,6 +590,7 @@ export async function runSingleGoalAnalysis(projectId: string): Promise<void> {
     processedProjects: 0,
     successCount: 0,
     errorCount: 0,
+    skippedCount: 0,
     currentProject: 'Scanning project...',
     errors: [],
   };
@@ -572,6 +637,7 @@ export async function runGoalsAnalysis(): Promise<void> {
     processedProjects: 0,
     successCount: 0,
     errorCount: 0,
+    skippedCount: 0,
     currentProject: 'Scanning projects...',
     errors: [],
   };
@@ -632,13 +698,19 @@ export function getGoalsList(filters?: { region?: string; gate?: string; status?
   // the active language only — when the user toggles to the other one and
   // visits Goals again, this same code path will seed placeholders for
   // *that* language too. No cross-language clobbering.
+  //
+  // This SEEDS new projects; it must not touch an existing row. Until
+  // 2026-08-31 the conflict clause overwrote `source_files`, so merely opening
+  // the Goals tab overwrote the record of which documents a row was extracted
+  // from — erasing the very signal the re-analysis check depends on. Change
+  // detection now lives in `source_signature`, which only `analyzeProject`
+  // writes, but the principle stands: a read path must not mutate provenance.
   try {
     const scanned = scanProjects();
     const upsertStmt = db.prepare(`
       INSERT INTO project_goals (project_id, project_name, region, gate, source_files, status, analyzed_at, output_language)
       VALUES (?, ?, ?, ?, ?, 'pending', NULL, ?)
-      ON CONFLICT(project_id, output_language) DO UPDATE SET
-        source_files = excluded.source_files
+      ON CONFLICT(project_id, output_language) DO NOTHING
     `);
     for (const p of scanned) {
       upsertStmt.run(p.projectId, p.projectName, p.region, p.gate, JSON.stringify(p.files), lang);
@@ -732,6 +804,13 @@ export function resetGoalsData(): void {
         vendors = '[]',
         data_classifications = '[]',
         mentioned_projects = '[]',
+        -- Onda 2/3 fields. Omitted here until 2026-08-31, which meant a "reset"
+        -- left the densest output (claims, relations, exclusions, timeline)
+        -- populated from the previous run.
+        project_relations = '[]',
+        out_of_scope = '[]',
+        impact_claims = '[]',
+        timeline_struct = '{}',
         prompt_version = 0,
         raw_gemini_response = '',
         analyzed_at = NULL,
@@ -746,6 +825,7 @@ export function resetGoalsData(): void {
     processedProjects: 0,
     successCount: 0,
     errorCount: 0,
+    skippedCount: 0,
     currentProject: '',
     errors: [],
   };

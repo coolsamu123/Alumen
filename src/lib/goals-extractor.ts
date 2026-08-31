@@ -87,23 +87,41 @@ const FILE_RANK_RULES: ReadonlyArray<{ pattern: RegExp; score: number }> = [
   { pattern: /change[\s_-]?management|adoption|training/i,                  score:  62 },
   { pattern: /requirement|spec(ification)?|brd|frd/i,                        score:  58 },
   { pattern: /deliverable|status[\s_-]?report|steerco|steering/i,           score:  50 },
-  // Penalise low-signal docs so they get pushed past the budget last.
-  { pattern: /meeting|minutes|notes|debrief|recap/i,                        score:  20 },
-  { pattern: /draft|wip|todo|backup|copy[\s_-]?of/i,                        score:  15 },
+];
+
+// Applied as SUBTRACTIONS on top of the best positive match, not as alternative
+// rules. They used to live at the end of the list above, which — since scoring
+// returned on the first match — meant they only ever applied to files matching
+// nothing else: "Architecture_Meeting_Minutes.docx" scored 78 for
+// "architecture" and never reached the meeting penalty, the exact opposite of
+// what the comment promised.
+const FILE_PENALTY_RULES: ReadonlyArray<{ pattern: RegExp; penalty: number }> = [
+  { pattern: /meeting|minutes|debrief|recap/i,           penalty: 40 },
+  { pattern: /\bnotes?\b/i,                              penalty: 25 },
+  { pattern: /draft|wip|todo|backup|copy[\s_-]?of/i,     penalty: 45 },
 ];
 
 function scoreFile(filePath: string): number {
   const base = path.basename(filePath).toLowerCase();
-  for (const { pattern, score } of FILE_RANK_RULES) {
-    if (pattern.test(base)) return score;
+
+  let score: number | null = null;
+  for (const rule of FILE_RANK_RULES) {
+    if (rule.pattern.test(base)) { score = rule.score; break; }
   }
-  // Extension-based fallback: .docx > .pdf > .xlsx > .csv > .txt.
-  const ext = path.extname(base);
-  if (ext === '.docx') return 40;
-  if (ext === '.pdf')  return 38;
-  if (ext === '.xlsx') return 35;
-  if (ext === '.csv')  return 30;
-  return 25;
+  if (score === null) {
+    // Extension-based fallback: .docx > .pdf > .xlsx > .csv > .txt.
+    const ext = path.extname(base);
+    if (ext === '.docx') score = 40;
+    else if (ext === '.pdf')  score = 38;
+    else if (ext === '.xlsx') score = 35;
+    else if (ext === '.csv')  score = 30;
+    else score = 25;
+  }
+
+  for (const { pattern, penalty } of FILE_PENALTY_RULES) {
+    if (pattern.test(base)) score -= penalty;
+  }
+  return score;
 }
 
 function rankFiles(files: string[]): string[] {

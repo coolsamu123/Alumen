@@ -6,6 +6,7 @@ import { getPrompts } from './prompts';
 import { generateContent, getActiveOutputLanguage, type OutputLanguage } from './llm';
 import { normalizeDdsList } from './dds-catalog';
 import { isCanonicalTarget, IMPACT_TYPES, IMPACT_DIRECTIONS } from './target-catalog';
+import { normalizeProjectId } from './project-id';
 import type { CIOOProject, CIOOService, ProjectImpact, ProjectSummary, ImpactAnalysisStatus } from './types';
 
 // ─── Module-level state for tracking analysis progress ───────────────────────
@@ -817,13 +818,10 @@ interface RawImpact {
 // DDS_IMPACTS, so they become phantom "project" satellites). This normaliser:
 //   - returns the canonical string when an obvious typo is detected
 //   - returns '' when the value can't be salvaged (caller drops the row)
-const PROJECT_ID_RE = /^PRJ\d{4,}$/;
-
 function normalizeImpactTarget(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) return '';
   if (trimmed === 'GIO_SERVICES' || trimmed === 'DDS_IMPACTS') return trimmed;
-  if (PROJECT_ID_RE.test(trimmed)) return trimmed;
 
   // Fuzzy match for pseudo-target typos: case-insensitive, strip non-alphanum.
   // Examples that must collapse to DDS_IMPACTS:
@@ -832,10 +830,10 @@ function normalizeImpactTarget(raw: string): string {
   const stripped = trimmed.toUpperCase().replace(/[^A-Z]/g, '');
   if (stripped.startsWith('DDSIMP')) return 'DDS_IMPACTS';
   if (stripped.startsWith('GIOSERV') || stripped.startsWith('GIOSL')) return 'GIO_SERVICES';
-  // Look for an embedded PRJ id (LLM occasionally wraps it in quotes/labels).
-  const m = trimmed.match(/PRJ\d{4,}/);
-  if (m) return m[0];
-  return '';
+  // Shared canonicaliser: also accepts PGM programmes (the old `/^PRJ\d{4,}$/`
+  // silently dropped every edge touching one, even though the Drive scanner
+  // ingests PGM folders) and folds padding differences.
+  return normalizeProjectId(trimmed) ?? '';
 }
 
 // Controlled-vocabulary matching for `impact_type` / `direction`. The LLM drifts
@@ -851,12 +849,7 @@ function canonicalise(raw: string, allowed: ReadonlySet<string>): string | null 
 }
 
 function normalizeImpactSource(raw: string): string {
-  const trimmed = raw.trim();
-  if (!trimmed) return '';
-  if (PROJECT_ID_RE.test(trimmed)) return trimmed;
-  const m = trimmed.match(/PRJ\d{4,}/);
-  if (m) return m[0];
-  return '';
+  return normalizeProjectId(raw) ?? '';
 }
 
 function parseImpactResponse(text: string): RawImpact[] {
@@ -1444,6 +1437,37 @@ export function getImpactStatus(): ImpactAnalysisStatus {
   return { ...analysisStatus, lastRun: readLastRun() };
 }
 
+// ─── Portfolio membership ────────────────────────────────────────────────────
+
+/**
+ * Canonical ids of every project in the portfolio.
+ *
+ * Resolved at READ time rather than stored on the row: `projects` is rebuilt on
+ * every sheet upload, so a reference that is dangling today can become valid
+ * tomorrow (and vice versa) without the impact rows changing. Comparing
+ * canonical forms also means `PRJ001395` in the sheet matches a document's
+ * `PRJ0001395` — measured 2026-08-31, 4 of 23 references were exactly that.
+ */
+function loadPortfolioIds(): Set<string> {
+  const ids = new Set<string>();
+  try {
+    const rows = getDb().prepare('SELECT DISTINCT project_id FROM projects').all() as { project_id: string }[];
+    for (const r of rows) {
+      const id = normalizeProjectId(r.project_id);
+      if (id) ids.add(id);
+    }
+  } catch { /* an empty set just marks everything unresolved */ }
+  return ids;
+}
+
+function markResolved(rows: ProjectImpact[], portfolio: Set<string>): ProjectImpact[] {
+  for (const r of rows) {
+    const isPseudo = r.targetProjectId === 'GIO_SERVICES' || r.targetProjectId === 'DDS_IMPACTS';
+    r.targetResolved = isPseudo || portfolio.has(normalizeProjectId(r.targetProjectId) ?? '');
+  }
+  return rows;
+}
+
 // ─── Get impacts for a specific project ──────────────────────────────────────
 
 export function getProjectImpacts(projectId: string): ProjectImpact[] {
@@ -1457,7 +1481,7 @@ export function getProjectImpacts(projectId: string): ProjectImpact[] {
       created_at DESC
   `).all(projectId, projectId, lang) as ImpactDbRow[];
 
-  return rows.map(mapImpactRow);
+  return markResolved(rows.map(mapImpactRow), loadPortfolioIds());
 }
 
 // ─── Clear all impacts ───────────────────────────────────────────────────────
@@ -1494,7 +1518,7 @@ export function getAllImpacts(): ProjectImpact[] {
       created_at DESC
   `).all(lang) as ImpactDbRow[];
 
-  return rows.map(mapImpactRow);
+  return markResolved(rows.map(mapImpactRow), loadPortfolioIds());
 }
 
 // ─── DB row mapping ──────────────────────────────────────────────────────────
@@ -1588,6 +1612,9 @@ export function aggregateImpacts(rows: ProjectImpact[]): ProjectImpact[] {
       ddsEntities: uniqSorted(arr.flatMap(r => r.ddsEntities ?? [])),
       citations: primary.citations ?? [],
       evidenceChain: arr.flatMap(r => r.evidenceChain ?? []),
+      // Every row in the group shares the same unordered pair, so resolution is
+      // a property of the group, not of the representative row.
+      targetResolved: primary.targetResolved,
       impactTypes: uniqSorted(arr.map(r => r.impactType)),
       directions: uniqSorted(arr.map(r => r.direction)),
       explanations,
