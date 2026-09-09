@@ -2,6 +2,7 @@
 
 import { useProjectContext } from '@/context/ProjectContext';
 import { ADMIN_ONLY_TITLE } from '@/lib/constants';
+import UserMenu from './UserMenu';
 import type { ViewType } from '@/lib/types';
 
 const NAV_ITEMS: { key: ViewType; label: string }[] = [
@@ -83,6 +84,8 @@ export default function Header() {
       >
         {isAdmin ? 'Admin' : '🔒 Admin'}
       </a>
+
+      <UserMenu />
     </div>
   );
 }

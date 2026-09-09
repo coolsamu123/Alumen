@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import UserMenu from '@/components/UserMenu';
 
 type Role = 'admin' | 'basic';
 
@@ -155,6 +156,7 @@ export default function AdminUsersPage() {
         </a>
         <div className="flex-1" />
         <a href="/admin" className="text-sm text-ink-4 hover:text-ink-1">← Admin</a>
+        <UserMenu />
       </div>
 
       <div className="max-w-5xl mx-auto p-8 flex flex-col gap-6">

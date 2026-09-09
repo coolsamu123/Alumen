@@ -35,11 +35,9 @@ export default async function RootLayout({
 }>) {
   // Every rendered page is behind the session gate (middleware.ts, Fase 5),
   // so by the time this runs there is always a session — except on /login,
-  // which renders through this layout before one exists. `role` is null only
-  // in that case, and drives the admin-only gating in the views below.
+  // which renders through this layout before one exists. The provider derives
+  // `role`/`isAdmin` from this; the header's user menu uses the name/email.
   const session = await getSession();
-  const role = session?.role ?? null;
-  const isAdmin = role === 'admin';
 
   return (
     <html lang="en" data-theme="dark">
@@ -47,7 +45,7 @@ export default async function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
       </head>
       <body className="antialiased">
-        <ProjectProvider role={role} isAdmin={isAdmin}>
+        <ProjectProvider user={session}>
           {children}
         </ProjectProvider>
       </body>

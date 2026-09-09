@@ -3,6 +3,13 @@
 import { createContext, useContext, useState, useCallback, useMemo, useEffect, type ReactNode } from 'react';
 import type { ProjectSummary, SimilarityLink, FilterState, ViewType, AnalysisResult, ProjectImpact } from '@/lib/types';
 
+export interface SessionUser {
+  id: number;
+  name: string;
+  email: string;
+  role: 'admin' | 'basic';
+}
+
 interface ProjectContextType {
   // Data
   projects: ProjectSummary[];
@@ -49,8 +56,11 @@ interface ProjectContextType {
   // Analysis cache
   analysisResults: Map<string, AnalysisResult>;
 
-  // Session role of the logged-in user. Login is required for every page
-  // (middleware.ts, Fase 5), so this is null only while rendering /login.
+  // The signed-in user, resolved server-side in layout.tsx. Login is required
+  // for every page (middleware.ts, Fase 5), so this is null only while
+  // rendering /login. `role` and `isAdmin` are derived from it — they're kept
+  // as separate fields because most call sites only need the role check.
+  user: SessionUser | null;
   role: 'admin' | 'basic' | null;
   // role === 'admin'. Use this to decide whether to disable a write control;
   // the server-side 403 is the actual protection.
@@ -68,13 +78,16 @@ const ProjectContext = createContext<ProjectContextType | null>(null);
 
 export function ProjectProvider({
   children,
-  role = null,
-  isAdmin = false,
+  user = null,
 }: {
   children: ReactNode;
-  role?: 'admin' | 'basic' | null;
-  isAdmin?: boolean;
+  user?: SessionUser | null;
 }) {
+  // Single source of truth: role and isAdmin are derived, never passed
+  // separately, so they can't drift out of sync with the session.
+  const role = user?.role ?? null;
+  const isAdmin = role === 'admin';
+
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [stats, setStats] = useState<Record<string, unknown> | null>(null);
   const [impacts, setImpacts] = useState<ProjectImpact[]>([]);
@@ -296,7 +309,7 @@ export function ProjectProvider({
       threshold, setThreshold, filters, setFilters,
       filtered, filteredWithSignal, uploadFile, refreshProjects,
       analyzeProjects, analyzeWithDocs, analysisResults,
-      role, isAdmin,
+      user, role, isAdmin,
       theme, setTheme, toggleTheme,
     }}>
       {children}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import UserMenu from '@/components/UserMenu';
 
 const GEMINI_META = {
   label: 'Google Gemini',
@@ -326,6 +327,7 @@ export default function AdminPage() {
         }}>
           Back to Dashboard
         </a>
+        <UserMenu />
       </div>
 
       {/* Content */}
