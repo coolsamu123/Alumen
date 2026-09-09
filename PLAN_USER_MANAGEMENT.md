@@ -16,7 +16,7 @@ Auditoria feita sobre `middleware.ts`, `public-host.ts`, `layout.tsx`,
 
 | Fase | Estado | Quando |
 |---|---|---|
-| 1 — Identidade | ✅ **done** — código pronto e testado, **não implantado em produção** | 2026-09-09 |
+| 1 — Identidade | ✅ **done — implantado em produção** | 2026-09-09 |
 | 2 — Escopo | ⬜ não iniciada | — |
 | 3 — Gestão | ⬜ não iniciada | — |
 | 4 — Acabamento | ⬜ não iniciada | — |
@@ -297,23 +297,23 @@ Cada fase deixa o sistema íntegro. Nada de estado intermediário quebrado.
 *Ainda sem escopo:* todo autenticado vê o portfólio inteiro; muda só quem entra
 e o que Admin/Drive Sync exigem. Isso é intencional (linha 269).
 
-**Pendências antes de considerar isto "em produção":**
+**Implantado em produção em 2026-09-09 15:37 UTC.** `npm run build &&
+systemctl restart alumen` na EC2. Validado pós-restart contra o host real
+(`ec2-51-20-184-90...amazonaws.com`, não só localhost): `/admin` externo sem
+sessão redireciona para `/login`; `/api/admin/config` externo sem sessão dá 401
+JSON; leitura pública (`/`, `/api/projects`) continua sem exigir login; sem
+erro no `journalctl`; os 66 projetos e os agregados de `stats` batem com antes
+do restart — nada de dado perdido.
 
-1. **Não implantado.** `npm run build` local foi rodado só para validar — o
-   serviço systemd `alumen` continua na versão anterior (Basic Auth), confirmado
-   via `systemctl status` (mesmo PID, sem restart). Implantar exige rodar
-   `npm run build && sudo systemctl restart alumen` na EC2 — decisão consciente,
-   porque troca o mecanismo de login de todo host externo de uma vez.
-2. **O seed já rodou contra o banco de produção real** (`data/cioo.db`), sem
-   querer: `next build` executa código o bastante para chamar `getDb()`, e o
-   arquivo de dados é o mesmo da produção (não há banco de teste separado).
-   Existe hoje 1 linha em `users`: `email='admin'` (vindo literalmente do
-   usuário do `ADMIN_BASIC_AUTH`), role admin. Funciona para o break-glass, mas
-   **não é um email corporativo** — corrigir com
-   `node scripts/create-admin.mjs <email-real> "<nome>" <senha>` antes de
-   contar isso como pronto para Okta (§8.1, §8.6). Um segundo usuário de teste
-   criado durante a verificação (`test.admin@airliquide.com`) já foi removido.
-3. **UI ainda não fala com sessão.** `ProjectContext`/`Header`/`layout.tsx`
+O admin seedado (`email='admin'`, vindo do `ADMIN_BASIC_AUTH`) foi renomeado
+para `samuel.ramos@airliquide.com` **mantendo a mesma senha** (update direto
+de `email`, sem tocar `password_hash`) — resolve o gap do §8.1 sem exigir nova
+senha. Um segundo usuário de teste criado durante a verificação
+(`test.admin@airliquide.com`) foi removido antes do deploy.
+
+**Pendência que sobrou:**
+
+1. **UI ainda não fala com sessão.** `ProjectContext`/`Header`/`layout.tsx`
    continuam lendo `isPublic` via `isAnonymousExternal` (Basic-Auth-shaped, só
    que agora alimentado por sessão) — funciona, mas não há indicação visual de
    "logado como fulano" nem botão de logout na UI ainda. Isso é natural do
