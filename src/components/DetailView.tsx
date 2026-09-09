@@ -41,7 +41,7 @@ function planBarTitle(e: PerProjectPlanState): string {
 }
 
 export default function DetailView() {
-  const { filtered, selected, setSelected } = useProjectContext();
+  const { filtered, selected, setSelected, isAdmin } = useProjectContext();
   const { state: planState, start: startPlanAll, stop: stopPlanAll } = usePlanAllState();
   const isPlanning = planState?.status === 'running' || planState?.status === 'stopping';
 
@@ -56,11 +56,16 @@ export default function DetailView() {
               {planState.capExceeded && <span className="text-amber-500 ml-1.5">· daily LLM cap reached</span>}
             </span>
           )}
+          {/* Admin-only server-side (POST/DELETE /api/impact/project/planning/run-all
+              match the /api/impact prefix rule in middleware.ts) — disabled
+              here too rather than hidden, same rationale as Impact/Goals. */}
           {isPlanning ? (
             <button
               type="button"
-              onClick={() => stopPlanAll()}
-              className="px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider bg-red-600/80 hover:bg-red-600 text-white transition-colors"
+              onClick={() => isAdmin && stopPlanAll()}
+              disabled={!isAdmin}
+              title={!isAdmin ? 'Requer perfil administrador' : undefined}
+              className="px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider bg-red-600/80 hover:bg-red-600 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               ■ Stop
             </button>
@@ -68,8 +73,8 @@ export default function DetailView() {
             <button
               type="button"
               onClick={() => startPlanAll(filtered.map(p => p.projectId))}
-              disabled={filtered.length === 0}
-              title="Generates the Project Planning panel (Timeline/Gates/Actions/CAPEX-OPEX) for every project shown below. Syncs Drive documents first when needed. Already-planned projects are near-instant (cached)."
+              disabled={!isAdmin || filtered.length === 0}
+              title={!isAdmin ? 'Requer perfil administrador' : 'Generates the Project Planning panel (Timeline/Gates/Actions/CAPEX-OPEX) for every project shown below. Syncs Drive documents first when needed. Already-planned projects are near-instant (cached).'}
               className="px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider text-white transition-colors
                 bg-gradient-to-r from-purple-700 via-fuchsia-600 to-cyan-600 hover:from-purple-600 hover:via-fuchsia-500 hover:to-cyan-500
                 disabled:opacity-40 disabled:cursor-not-allowed"

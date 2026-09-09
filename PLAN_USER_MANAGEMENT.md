@@ -19,7 +19,7 @@ Auditoria feita sobre `middleware.ts`, `public-host.ts`, `layout.tsx`,
 | 1 — Identidade | ✅ **done — implantado em produção** | 2026-09-09 |
 | 2 — Escopo | ✅ **done — implantado em produção** | 2026-09-09 |
 | 3 — Gestão | ✅ **done — implantado em produção** | 2026-09-09 |
-| 4 — Acabamento | ⬜ não iniciada | — |
+| 4 — Acabamento | ✅ **done — implantado em produção** (escopo reduzido, ver §6) | 2026-09-09 |
 | 5 — Matar modo público | ⬜ não iniciada (deliberadamente por último, §7.1) | — |
 | 6 — Okta | ⬜ bloqueada pela demanda MMS (§8) | — |
 
@@ -379,10 +379,67 @@ senha. Um segundo usuário de teste criado durante a verificação
       pós-restart (66 projetos intactos, `/admin/users` externo sem sessão
       redireciona para `/login`)
 
-**Fase 4 — Acabamento.** Botões desativados + 403 correspondente, `user_id` em
-`llm_calls` / `impact_runs` / `goals_runs` (atribuição de custo por usuário,
-reaproveitando `STROM_LLM_DAILY_CAP` como teto por usuário), e tela de sessões
-ativas.
+**Fase 4 — Acabamento. ✅ done (2026-09-09), implantada — escopo reduzido.**
+
+Descoberta ao começar: a maior parte do "403 correspondente" **já existia**
+desde a Fase 1 — o middleware passou a checar `role=admin` em vez de "tem
+Basic Auth" para todos os prefixos já protegidos. O que faltava de verdade era
+(1) a UI ainda não sabia diferenciar "básico logado" de "admin logado"
+(`isPublic` só via "tem sessão ou não"), e (2) um bug real: `/api/goals`
+bloqueava **todo método**, então um usuário básico não conseguia nem carregar
+a lista do Goals Extractor pra ver o botão desativado.
+
+- [x] `layout.tsx` → `ProjectContext`: propaga `role` e `isAdmin` (calculado
+      no servidor, já contabilizando o bypass local/SSH — ver comentário em
+      `layout.tsx`, é o mesmo bypass que a API já tem hoje, então tratar como
+      admin ali é espelhar o servidor, não afrouxar nada)
+- [x] `middleware.ts`: `/api/goals` saiu de `PROTECTED_PREFIXES` (bloqueava
+      tudo) e foi para `PROTECTED_BY_METHOD` (só POST/PUT/PATCH/DELETE) — mesmo
+      padrão de `/api/impact`. GET aberto, escrita exige admin.
+- [x] `ImpactView.tsx` — Erase All / Start Analysis: trocado de **esconder**
+      (`{!isPublic && ...}`) para **desativado com tooltip** (`disabled={!isAdmin}`)
+- [x] `GoalsView.tsx` — Erase All / Run Analysis / Analyze (por projeto):
+      adicionado do zero (não tinha nenhuma checagem antes). Export CSV
+      continua liberado pra todos — é leitura do que já foi extraído.
+- [x] `DetailView.tsx` "Plan all" + `ProjectPlanningPanel.tsx` "Generate/
+      Regenerate plan": desativados para não-admin
+- [x] `Header.tsx` — nav "Drive Sync" e link "Admin": cadeado + tooltip quando
+      `!isAdmin` (Drive Sync é tudo-ou-nada — toda rota de `/api/drive/*` já
+      exige admin no servidor — então a UI trava o item de nav inteiro, não
+      botões individuais dentro da view)
+- [x] `page.tsx`: reforço server-consistent — se a view restaurada for
+      `'drive'` e o usuário não for admin, volta pra `detail`
+- [x] `npm run build` limpo
+- [x] Testado ponta a ponta num servidor temporário com usuário basic real:
+      `GET /api/goals` 200 sem sessão; `POST /api/goals`/`POST /api/impact`/
+      `POST .../planning`/`POST .../planning/run-all` todos 403 (não 401 —
+      tinha sessão, só não era admin) para o usuário básico; `GET /api/drive`
+      continua 403 tudo-ou-nada; admin continua passando normalmente.
+      **Incidente durante o teste**: uma chamada de comparação com admin
+      disparou sem querer uma re-análise completa de Goals contra produção
+      (a action desconhecida caiu no branch default = "start full analysis").
+      Deixei terminar em vez de interromper no meio — terminou sozinha em ~70s,
+      66/66 sucesso, 0 erro, sem dano. Usuários de teste removidos do banco
+      antes do deploy.
+- [x] Implantado — `npm run build && systemctl restart alumen`, validado
+      pós-restart (66 projetos intactos; `/api/goals` GET externo sem sessão
+      = 200; POST continua 401)
+
+**Deixado de fora desta fase, propositalmente** (já protegido no servidor
+desde a Fase 1 — só falta o `disabled` cosmético, sem risco de segurança em
+aberto):
+- `EvidencePanel.tsx` (busca de evidência por citação)
+- `Sidebar.tsx` (adicionar/remover serviço GIO de um projeto — na verdade bate
+  em `/api/projects/[id]/services`, não em `/api/analyze` como o inventário
+  original da §4.2 registrou; correção anotada aqui)
+- `AIAnalysisPanel.tsx` (análise pairwise/cluster via `/api/analyze`)
+- `StromArchitecture/stages.ts` (runners do pipeline demonstrativo do ArchFlow)
+
+`user_id` em `llm_calls`/`impact_runs`/`goals_runs` e tela de sessões ativas
+não entraram nesta rodada — não fazem parte do pedido original (que era
+especificamente sobre os dois papéis e os botões de execução) e não têm
+pendência de segurança associada. Ficam como trabalho futuro se você quiser
+atribuição de custo por usuário.
 
 **Fase 5 — Matar o modo público.** Remover `PUBLIC_VIEWS` (`page.tsx:24`),
 `isAnonymousExternal` e o gate por `Host` do `public-host.ts`. Login passa a ser

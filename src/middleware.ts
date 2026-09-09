@@ -43,7 +43,6 @@ const PROTECTED_PREFIXES = [
   '/admin',
   '/api/admin',
   '/api/drive',
-  '/api/goals',
   '/api/auto-discovery',
   '/api/analyze',
   '/api/prompts',
@@ -52,10 +51,18 @@ const PROTECTED_PREFIXES = [
 
 // Mixed-method endpoints: GETs are public-safe (used by the read-only views
 // served from external hosts), but writes/expensive POSTs require auth.
+//
+// /api/goals moved here from PROTECTED_PREFIXES (Fase 4, PLAN_USER_MANAGEMENT.md
+// §4.2): it used to block every method, which meant a logged-in basic user
+// couldn't even load the Goals Extractor's read-only list — GoalsView.tsx
+// disables its Run/Erase buttons for non-admins, but that's moot if the GET
+// that populates the view 401s first. Matches the existing /api/impact
+// pattern: read is open, POST (run analysis / erase) requires admin.
 const PROTECTED_BY_METHOD: Array<{ prefix: string; methods: string[] }> = [
   { prefix: '/api/impact', methods: ['POST', 'PUT', 'PATCH', 'DELETE'] },
   { prefix: '/api/projects', methods: ['POST', 'PUT', 'PATCH', 'DELETE'] },
   { prefix: '/api/services/mapping', methods: ['POST', 'PUT', 'PATCH', 'DELETE'] },
+  { prefix: '/api/goals', methods: ['POST', 'PUT', 'PATCH', 'DELETE'] },
 ];
 
 function pathStartsWith(pathname: string, prefix: string): boolean {

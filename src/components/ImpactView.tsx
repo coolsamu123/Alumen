@@ -9,7 +9,7 @@ import type { ProjectImpact, ImpactAnalysisStatus } from '@/lib/types';
 import { SEVERITY_COLORS } from '@/lib/constants';
 
 export default function ImpactView() {
-  const { projects, filtered: globalFilteredProjects, filters, openUniverse, isPublic } = useProjectContext();
+  const { projects, filtered: globalFilteredProjects, filters, openUniverse, isAdmin } = useProjectContext();
   const [impacts, setImpacts] = useState<ProjectImpact[]>([]);
   const [status, setStatus] = useState<ImpactAnalysisStatus | null>(null);
   const [stats, setStats] = useState<{ total: number; bySeverity: Record<string, number>; byType: Record<string, number>; byDirection: Record<string, number> } | null>(null);
@@ -161,26 +161,29 @@ export default function ImpactView() {
               Gemini analyzes ALL projects to identify impact relationships — technology dependencies, shared platforms, timeline blocking, etc.
             </p>
           </div>
-          {/* Admin-only controls — hidden in public (Cloudflare-tunnel) mode. */}
-          {!isPublic && (
-            <div className="flex gap-2 shrink-0">
-              <button
-                onClick={eraseImpacts}
-                disabled={status?.isRunning || isClearing || (stats?.total ?? impacts.length) === 0}
-                className="px-4 py-2.5 rounded-lg bg-red-900/60 text-red-200 text-sm font-semibold hover:bg-red-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed border border-red-800/60"
-                title="Delete all stored impacts from the database"
-              >
-                {isClearing ? 'Erasing...' : 'Erase All'}
-              </button>
-              <button
-                onClick={startAnalysis}
-                disabled={status?.isRunning || isStarting}
-                className="px-5 py-2.5 rounded-lg bg-accent-hover text-white text-sm font-semibold hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {status?.isRunning ? 'Running...' : isStarting ? 'Starting...' : impacts.length > 0 ? 'Re-run Analysis' : 'Start Full Analysis'}
-              </button>
-            </div>
-          )}
+          {/* Admin-only actions — always visible, disabled (not hidden) for
+              non-admins per PLAN_USER_MANAGEMENT.md §5.2: a basic user should
+              see the feature exists and why it's unavailable, not wonder if
+              the product lacks it. The 403 on POST /api/impact (middleware.ts)
+              is the real protection; this is the cosmetic half. */}
+          <div className="flex gap-2 shrink-0">
+            <button
+              onClick={eraseImpacts}
+              disabled={!isAdmin || status?.isRunning || isClearing || (stats?.total ?? impacts.length) === 0}
+              className="px-4 py-2.5 rounded-lg bg-red-900/60 text-red-200 text-sm font-semibold hover:bg-red-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed border border-red-800/60"
+              title={!isAdmin ? 'Requer perfil administrador' : 'Delete all stored impacts from the database'}
+            >
+              {isClearing ? 'Erasing...' : 'Erase All'}
+            </button>
+            <button
+              onClick={startAnalysis}
+              disabled={!isAdmin || status?.isRunning || isStarting}
+              className="px-5 py-2.5 rounded-lg bg-accent-hover text-white text-sm font-semibold hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              title={!isAdmin ? 'Requer perfil administrador' : undefined}
+            >
+              {status?.isRunning ? 'Running...' : isStarting ? 'Starting...' : impacts.length > 0 ? 'Re-run Analysis' : 'Start Full Analysis'}
+            </button>
+          </div>
         </div>
 
         {/* A run that was killed mid-flight (OOM, restart, deploy) leaves no

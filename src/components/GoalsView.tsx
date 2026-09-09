@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import LoadingState from './LoadingState';
+import { useProjectContext } from '@/context/ProjectContext';
 
 interface ProjectGoals {
   id: number;
@@ -125,6 +126,7 @@ const FIELDS = [
 ] as const;
 
 export default function GoalsView() {
+  const { isAdmin } = useProjectContext();
   const [goals, setGoals] = useState<ProjectGoals[]>([]);
   const [status, setStatus] = useState<RunStatus | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -231,9 +233,16 @@ export default function GoalsView() {
             </p>
           </div>
           <div className="flex gap-3">
+            {/* Erase/Run are admin-only server-side (POST /api/goals,
+                middleware.ts) — disabled here too, not hidden, so a basic
+                user sees the feature and why it's unavailable rather than a
+                view that looks like it's missing functionality. Export CSV
+                stays enabled for everyone: it only reads what's already
+                extracted. */}
             <button
               onClick={handleEraseAll}
-              disabled={status?.isRunning}
+              disabled={!isAdmin || status?.isRunning}
+              title={!isAdmin ? 'Requer perfil administrador' : undefined}
               className="px-4 py-2 text-sm bg-red-900/30 text-red-400 border border-red-800 rounded-md hover:bg-red-900/50 transition-colors disabled:opacity-50"
             >
               Erase All
@@ -247,7 +256,8 @@ export default function GoalsView() {
             </button>
             <button
               onClick={startAnalysis}
-              disabled={status?.isRunning}
+              disabled={!isAdmin || status?.isRunning}
+              title={!isAdmin ? 'Requer perfil administrador' : undefined}
               className="px-4 py-2 text-sm bg-accent text-white border border-accent-border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
             >
               {status?.isRunning ? 'Running...' : 'Run Analysis'}
@@ -383,7 +393,8 @@ export default function GoalsView() {
                       <div className="text-center">
                         <button
                           onClick={(e) => handleRunSingle(g.project_id, e)}
-                          disabled={status?.isRunning}
+                          disabled={!isAdmin || status?.isRunning}
+                          title={!isAdmin ? 'Requer perfil administrador' : undefined}
                           className="px-2 py-1 bg-surface-2 text-ink-3 text-xs font-medium rounded hover:bg-surface-3 transition-colors border border-line-strong disabled:opacity-50"
                         >
                           Analyze

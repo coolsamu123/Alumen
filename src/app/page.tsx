@@ -24,7 +24,7 @@ const VIEWS_OK_WHEN_EMPTY: ViewType[] = ['drive', 'goals', 'strom', 'universe'];
 const PUBLIC_VIEWS: ViewType[] = ['graph', 'timeline', 'detail', 'impact', 'universe'];
 
 export default function Home() {
-  const { projects, view, setView, refreshProjects, isLoading, isPublic } = useProjectContext();
+  const { projects, view, setView, refreshProjects, isLoading, isPublic, isAdmin } = useProjectContext();
 
   // Track which views the user has already opened. Once a view is mounted we
   // keep it mounted and just toggle visibility — preserves component state,
@@ -52,6 +52,15 @@ export default function Home() {
     // changes — see comment above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPublic]);
+
+  // Drive Sync is admin-only (every /api/drive/* method requires it
+  // server-side — Header.tsx locks the nav button too). This only catches a
+  // 'drive' view restored from a prior session on mount; a basic user can't
+  // click into it in the first place since Header.tsx disables that button.
+  useEffect(() => {
+    if (!isAdmin && view === 'drive') setView('detail');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin]);
 
   // No projects yet — either the initial fetch is in flight or the DB is empty.
   // Either way, show a soft loading state instead of the deprecated Excel-upload
