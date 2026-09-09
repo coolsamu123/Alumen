@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import ArchitectureCanvas from './canvas';
 import DetailPanel from './panels/DetailPanel';
+import DataFlowLive from '@/components/DataFlowLive';
 import { getStage } from './stages';
 
 export interface StromStats {
@@ -48,11 +49,7 @@ export default function StromArchitecture() {
             )}
           </>
         ) : (
-          <iframe
-            src="/dataflow.html"
-            className="flex-1 border-0"
-            title="Alumen Data Flow"
-          />
+          <DataFlowLive />
         )}
       </div>
     </div>

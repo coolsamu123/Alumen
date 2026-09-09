@@ -26,7 +26,7 @@ Auditoria feita sobre os dois Apps Scripts (`syncProjectFiles` e
 |---|---|---|
 | 0 — Verificações no ambiente AL (§6.1) | ✅ **done — rodada pelo service account**, ver §0.1 | 2026-09-09 |
 | 1 — Leitura: as duas planilhas viram estado no Alumen | ✅ **done — implantado**, via export XLSX (§0.2). Ver §0.3 | 2026-09-09 |
-| 2 — Data Flow ao vivo (só leitura) | ⬜ | — |
+| 2 — Data Flow ao vivo (só leitura) | ✅ **done — implantado**, ver §0.4 | 2026-09-09 |
 | 3 — Fila pela UI, via **arquivo de fila** no Drive (§0.2) | ⬜ | — |
 | 4 — Worker permanente no Apps Script | ⬜ | — |
 | 5 — Acabamento: heartbeat, erros, retry | ⬜ | — |
@@ -224,6 +224,57 @@ Arquivos: `src/lib/upstream-sync.ts` (novo), `db.ts` (as duas tabelas da §4),
   `stale: true` e `readAt: null`, até a primeira leitura fresca chegar (~1 s).
   Verificado reiniciando o processo. Falha de leitura mantém as últimas linhas
   boas e expõe `upstream.error` — nunca derruba o `buildDrivePanelState()`.
+
+---
+
+## 0.4. Resultados da Fase 2 (2026-09-09)
+
+Implementada e implantada. `src/components/DataFlowLive.tsx` substitui o
+`<iframe src="/dataflow.html">`; o arquivo estático foi apagado no mesmo
+commit. Duas visões: **Cadeia** (as 6 etapas com contador ao vivo) e
+**Projetos** (tabela PRJ × 6 etapas, busca + filtro "só ERROR").
+
+### 🐞 Achado durante o teste com usuário básico — corrigido antes de implantar
+
+O primeiro desenho reaproveitava `useDrivePanelStream()` (o hook de
+`DriveView.tsx`, que consome `/api/drive/stream` e `/api/drive/state`). Esses
+dois caminhos estão sob `/api/drive`, que o `middleware.ts` protege
+**por inteiro** para admin — de propósito, porque o Drive Sync é admin-only
+(`PLAN_USER_MANAGEMENT.md`). Testando com um usuário básico real: a Cadeia
+chegava sempre zerada, sem nenhum erro visível — exatamente o tipo de falha
+silenciosa que o §10 deste documento pede pra testar antes de considerar algo
+pronto.
+
+Corrigido com uma rota nova, **`/api/strom/dataflow-state`**, que chama o mesmo
+`buildDrivePanelState()` mas devolve só `{upstream, counts, pipelineRunning}` —
+não o objeto inteiro, que carrega detalhe operacional do Drive Sync
+(`watchRoots`, `syncAll`, `recentRuns`) irrelevante pra quem só está olhando a
+cadeia. Fica sob `/api/strom`, que não é protegido por `middleware.ts` — a
+mesma família de `/api/strom/stats`, já aberta. `DataFlowLive.tsx` faz polling
+próprio de 15 s (o mesmo TTL do cache do upstream) em vez de assinar o SSE do
+Drive Sync.
+
+Consequência boa: a tabela "Projetos" (`/api/strom/dataflow-projects`, criada
+na mesma leva) segue o mesmo princípio — também fora de `/api/drive`, também
+sem exigir admin.
+
+Validado com um usuário básico real antes de implantar: `dataflow-state` e
+`dataflow-projects` voltam 200 com dado de verdade; `/api/drive/state` continua
+403 pro mesmo usuário — o Drive Sync não vazou.
+
+### ℹ️ 305 projetos na tabela "Projetos", 66 no resto do Alumen — esperado
+
+`/api/strom/dataflow-projects` consulta `SELECT DISTINCT project_id FROM
+projects` (a tabela crua) e devolve 305 linhas. `/api/projects` — o que
+Details/Impact/Graph mostram — devolve 66, porque passa por
+`fetchProjectSummariesForViews()`, que dedupe e filtra pela visão curada do
+portfólio (mesma função cuja lógica de "DDS atual" já tinha corrigido um bug
+na Fase 3 de `PLAN_USER_MANAGEMENT.md`).
+
+Não é bug: pra uma tela de diagnóstico de pipeline, ver os 305 — incluindo
+entradas que nunca passaram de "descoberto" — é mais útil do que ver só os 66
+que chegaram à visão curada. Registrado aqui pra não parecer inconsistência
+da próxima vez que alguém comparar os dois números.
 
 ---
 
