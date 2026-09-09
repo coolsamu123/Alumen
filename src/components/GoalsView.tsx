@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import LoadingState from './LoadingState';
 import { useProjectContext } from '@/context/ProjectContext';
+import { ADMIN_ONLY_TITLE } from '@/lib/constants';
 
 interface ProjectGoals {
   id: number;
@@ -242,7 +243,7 @@ export default function GoalsView() {
             <button
               onClick={handleEraseAll}
               disabled={!isAdmin || status?.isRunning}
-              title={!isAdmin ? 'Requer perfil administrador' : undefined}
+              title={!isAdmin ? ADMIN_ONLY_TITLE : undefined}
               className="px-4 py-2 text-sm bg-red-900/30 text-red-400 border border-red-800 rounded-md hover:bg-red-900/50 transition-colors disabled:opacity-50"
             >
               Erase All
@@ -257,7 +258,7 @@ export default function GoalsView() {
             <button
               onClick={startAnalysis}
               disabled={!isAdmin || status?.isRunning}
-              title={!isAdmin ? 'Requer perfil administrador' : undefined}
+              title={!isAdmin ? ADMIN_ONLY_TITLE : undefined}
               className="px-4 py-2 text-sm bg-accent text-white border border-accent-border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
             >
               {status?.isRunning ? 'Running...' : 'Run Analysis'}
@@ -394,7 +395,7 @@ export default function GoalsView() {
                         <button
                           onClick={(e) => handleRunSingle(g.project_id, e)}
                           disabled={!isAdmin || status?.isRunning}
-                          title={!isAdmin ? 'Requer perfil administrador' : undefined}
+                          title={!isAdmin ? ADMIN_ONLY_TITLE : undefined}
                           className="px-2 py-1 bg-surface-2 text-ink-3 text-xs font-medium rounded hover:bg-surface-3 transition-colors border border-line-strong disabled:opacity-50"
                         >
                           Analyze

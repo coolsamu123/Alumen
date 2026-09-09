@@ -2,11 +2,11 @@
 
 import { useMemo, useState, useEffect } from 'react';
 import { useProjectContext } from '@/context/ProjectContext';
-import { getDDSColor, getGateColor, getDecisionColor } from '@/lib/constants';
+import { getDDSColor, getGateColor, getDecisionColor, ADMIN_ONLY_TITLE } from '@/lib/constants';
 import type { CIOOService } from '@/lib/types';
 
 export default function Sidebar() {
-  const { filtered, links, selected, projects, setProjects } = useProjectContext();
+  const { filtered, links, selected, projects, setProjects, isAdmin } = useProjectContext();
   
   const [allServices, setAllServices] = useState<CIOOService[]>([]);
   const [searchService, setSearchService] = useState('');
@@ -25,46 +25,48 @@ export default function Sidebar() {
     return projects.find(p => p.projectId === selected) || null;
   }, [selected, projects]);
 
-  const handleAddService = async (service: CIOOService) => {
+  /**
+   * Optimistic write with rollback. The optimistic half was already here; the
+   * rollback wasn't — a failed request used to leave the edit on screen, so
+   * the change looked saved until the next refresh silently dropped it. That
+   * became reachable the moment basic users existed: POST
+   * /api/projects/:id/services is admin-only (middleware.ts), so for them
+   * every edit would have been a phantom success.
+   */
+  const persistServices = async (updated: CIOOService[]) => {
     if (!selectedProject) return;
-    const currentServices = selectedProject.services || [];
-    if (currentServices.some(s => s.id === service.id)) return;
-    
-    const updated = [...currentServices, service];
-    
-    // Update local state directly to be responsive
-    const updatedProject = { ...selectedProject, services: updated };
-    setProjects(projects.map(p => p.projectId === selectedProject.projectId ? updatedProject : p));
-    
+    const previous = selectedProject.services || [];
+    const withUpdate = { ...selectedProject, services: updated };
+    setProjects(projects.map(p => p.projectId === selectedProject.projectId ? withUpdate : p));
+
+    const rollback = () => {
+      const restored = { ...selectedProject, services: previous };
+      setProjects(projects.map(p => p.projectId === selectedProject.projectId ? restored : p));
+    };
+
     try {
-      await fetch(`/api/projects/${selectedProject.projectId}/services`, {
+      const res = await fetch(`/api/projects/${selectedProject.projectId}/services`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ services: updated })
       });
+      if (!res.ok) rollback();
     } catch {
-      // ignore
+      rollback();
     }
   };
 
-  const handleRemoveService = async (serviceId: string) => {
-    if (!selectedProject) return;
+  const handleAddService = async (service: CIOOService) => {
+    if (!selectedProject || !isAdmin) return;
     const currentServices = selectedProject.services || [];
-    const updated = currentServices.filter(s => s.id !== serviceId);
-    
-    // Update local state directly to be responsive
-    const updatedProject = { ...selectedProject, services: updated };
-    setProjects(projects.map(p => p.projectId === selectedProject.projectId ? updatedProject : p));
-    
-    try {
-      await fetch(`/api/projects/${selectedProject.projectId}/services`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ services: updated })
-      });
-    } catch {
-      // ignore
-    }
+    if (currentServices.some(s => s.id === service.id)) return;
+    await persistServices([...currentServices, service]);
+  };
+
+  const handleRemoveService = async (serviceId: string) => {
+    if (!selectedProject || !isAdmin) return;
+    const currentServices = selectedProject.services || [];
+    await persistServices(currentServices.filter(s => s.id !== serviceId));
   };
 
   const suggestedServices = useMemo(() => {
@@ -170,33 +172,53 @@ export default function Sidebar() {
                     <div className="text-[11px] font-semibold text-ink-2 truncate">{svc.name}</div>
                     <div className="text-[9px] text-ink-4 mt-0.5">{svc.domain} • {svc.owner}</div>
                   </div>
-                  <button onClick={() => handleRemoveService(svc.id)} className="text-red-400 hover:text-red-300 opacity-0 group-hover:opacity-100 px-1" title="Remove">✕</button>
+                  {/* Editing this list writes to an admin-only endpoint, so
+                      non-admins get the list read-only: the remove affordance
+                      stays visible but disabled rather than vanishing. */}
+                  <button
+                    onClick={() => handleRemoveService(svc.id)}
+                    disabled={!isAdmin}
+                    className="text-red-400 hover:text-red-300 opacity-0 group-hover:opacity-100 px-1 disabled:text-ink-muted/60 disabled:cursor-not-allowed"
+                    title={!isAdmin ? ADMIN_ONLY_TITLE : 'Remove'}
+                  >
+                    ✕
+                  </button>
                 </div>
               ))}
             </div>
-            
+
             {/* Search / Add Services */}
             <div className="relative mb-3">
-              <input 
-                type="text" 
-                placeholder="Search or add service..."
+              <input
+                type="text"
+                placeholder={isAdmin ? 'Search or add service...' : 'Search service...'}
                 value={searchService}
                 onChange={e => setSearchService(e.target.value)}
                 className="w-full bg-surface-deep border border-line-strong text-ink-2 rounded px-3 py-2 text-xs focus:outline-none focus:border-accent-border"
               />
             </div>
-            
+
             {/* Suggestions or Search Results */}
             {(searchService ? searchedServices : suggestedServices).length > 0 && (
               <div className="mb-2">
                 <div className="text-[9px] text-ink-muted mb-1.5 uppercase font-semibold tracking-wider">{searchService ? 'SEARCH RESULTS' : 'AI SUGGESTIONS'}</div>
                 {(searchService ? searchedServices : suggestedServices).map((svc) => (
-                  <div key={svc.id} className="flex justify-between items-center border border-line rounded px-2.5 py-2 mb-1.5 bg-surface-1/50 hover:bg-surface-2 transition-colors cursor-pointer" onClick={() => handleAddService(svc)}>
+                  <div
+                    key={svc.id}
+                    className={`flex justify-between items-center border border-line rounded px-2.5 py-2 mb-1.5 bg-surface-1/50 transition-colors ${isAdmin ? 'hover:bg-surface-2 cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
+                    onClick={() => handleAddService(svc)}
+                    title={!isAdmin ? ADMIN_ONLY_TITLE : undefined}
+                  >
                     <div className="flex-1 min-w-0 pr-2">
                       <div className="text-[10px] font-semibold text-ink-3 truncate">{svc.name}</div>
                       <div className="text-[9px] text-ink-muted mt-0.5">{svc.domain}</div>
                     </div>
-                    <button className="text-accent-text2 font-bold text-sm hover:text-accent-text">+</button>
+                    <button
+                      disabled={!isAdmin}
+                      className="text-accent-text2 font-bold text-sm hover:text-accent-text disabled:text-ink-muted/60 disabled:cursor-not-allowed"
+                    >
+                      +
+                    </button>
                   </div>
                 ))}
               </div>

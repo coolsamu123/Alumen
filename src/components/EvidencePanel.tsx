@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { getDDSColor } from '@/lib/constants';
+import { getDDSColor, ADMIN_ONLY_TITLE } from '@/lib/constants';
+import { useProjectContext } from '@/context/ProjectContext';
 import { SourcePopover, type SourceRef } from './SourcePopover';
 
 // ─── Data shapes (mirror /api/impact/project/evidence response) ──────────────
@@ -307,6 +308,7 @@ interface DeepDiveResponse {
 }
 
 export function DeepDiveButton({ projectId, kind, target, compact, hasCachedResult = false }: { projectId: string; kind: DeepDiveKind; target: string; compact: boolean; hasCachedResult?: boolean }) {
+  const { isAdmin } = useProjectContext();
   const [state, setState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [response, setResponse] = useState<DeepDiveResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -380,10 +382,17 @@ export function DeepDiveButton({ projectId, kind, target, compact, hasCachedResu
 
   return (
     <div className="rounded-lg overflow-hidden">
+      {/* Admin-only: /api/impact/project/deep-dive is POST-only — it serves
+          the cached result and generates a missing one through the same
+          endpoint, so there's no read-only path to split off here. The
+          consequence is that a basic user can't view an already-cached deep
+          dive either; splitting the endpoint into GET (cached) + POST
+          (generate) is the follow-up that would fix that. */}
       <button
         onClick={trigger}
-        disabled={state === 'loading'}
-        className={`group w-full flex items-center justify-between gap-3 px-4 py-3 ${compact ? 'text-[12px]' : 'text-[13px]'} font-semibold text-white transition-all duration-200 disabled:cursor-wait ${triggerBg} ${triggerGlow}`}
+        disabled={!isAdmin || state === 'loading'}
+        title={!isAdmin ? ADMIN_ONLY_TITLE : undefined}
+        className={`group w-full flex items-center justify-between gap-3 px-4 py-3 ${compact ? 'text-[12px]' : 'text-[13px]'} font-semibold text-white transition-all duration-200 disabled:cursor-wait disabled:opacity-40 ${triggerBg} ${triggerGlow}`}
       >
         <span className="flex items-center gap-2 min-w-0">
           <span className="text-base shrink-0 inline-block group-hover:scale-110 transition-transform">🔬</span>
@@ -409,14 +418,16 @@ export function DeepDiveButton({ projectId, kind, target, compact, hasCachedResu
         <button
           type="button"
           onClick={regenerate}
-          disabled={!cacheExists || state === 'loading'}
+          disabled={!isAdmin || !cacheExists || state === 'loading'}
           title={
-            !cacheExists
-              ? 'Regenerate will be enabled once a deep dive has been generated and cached.'
-              : 'Force a fresh LLM run and overwrite the cached result.'
+            !isAdmin
+              ? ADMIN_ONLY_TITLE
+              : !cacheExists
+                ? 'Regenerate will be enabled once a deep dive has been generated and cached.'
+                : 'Force a fresh LLM run and overwrite the cached result.'
           }
           className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${
-            !cacheExists || state === 'loading'
+            !isAdmin || !cacheExists || state === 'loading'
               ? 'text-ink-muted/60 cursor-not-allowed'
               : 'text-fuchsia-300 hover:text-fuchsia-200 cursor-pointer'
           }`}

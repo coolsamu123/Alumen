@@ -1,6 +1,7 @@
 'use client';
 
 import { useProjectContext } from '@/context/ProjectContext';
+import { ADMIN_ONLY_TITLE } from '@/lib/constants';
 import type { ViewType } from '@/lib/types';
 
 const NAV_ITEMS: { key: ViewType; label: string }[] = [
@@ -52,7 +53,7 @@ export default function Header() {
             key={key}
             onClick={() => !locked && setView(key)}
             disabled={locked}
-            title={locked ? 'Requer perfil administrador' : undefined}
+            title={locked ? ADMIN_ONLY_TITLE : undefined}
             className={`px-4 py-1.5 rounded-md border text-[13px] font-medium transition-all
               ${locked ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}
               ${view === key
@@ -77,7 +78,7 @@ export default function Header() {
       <div className="w-px h-6 bg-surface-3" />
       <a
         href="/admin"
-        title={isPublic ? 'Sign in required' : !isAdmin ? 'Requer perfil administrador' : 'Admin'}
+        title={isPublic ? 'Sign in required' : !isAdmin ? ADMIN_ONLY_TITLE : 'Admin'}
         className="px-4 py-1.5 rounded-md border border-line-strong text-[13px] font-medium text-ink-4 hover:bg-surface-2 hover:text-ink-2 transition-all"
       >
         {isAdmin ? 'Admin' : '🔒 Admin'}

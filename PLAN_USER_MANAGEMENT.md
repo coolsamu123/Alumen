@@ -19,7 +19,7 @@ Auditoria feita sobre `middleware.ts`, `public-host.ts`, `layout.tsx`,
 | 1 — Identidade | ✅ **done — implantado em produção** | 2026-09-09 |
 | 2 — Escopo | ✅ **done — implantado em produção** | 2026-09-09 |
 | 3 — Gestão | ✅ **done — implantado em produção** | 2026-09-09 |
-| 4 — Acabamento | ✅ **done — implantado em produção** (escopo reduzido, ver §6) | 2026-09-09 |
+| 4 — Acabamento | ✅ **done — implantado em produção** (inclui os itens que ficaram para uma segunda passada) | 2026-09-09 |
 | 5 — Matar modo público | ⬜ não iniciada (deliberadamente por último, §7.1) | — |
 | 6 — Okta | ⬜ bloqueada pela demanda MMS (§8) | — |
 
@@ -425,15 +425,42 @@ a lista do Goals Extractor pra ver o botão desativado.
       pós-restart (66 projetos intactos; `/api/goals` GET externo sem sessão
       = 200; POST continua 401)
 
-**Deixado de fora desta fase, propositalmente** (já protegido no servidor
-desde a Fase 1 — só falta o `disabled` cosmético, sem risco de segurança em
-aberto):
-- `EvidencePanel.tsx` (busca de evidência por citação)
-- `Sidebar.tsx` (adicionar/remover serviço GIO de um projeto — na verdade bate
-  em `/api/projects/[id]/services`, não em `/api/analyze` como o inventário
-  original da §4.2 registrou; correção anotada aqui)
-- `AIAnalysisPanel.tsx` (análise pairwise/cluster via `/api/analyze`)
-- `StromArchitecture/stages.ts` (runners do pipeline demonstrativo do ArchFlow)
+### Segunda passada (2026-09-09, mesma data) — os quatro que tinham ficado
+
+Fechados logo em seguida, todos já protegidos por 403 no servidor desde a
+Fase 1; o que faltava era só o `disabled` cosmético:
+
+- [x] `EvidencePanel.tsx` — botão "Deep dive" + "Regenerate". O endpoint real
+      é `/api/impact/project/deep-dive` (o inventário original da §4.2 dizia
+      `/evidence` — correção anotada).
+- [x] `AIAnalysisPanel.tsx` — pairwise / cluster / "+ Documents"
+- [x] `Sidebar.tsx` — adicionar/remover serviço GIO. O endpoint é
+      `/api/projects/[id]/services` (a §4.2 tinha atribuído a `/api/analyze`
+      por engano — correção anotada).
+- [x] `StromArchitecture/panels/DetailPanel.tsx` — o `TriggerForm` da aba Run
+      do ArchFlow, que dispara `/api/drive/run`, `/api/goals`, `/api/impact` e
+      `/api/impact/project/deep-dive` com body editável. É o controle mais
+      poderoso da aplicação; ficava mostrando um 403 cru pro usuário básico.
+- [x] `ADMIN_ONLY_TITLE` em `constants.ts` — o texto do tooltip estava
+      duplicado como literal em 11 lugares; virou uma constante só.
+
+**Dois achados durante esta passada:**
+
+1. **Bug real no `Sidebar`, corrigido**: a edição de serviços fazia update
+   otimista no estado local *antes* do fetch e engolia o erro (`catch { }`
+   vazio). Sem rollback, uma requisição que falhasse deixava a alteração na
+   tela como se tivesse salvo, até o próximo refresh descartá-la em silêncio.
+   Isso passou a ser alcançável no momento em que usuários básicos existiram
+   (todo edit deles seria um sucesso fantasma). Agora tem rollback em falha —
+   o que também corrige o caso do admin com erro de rede.
+
+2. **Limitação conhecida, não corrigida**: `/api/impact/project/deep-dive` é
+   POST-only e serve tanto o resultado em cache quanto a geração pelo mesmo
+   endpoint. Como consequência, desabilitar o botão para não-admin também
+   impede o usuário básico de **ler** um deep dive já gerado. O conserto certo
+   é separar em `GET` (cache) + `POST` (gerar) — refactor de endpoint, não
+   entrou aqui. Se ler deep dives for importante para o perfil básico, esse é
+   o próximo passo.
 
 `user_id` em `llm_calls`/`impact_runs`/`goals_runs` e tela de sessões ativas
 não entraram nesta rodada — não fazem parte do pedido original (que era

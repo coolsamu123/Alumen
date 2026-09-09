@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useProjectContext } from '@/context/ProjectContext';
-import { getDDSColor } from '@/lib/constants';
+import { getDDSColor, ADMIN_ONLY_TITLE } from '@/lib/constants';
 import LoadingState from './LoadingState';
 import EvidencePanel from './EvidencePanel';
 import type { ProjectImpact, ImpactAnalysisStatus } from '@/lib/types';
@@ -171,7 +171,7 @@ export default function ImpactView() {
               onClick={eraseImpacts}
               disabled={!isAdmin || status?.isRunning || isClearing || (stats?.total ?? impacts.length) === 0}
               className="px-4 py-2.5 rounded-lg bg-red-900/60 text-red-200 text-sm font-semibold hover:bg-red-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed border border-red-800/60"
-              title={!isAdmin ? 'Requer perfil administrador' : 'Delete all stored impacts from the database'}
+              title={!isAdmin ? ADMIN_ONLY_TITLE : 'Delete all stored impacts from the database'}
             >
               {isClearing ? 'Erasing...' : 'Erase All'}
             </button>
@@ -179,7 +179,7 @@ export default function ImpactView() {
               onClick={startAnalysis}
               disabled={!isAdmin || status?.isRunning || isStarting}
               className="px-5 py-2.5 rounded-lg bg-accent-hover text-white text-sm font-semibold hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              title={!isAdmin ? 'Requer perfil administrador' : undefined}
+              title={!isAdmin ? ADMIN_ONLY_TITLE : undefined}
             >
               {status?.isRunning ? 'Running...' : isStarting ? 'Starting...' : impacts.length > 0 ? 'Re-run Analysis' : 'Start Full Analysis'}
             </button>

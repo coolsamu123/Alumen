@@ -107,3 +107,9 @@ export function getGateColor(gate: string): string {
 export function getDecisionColor(decision: string): string {
   return DECISION_COLORS[decision] || '#475569';
 }
+
+// Tooltip on every control that a basic user can see but not use. The
+// server-side 403 (middleware.ts role gate) is the real protection — this is
+// the cosmetic half that tells the user *why* it's greyed out instead of
+// leaving them to guess. See PLAN_USER_MANAGEMENT.md §5.2.
+export const ADMIN_ONLY_TITLE = 'Requer perfil administrador';

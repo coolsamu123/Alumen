@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { getGateColor, getDecisionColor } from '@/lib/constants';
+import { getGateColor, getDecisionColor, ADMIN_ONLY_TITLE } from '@/lib/constants';
 import { useProjectContext } from '@/context/ProjectContext';
 import type { ProjectSummary } from '@/lib/types';
 
@@ -219,7 +219,7 @@ export default function ProjectPlanningPanel({ project, onClose }: { project: Pr
                   <button
                     onClick={() => runGenerate(false)}
                     disabled={!isAdmin || generating}
-                    title={!isAdmin ? 'Requer perfil administrador' : undefined}
+                    title={!isAdmin ? ADMIN_ONLY_TITLE : undefined}
                     className={`w-full flex items-center justify-between gap-3 px-4 py-3 text-[13px] font-semibold text-white transition-all duration-200 disabled:cursor-wait disabled:opacity-40
                       bg-gradient-to-r from-purple-700 via-fuchsia-600 to-cyan-600 hover:from-purple-600 hover:via-fuchsia-500 hover:to-cyan-500
                       ${generating ? 'animate-pulse' : 'shadow-[0_0_18px_rgba(168,85,247,0.45)] hover:shadow-[0_0_24px_rgba(168,85,247,0.7)]'}`}
@@ -253,7 +253,7 @@ export default function ProjectPlanningPanel({ project, onClose }: { project: Pr
                     type="button"
                     onClick={() => runGenerate(true)}
                     disabled={!isAdmin || generating}
-                    title={!isAdmin ? 'Requer perfil administrador' : undefined}
+                    title={!isAdmin ? ADMIN_ONLY_TITLE : undefined}
                     className={`font-bold uppercase tracking-wider transition-colors ${!isAdmin ? 'opacity-40 cursor-not-allowed' : generating ? 'text-ink-muted/60 cursor-wait' : 'text-fuchsia-300 hover:text-fuchsia-200 cursor-pointer'}`}
                   >
                     {generating ? `↻ ${elapsed}s …` : '↻ Regenerate'}

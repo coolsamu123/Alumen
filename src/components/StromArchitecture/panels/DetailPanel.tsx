@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useProjectContext } from '@/context/ProjectContext';
+import { ADMIN_ONLY_TITLE } from '@/lib/constants';
 import type { StageDef } from '../stages';
 import type { StromStats } from '../index';
 import { getSample } from '../samples';
@@ -313,6 +315,7 @@ function RunTab({ stage }: { stage: StageDef }) {
 }
 
 function TriggerForm({ stage }: { stage: StageDef }) {
+  const { isAdmin } = useProjectContext();
   const trigger = stage.trigger!;
   const [body, setBody] = useState(() => trigger.body ? JSON.stringify(trigger.body, null, 2) : '');
   const [running, setRunning] = useState(false);
@@ -354,9 +357,15 @@ function TriggerForm({ stage }: { stage: StageDef }) {
           />
         </div>
       )}
+      {/* This form fires the real pipeline endpoints (/api/drive/run,
+          /api/goals, /api/impact, …) with an editable body — the most
+          powerful control in the app. All of them are admin-only server-side;
+          disabled here so a basic user isn't left decoding a raw 403 in the
+          response box. */}
       <button
         onClick={handleRun}
-        disabled={running}
+        disabled={!isAdmin || running}
+        title={!isAdmin ? ADMIN_ONLY_TITLE : undefined}
         className="w-full px-4 py-2 rounded bg-orange-600 hover:bg-orange-500 text-white text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {running ? 'Calling…' : `▶ ${trigger.label}`}

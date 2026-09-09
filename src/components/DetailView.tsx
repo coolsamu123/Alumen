@@ -1,7 +1,7 @@
 'use client';
 
 import { useProjectContext } from '@/context/ProjectContext';
-import { getDDSColor, getGateColor, getDecisionColor } from '@/lib/constants';
+import { getDDSColor, getGateColor, getDecisionColor, ADMIN_ONLY_TITLE } from '@/lib/constants';
 import ProjectPlanningPanel from './ProjectPlanningPanel';
 import { usePlanAllState, type PerProjectPlanState } from '@/hooks/usePlanAllState';
 
@@ -64,7 +64,7 @@ export default function DetailView() {
               type="button"
               onClick={() => isAdmin && stopPlanAll()}
               disabled={!isAdmin}
-              title={!isAdmin ? 'Requer perfil administrador' : undefined}
+              title={!isAdmin ? ADMIN_ONLY_TITLE : undefined}
               className="px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider bg-red-600/80 hover:bg-red-600 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               ■ Stop
@@ -74,7 +74,7 @@ export default function DetailView() {
               type="button"
               onClick={() => startPlanAll(filtered.map(p => p.projectId))}
               disabled={!isAdmin || filtered.length === 0}
-              title={!isAdmin ? 'Requer perfil administrador' : 'Generates the Project Planning panel (Timeline/Gates/Actions/CAPEX-OPEX) for every project shown below. Syncs Drive documents first when needed. Already-planned projects are near-instant (cached).'}
+              title={!isAdmin ? ADMIN_ONLY_TITLE : 'Generates the Project Planning panel (Timeline/Gates/Actions/CAPEX-OPEX) for every project shown below. Syncs Drive documents first when needed. Already-planned projects are near-instant (cached).'}
               className="px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider text-white transition-colors
                 bg-gradient-to-r from-purple-700 via-fuchsia-600 to-cyan-600 hover:from-purple-600 hover:via-fuchsia-500 hover:to-cyan-500
                 disabled:opacity-40 disabled:cursor-not-allowed"

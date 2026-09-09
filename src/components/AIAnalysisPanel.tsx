@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useProjectContext } from '@/context/ProjectContext';
+import { ADMIN_ONLY_TITLE } from '@/lib/constants';
 import type { ProjectSummary, AnalysisResult } from '@/lib/types';
 
 interface Props {
@@ -10,7 +11,7 @@ interface Props {
 }
 
 export default function AIAnalysisPanel({ project, relatedProjects }: Props) {
-  const { analyzeProjects, analyzeWithDocs } = useProjectContext();
+  const { analyzeProjects, analyzeWithDocs, isAdmin } = useProjectContext();
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,13 +71,16 @@ export default function AIAnalysisPanel({ project, relatedProjects }: Props) {
     <div className="border-t border-line-strong pt-3 mt-1">
       <div className="text-[10px] text-ink-muted font-bold tracking-widest mb-2">AI ANALYSIS (Gemini)</div>
 
-      {/* Action buttons */}
+      {/* Action buttons — each fires a live Gemini call via /api/analyze,
+          which requires admin server-side (middleware.ts). Disabled rather
+          than hidden for non-admins, per PLAN_USER_MANAGEMENT.md §5.2. */}
       <div className="flex flex-wrap gap-1.5 mb-3">
         {relatedProjects.slice(0, 3).map(peer => (
           <button key={peer.projectId}
             onClick={() => handlePairwise(peer)}
-            disabled={isAnalyzing}
-            className="px-2 py-1 rounded text-[10px] bg-accent-soft border border-accent-border/50 text-accent-text hover:bg-accent-soft transition-colors disabled:opacity-50"
+            disabled={!isAdmin || isAnalyzing}
+            title={!isAdmin ? ADMIN_ONLY_TITLE : undefined}
+            className="px-2 py-1 rounded text-[10px] bg-accent-soft border border-accent-border/50 text-accent-text hover:bg-accent-soft transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             vs {peer.projectId.replace('PRJ00', '')}
           </button>
@@ -85,8 +89,9 @@ export default function AIAnalysisPanel({ project, relatedProjects }: Props) {
         {relatedProjects.length > 0 && (
           <button
             onClick={handleCluster}
-            disabled={isAnalyzing}
-            className="px-2 py-1 rounded text-[10px] bg-purple-900/30 border border-purple-700/50 text-purple-300 hover:bg-purple-900/50 transition-colors disabled:opacity-50"
+            disabled={!isAdmin || isAnalyzing}
+            title={!isAdmin ? ADMIN_ONLY_TITLE : undefined}
+            className="px-2 py-1 rounded text-[10px] bg-purple-900/30 border border-purple-700/50 text-purple-300 hover:bg-purple-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Cluster Analysis
           </button>
@@ -95,8 +100,9 @@ export default function AIAnalysisPanel({ project, relatedProjects }: Props) {
         {(project.linkFolder || project.linkPositions) && (
           <button
             onClick={handleDocAnalysis}
-            disabled={isAnalyzing}
-            className="px-2 py-1 rounded text-[10px] bg-green-900/30 border border-green-700/50 text-green-300 hover:bg-green-900/50 transition-colors disabled:opacity-50"
+            disabled={!isAdmin || isAnalyzing}
+            title={!isAdmin ? ADMIN_ONLY_TITLE : undefined}
+            className="px-2 py-1 rounded text-[10px] bg-green-900/30 border border-green-700/50 text-green-300 hover:bg-green-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             + Documents
           </button>
