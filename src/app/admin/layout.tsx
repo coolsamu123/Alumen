@@ -1,11 +1,12 @@
-import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { isAnonymousExternal } from '@/lib/public-host';
+import { getSession } from '@/lib/auth';
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  // Defense-in-depth: src/middleware.ts already returns 401 for unauthed
-  // external clients before this layout runs. The redirect below only fires
-  // if middleware was bypassed or disabled (and never for authed externals).
-  if (isAnonymousExternal(headers())) redirect('/');
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  // Defense-in-depth: src/middleware.ts already redirects/403s non-admins
+  // before this layout runs. This is the same check at the route level, using
+  // the authoritative session (rereads is_active/token_version from SQLite),
+  // so a misconfigured middleware can't expose the admin pages on its own.
+  const session = await getSession();
+  if (session?.role !== 'admin') redirect('/');
   return <>{children}</>;
 }

@@ -28,7 +28,7 @@ const NAV_ITEMS: { key: ViewType; label: string }[] = [
 const ADMIN_ONLY_VIEWS = new Set<ViewType>(['drive']);
 
 export default function Header() {
-  const { view, setView, isPublic, isAdmin, theme, toggleTheme } = useProjectContext();
+  const { view, setView, isAdmin, theme, toggleTheme } = useProjectContext();
   const navItems = NAV_ITEMS;
 
   return (
@@ -78,7 +78,7 @@ export default function Header() {
       <div className="w-px h-6 bg-surface-3" />
       <a
         href="/admin"
-        title={isPublic ? 'Sign in required' : !isAdmin ? ADMIN_ONLY_TITLE : 'Admin'}
+        title={isAdmin ? 'Admin' : ADMIN_ONLY_TITLE}
         className="px-4 py-1.5 rounded-md border border-line-strong text-[13px] font-medium text-ink-4 hover:bg-surface-2 hover:text-ink-2 transition-all"
       >
         {isAdmin ? 'Admin' : '🔒 Admin'}

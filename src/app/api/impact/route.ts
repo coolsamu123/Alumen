@@ -6,21 +6,18 @@ import {
   aggregateImpacts,
   clearAllImpacts,
 } from '@/lib/impact-engine';
-import { isAnonymousExternal } from '@/lib/public-host';
-import { getSession } from '@/lib/auth';
+import { getSession, requireAdmin, isSessionError } from '@/lib/auth';
 import { getVisibleProjectIds, isImpactEndpointVisible } from '@/lib/access';
 
 // Destructive / expensive actions (start a Gemini run, wipe stored impacts)
-// must not be triggerable from the public hostname unless the caller has
-// passed the Basic Auth challenge in src/middleware.ts. Anonymous external
-// callers are rejected; authed externals and localhost go through. Read-only
-// "status" (GET below) stays open to everyone.
-function rejectFromPublic(request: NextRequest): NextResponse | null {
-  if (isAnonymousExternal(request.headers)) {
-    return NextResponse.json(
-      { error: 'This action is not available on the public endpoint.' },
-      { status: 403 },
-    );
+// require an admin. src/middleware.ts already gates POST /api/impact on that;
+// this is the same check at the route level, using the authoritative session
+// (rereads is_active/token_version from SQLite). Read-only "status" stays
+// available to any signed-in user.
+async function rejectNonAdmin(): Promise<NextResponse | null> {
+  const session = await requireAdmin();
+  if (isSessionError(session)) {
+    return NextResponse.json({ error: session.error }, { status: session.status });
   }
   return null;
 }
@@ -105,7 +102,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'clear') {
-      const blocked = rejectFromPublic(request);
+      const blocked = await rejectNonAdmin();
       if (blocked) return blocked;
       const status = getImpactStatus();
       if (status.isRunning) {
@@ -123,7 +120,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'start') {
-      const blocked = rejectFromPublic(request);
+      const blocked = await rejectNonAdmin();
       if (blocked) return blocked;
       const status = getImpactStatus();
       if (status.isRunning) {

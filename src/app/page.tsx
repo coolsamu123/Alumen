@@ -18,13 +18,9 @@ import type { ViewType } from '@/lib/types';
 
 const TOOLBAR_VIEWS: ViewType[] = ['graph', 'timeline', 'detail', 'impact'];
 const VIEWS_OK_WHEN_EMPTY: ViewType[] = ['drive', 'goals', 'strom', 'universe'];
-// 'universe' is opened by clicking a card in Impact view, so public hosts must
-// be allowed to render it — otherwise the click triggers a forced redirect back
-// to 'detail'.
-const PUBLIC_VIEWS: ViewType[] = ['graph', 'timeline', 'detail', 'impact', 'universe'];
 
 export default function Home() {
-  const { projects, view, setView, refreshProjects, isLoading, isPublic, isAdmin } = useProjectContext();
+  const { projects, view, setView, refreshProjects, isLoading, isAdmin } = useProjectContext();
 
   // Track which views the user has already opened. Once a view is mounted we
   // keep it mounted and just toggle visibility — preserves component state,
@@ -38,20 +34,6 @@ export default function Home() {
   useEffect(() => {
     setVisited(prev => (prev.has(view) ? prev : new Set(prev).add(view)));
   }, [view]);
-
-  // Public hosts can't reach Drive Sync / Goals / Strom / Universe without
-  // first passing the Basic Auth challenge in src/middleware.ts. We only bounce
-  // back to Details on initial mount (e.g. a stale localStorage view from a
-  // previous authed session); subsequent clicks on protected nav items are
-  // allowed through so the protected view's data fetch triggers the browser's
-  // native password prompt — that's the user-facing "click Admin / Drive Sync
-  // → password dialog" flow.
-  useEffect(() => {
-    if (isPublic && !PUBLIC_VIEWS.includes(view)) setView('detail');
-    // Intentional: only react to isPublic flipping, not to subsequent view
-    // changes — see comment above.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPublic]);
 
   // Drive Sync is admin-only (every /api/drive/* method requires it
   // server-side — Header.tsx locks the nav button too). This only catches a
@@ -72,7 +54,7 @@ export default function Home() {
         <Header />
         <div className="flex-1 flex flex-col items-center justify-center gap-3 text-ink-4">
           <LoadingState label={isLoading ? 'Carregando…' : 'Sem dados ainda'} />
-          {!isLoading && !isPublic && (
+          {!isLoading && isAdmin && (
             <button
               onClick={() => setView('drive')}
               className="text-xs text-accent-text2 hover:underline -mt-12"

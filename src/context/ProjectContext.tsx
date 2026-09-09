@@ -49,22 +49,14 @@ interface ProjectContextType {
   // Analysis cache
   analysisResults: Map<string, AnalysisResult>;
 
-  // True when the request came from a host classified as "public" (e.g. the
-  // Cloudflare tunnel). Public mode hides admin-only views (Goals, Drive Sync,
-  // Strom, Universe). Determined server-side from the Host header.
-  isPublic: boolean;
-
-  // Session role, or null for anonymous / local access. Drives Fase 4's
-  // admin-only button disabling — distinct from isPublic, which can't tell
-  // an authenticated 'basic' user apart from an authenticated admin.
+  // Session role of the logged-in user. Login is required for every page
+  // (middleware.ts, Fase 5), so this is null only while rendering /login.
   role: 'admin' | 'basic' | null;
-  // Precomputed server-side: role === 'admin', OR the request came in on the
-  // local/SSH bypass (see layout.tsx) which already has unrestricted API
-  // access today regardless of session. Use this, not `role`, to decide
-  // whether to disable a write button.
+  // role === 'admin'. Use this to decide whether to disable a write control;
+  // the server-side 403 is the actual protection.
   isAdmin: boolean;
 
-  // Color theme — available to every user (public + admin). Persisted in
+  // Color theme — available to every role. Persisted in
   // localStorage; initial value comes from the inline anti-flash script in
   // layout.tsx so React hydration matches the painted DOM.
   theme: 'light' | 'dark';
@@ -76,12 +68,10 @@ const ProjectContext = createContext<ProjectContextType | null>(null);
 
 export function ProjectProvider({
   children,
-  isPublic = false,
   role = null,
   isAdmin = false,
 }: {
   children: ReactNode;
-  isPublic?: boolean;
   role?: 'admin' | 'basic' | null;
   isAdmin?: boolean;
 }) {
@@ -306,7 +296,7 @@ export function ProjectProvider({
       threshold, setThreshold, filters, setFilters,
       filtered, filteredWithSignal, uploadFile, refreshProjects,
       analyzeProjects, analyzeWithDocs, analysisResults,
-      isPublic, role, isAdmin,
+      role, isAdmin,
       theme, setTheme, toggleTheme,
     }}>
       {children}

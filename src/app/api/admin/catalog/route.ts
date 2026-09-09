@@ -11,22 +11,24 @@ import {
   writeCatalogEntry,
   isCanonicalTarget,
 } from '@/lib/target-catalog';
-import { isAnonymousExternal } from '@/lib/public-host';
+import { requireAdmin, isSessionError } from '@/lib/auth';
 
 const ROLE_SET = new Set<string>(TARGET_ROLES);
 
-// Defense-in-depth: src/middleware.ts already 401s anonymous external requests
-// before this route runs. This guard is the same check expressed at the route
-// level so a misconfigured middleware can't accidentally expose the API.
-function guard(request: NextRequest): NextResponse | null {
-  if (isAnonymousExternal(request.headers)) {
-    return NextResponse.json({ error: 'Not available' }, { status: 404 });
+// Defense-in-depth: src/middleware.ts already gates /api/admin/* on an admin
+// session before this route runs. This is the same check at the route level,
+// using the authoritative session (rereads is_active/token_version from
+// SQLite), so a misconfigured middleware can't expose the API on its own.
+async function guard(): Promise<NextResponse | null> {
+  const session = await requireAdmin();
+  if (isSessionError(session)) {
+    return NextResponse.json({ error: session.error }, { status: session.status });
   }
   return null;
 }
 
-export async function GET(request: NextRequest) {
-  const blocked = guard(request);
+export async function GET() {
+  const blocked = await guard();
   if (blocked) return blocked;
 
   reloadCatalog();
@@ -45,7 +47,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const blocked = guard(request);
+  const blocked = await guard();
   if (blocked) return blocked;
 
   try {

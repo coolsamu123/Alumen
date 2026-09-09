@@ -20,7 +20,7 @@ Auditoria feita sobre `middleware.ts`, `public-host.ts`, `layout.tsx`,
 | 2 — Escopo | ✅ **done — implantado em produção** | 2026-09-09 |
 | 3 — Gestão | ✅ **done — implantado em produção** | 2026-09-09 |
 | 4 — Acabamento | ✅ **done — implantado em produção** (inclui os itens que ficaram para uma segunda passada) | 2026-09-09 |
-| 5 — Matar modo público | ⬜ não iniciada (deliberadamente por último, §7.1) | — |
+| 5 — Matar modo público | ✅ **done — implantado em produção**; fechou um bypass de autenticação real (§6) | 2026-09-09 |
 | 6 — Okta | ⬜ bloqueada pela demanda MMS (§8) | — |
 
 Ver §6 para o detalhamento marcado item a item de cada fase.
@@ -131,10 +131,12 @@ lado de fora. Precisa de:
   como break-glass.
 - Seed automático no primeiro boot a partir do `ADMIN_BASIC_AUTH` que já existe
   no `.env.local`, para a migração não exigir intervenção.
-- Decidir o que acontece com acesso local: hoje `localhost` nunca é desafiado
-  (`middleware.ts:107`). Manter esse bypass é conveniente para operação por SSH,
-  mas significa que quem tem shell na máquina é admin de fato — o que já é
-  verdade hoje, já que o banco está no disco.
+- ~~Decidir o que acontece com acesso local: hoje `localhost` nunca é
+  desafiado.~~ **Resolvido na Fase 5 (§6): o bypass local foi removido junto
+  com o gate por `Host`** — eram a mesma checagem, e ela era um bypass de
+  autenticação explorável da internet. Login agora vale para todo mundo,
+  inclusive localhost. Operação pela máquina usa o `create-admin.mjs`, que
+  escreve direto no SQLite.
 
 ---
 
@@ -468,10 +470,80 @@ especificamente sobre os dois papéis e os botões de execução) e não têm
 pendência de segurança associada. Ficam como trabalho futuro se você quiser
 atribuição de custo por usuário.
 
-**Fase 5 — Matar o modo público.** Remover `PUBLIC_VIEWS` (`page.tsx:24`),
-`isAnonymousExternal` e o gate por `Host` do `public-host.ts`. Login passa a ser
-obrigatório em tudo. Só depois das fases 1-4 estarem de pé, com um admin válido
-testado — é o passo sem volta.
+**Fase 5 — Matar o modo público. ✅ done (2026-09-09), implantada.**
+
+> ⚠️ **Esta fase não era só limpeza: ela fechou um bypass de autenticação
+> explorável da internet.** Detalhes abaixo — vale ler antes do resto.
+
+### O que foi encontrado
+
+O gate `isPublicHost(host)` decidia quem precisava autenticar comparando o
+header **`Host`** com `PUBLIC_HOSTS=amazonaws.com`. Quem não casasse era
+tratado como "acesso local" e **pulava a autenticação inteira**.
+
+Só que o `Host` é escolhido por quem faz a requisição, e o nginx (`listen 80
+default_server`, `server_name _`, `proxy_set_header Host $host`) repassa o que
+receber. Ou seja:
+
+```
+curl -H "Host: qualquer-coisa" http://<ip-público>/api/admin/config   → 200
+curl -H "Host: qualquer-coisa" http://<ip-público>/admin              → 200
+```
+
+Medido contra a produção antes de mexer. Bastava também **acessar pelo IP** em
+vez do nome DNS (o navegador manda `Host: 51.20.184.90`, que não contém
+`amazonaws.com`) para cair no mesmo caminho sem querer.
+
+**Alcance:** tudo que dependia só do middleware — `/admin`, `/admin/catalog`,
+`/api/admin/*` (incluindo `config`, que lê/escreve a chave do Gemini),
+`/api/drive/*`, `/api/prompts`, `/api/auto-discovery/*`, além dos POSTs de
+`/api/impact` e `/api/goals`. As rotas da Fase 3 (`/api/admin/users*`) já
+estavam protegidas, porque chamam `requireAdmin()` no próprio handler — foi o
+que mostrou o contraste durante o diagnóstico.
+
+**Origem:** não veio da Fase 1. O mesmo gate por `Host` já existia guardando o
+Basic Auth anterior — a Fase 1 preservou o desenho ao trocar o mecanismo. O
+bypass é tão antigo quanto o gate.
+
+**Lição que fica:** um controle de acesso não pode se apoiar em cabeçalho
+controlado pelo cliente. "Host local" não é uma propriedade verificável a
+partir do `Host`.
+
+### O que foi feito
+
+- [x] `middleware.ts` reescrito: sem gate por `Host`. Sessão obrigatória em
+      tudo, com `PUBLIC_PATHS` mínimo (`/login`, `/api/auth/login`,
+      `/api/auth/logout`) — senão ninguém consegue entrar. Rota protegida +
+      sessão não-admin → 403.
+- [x] `src/lib/public-host.ts` **deletado** (`isPublicHost`,
+      `isAnonymousExternal`, `isAuthedExternal`, `AUTHED_HEADER`). `PUBLIC_HOSTS`
+      no `.env.local` ficou sem uso.
+- [x] `isPublic` removido de ponta a ponta: `layout.tsx`, `ProjectContext`,
+      `page.tsx` (incluindo `PUBLIC_VIEWS` e o efeito de redirect), `Header.tsx`
+- [x] `layout.tsx`: `isAdmin` agora é só `role === 'admin'` — o bypass local
+      que ele espelhava deixou de existir
+- [x] `admin/layout.tsx`, `/api/admin/catalog`, `/api/impact`: os guards que
+      usavam `isAnonymousExternal` passaram a usar `requireAdmin()` /
+      `getSession()`, que releem `is_active`/`token_version` do banco
+- [x] `npm run build` limpo
+- [x] Testado num servidor temporário e **reconfirmado em produção após o
+      deploy**: `Host` forjado (IP, string arbitrária, localhost) agora dá 307
+      para `/login` e 401 nas APIs; `/login` continua aberto; login → admin vê
+      tudo, basic recebe 403 em `/admin`, `/admin/users`, `/api/admin/config` e
+      `/api/drive/state`; logout derruba o acesso e o redirect preserva o
+      destino (`/login?next=%2Fadmin%2Fusers`). Usuário de teste removido.
+- [x] Implantado — 66 projetos e custo total intactos, sem erro no journal
+
+### Consequência operacional
+
+**O bypass local acabou junto** — era o mesmo mecanismo. Acesso por
+`localhost`/SSH também exige login agora. Isso resolve a pergunta que a §2.4
+deixou em aberto, e resolve para o lado seguro: não havia como manter o
+bypass local sem manter o buraco, porque os dois eram a mesma checagem de
+`Host`.
+
+Quem opera pela máquina continua com o `scripts/create-admin.mjs`, que escreve
+direto no SQLite sem passar por HTTP — é o break-glass e não depende de sessão.
 
 **Fase 6 — Okta (quando a demanda MMS sair).** Rota ACS + biblioteca SAML,
 `auth_provider='okta'` nas contas, e a rota de login local vira fallback de
