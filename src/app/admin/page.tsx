@@ -366,6 +366,41 @@ export default function AdminPage() {
           <div style={{ fontSize: 18, color: 'var(--ink-faint)' }}>→</div>
         </a>
 
+        {/* User Management */}
+        <a
+          href="/admin/users"
+          style={{
+            ...panelStyle,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 16,
+            textDecoration: 'none',
+            color: 'inherit',
+            transition: 'border-color 0.15s ease',
+          }}
+        >
+          <div style={{
+            width: 44,
+            height: 44,
+            borderRadius: 10,
+            background: 'linear-gradient(135deg, #0284c744, #16a34a44)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 22,
+            flexShrink: 0,
+          }}>
+            👤
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink-1)' }}>User Management</div>
+            <div style={{ fontSize: 13, color: 'var(--ink-muted)', marginTop: 2 }}>
+              Create accounts, grant admin, and scope basic users to specific DDS or projects.
+            </div>
+          </div>
+          <div style={{ fontSize: 18, color: 'var(--ink-faint)' }}>→</div>
+        </a>
+
         {/* Gemini Configuration */}
         <div style={panelStyle}>
           <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink-1)', marginBottom: 4 }}>Gemini Configuration</div>

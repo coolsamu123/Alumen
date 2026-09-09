@@ -18,7 +18,7 @@ Auditoria feita sobre `middleware.ts`, `public-host.ts`, `layout.tsx`,
 |---|---|---|
 | 1 — Identidade | ✅ **done — implantado em produção** | 2026-09-09 |
 | 2 — Escopo | ✅ **done — implantado em produção** | 2026-09-09 |
-| 3 — Gestão | ⬜ não iniciada | — |
+| 3 — Gestão | ✅ **done — implantado em produção** | 2026-09-09 |
 | 4 — Acabamento | ⬜ não iniciada | — |
 | 5 — Matar modo público | ⬜ não iniciada (deliberadamente por último, §7.1) | — |
 | 6 — Okta | ⬜ bloqueada pela demanda MMS (§8) | — |
@@ -342,7 +342,42 @@ senha. Um segundo usuário de teste criado durante a verificação
 - [x] Implantado — `npm run build && systemctl restart alumen`, validado pós-
       restart (66 projetos, leitura pública externa continua sem exigir login)
 
-**Fase 3 — Gestão.** `/admin/users` completo, com preview de contagem.
+**Fase 3 — Gestão. ✅ done (2026-09-09), implantada.**
+
+- [x] `GET/POST /api/admin/users` — listagem (com `visibleCount` já calculado)
+      e criação; `password_hash` nunca sai na resposta
+- [x] `PATCH/DELETE /api/admin/users/[id]` — trocar role, ativar/desativar,
+      resetar senha, remover; todas bumpam `token_version` (revogação
+      imediata de sessão)
+- [x] `PUT /api/admin/users/[id]/scopes` — substitui o conjunto de escopo
+      inteiro, retorna `visibleCount` atualizado
+- [x] Guard do último admin (`wouldRemoveLastAdmin`) — bloqueia rebaixar,
+      desativar ou remover o único admin ativo restante
+- [x] Tela `/admin/users` — listar, criar, trocar role, (des)ativar, resetar
+      senha, remover, e um editor de escopo por usuário (checkboxes de DDS +
+      busca de projeto avulso) com **prévia calculada no cliente** (sem
+      round-trip) a partir da lista de projetos já carregada
+- [x] Link a partir de `/admin` (card "User Management", mesmo padrão visual
+      do card "Target Catalog")
+- [x] **Bug pego e corrigido antes de implantar**: a resolução de escopo por
+      DDS batia direto na tabela `projects` crua (uma linha por revisão
+      histórica) — um projeto cujo DDS mudou entre revisões contava pelo DDS
+      *antigo*, inflando a contagem (28 em vez de 13 para GIO no teste). Corrigido
+      reaproveitando `fetchProjectSummariesForViews()` — a mesma fonte que
+      `/api/projects` já usa, que resolve "DDS atual" como o da revisão mais
+      recente (`impact-engine.ts`, `latestByReview`).
+- [x] `npm run build` limpo
+- [x] Testado ponta a ponta num servidor temporário antes de implantar: 401 sem
+      sessão, criação de usuário basic, grant de escopo DDS=GIO →
+      `visibleCount: 13` (confirmado também pelo próprio login do usuário
+      testado), desativar → login falha, resetar senha → sessão antiga é
+      revogada na hora (`/api/auth/me` volta `null`), remover → sucesso. O
+      guard do último admin foi validado à parte, numa base SQLite descartável
+      em memória (4 cenários), para não arriscar as contas admin reais.
+      Usuário e escopo de teste removidos do banco antes do deploy.
+- [x] Implantado — `npm run build && systemctl restart alumen`, validado
+      pós-restart (66 projetos intactos, `/admin/users` externo sem sessão
+      redireciona para `/login`)
 
 **Fase 4 — Acabamento.** Botões desativados + 403 correspondente, `user_id` em
 `llm_calls` / `impact_runs` / `goals_runs` (atribuição de custo por usuário,
