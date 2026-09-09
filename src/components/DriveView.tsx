@@ -7,9 +7,13 @@ import type { ProjectSyncStatus } from '@/lib/drive-sync-all';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
+type ProjectSource = 'excel' | 'drive' | 'initiative';
+
 interface ExplorerRow {
   projectId: string;
   name: string;
+  source: ProjectSource;
+  missingSince: string | null;
   dds: string;
   gate: string;
   filesDownloaded: number;
@@ -33,10 +37,33 @@ interface ColumnFilters {
   impacts: 'any' | 'with' | 'without';
   drive:   'any' | 'yes' | 'no';
   local:   'any' | 'yes' | 'no';
+  source:  'any' | ProjectSource;
 }
 const EMPTY_FILTERS: ColumnFilters = {
   projectId: '', name: '', dds: 'any', gate: 'any',
   files: 'any', goals: 'any', impacts: 'any', drive: 'any', local: 'any',
+  source: 'any',
+};
+
+// Provenance is the one column that says whether a row is governed portfolio or
+// something the app found on its own. Without it an initiative — which has no
+// gate, DDS or cost — reads as a badly-filled project.
+const SOURCE_BADGE: Record<ProjectSource, { label: string; title: string; className: string }> = {
+  excel: {
+    label: 'CDIO',
+    title: 'From the CDIO sheet',
+    className: 'bg-surface-2 text-ink-4',
+  },
+  drive: {
+    label: 'Drive',
+    title: 'PRJ folder found in Drive with no row in the CDIO sheet',
+    className: 'bg-blue-900/40 text-blue-300',
+  },
+  initiative: {
+    label: 'Iniciativa',
+    title: 'Drive folder with documents but no CDIO project',
+    className: 'bg-amber-900/40 text-amber-300',
+  },
 };
 
 // ─── Hook: SSE-driven panel state ───────────────────────────────────────────
@@ -259,7 +286,7 @@ function Stat({ label, value, tone }: { label: string; value: number | undefined
 function SourcesSection({ state }: { state: DrivePanelState | null }) {
   return (
     <div className="space-y-3">
-      <CollapsibleCard title="Add a Drive source" subtitle="Discover a new project or attach a link to an existing one">
+      <CollapsibleCard title="Add a Drive source" subtitle="Descobrir projetos PRJ, ou registrar uma raiz de iniciativas">
         <AddSource />
       </CollapsibleCard>
 
@@ -301,13 +328,28 @@ function CollapsibleCard({ title, subtitle, defaultOpen = false, children }: {
 }
 
 // ─── Add a Drive source ─────────────────────────────────────────────────────
-// Single unified flow. The engine scans the URL for PRJxxxxx subfolders and,
-// for each one found, either appends the Drive link to the existing project
-// (if the PRJ code already exists in `projects`) or creates a new row.
+// Two flows behind one form, because the two roots are scanned differently:
+//
+//   projects    — recurse the URL looking for PRJxxxxx subfolder names, then
+//                 link or create the matching project.
+//   initiatives — every DIRECT subfolder is one initiative, whatever it is
+//                 called. The root is remembered so later additions to it are
+//                 picked up, and the internal INI code is allocated here.
+
+type SourceMode = 'projects' | 'initiatives';
+
+interface InitiativeResult {
+  created:  { projectId: string; folderName: string }[];
+  seen:     { projectId: string; folderName: string }[];
+  renamed:  { projectId: string; folderName: string }[];
+  returned: { projectId: string; folderName: string }[];
+  missing:  { projectId: string; folderName: string }[];
+}
 
 function AddSource() {
   const { refreshProjects } = useProjectContext();
   const [url, setUrl] = useState('');
+  const [mode, setMode] = useState<SourceMode>('projects');
   const [state, setState] = useState<'idle'|'busy'|'ok'|'err'>('idle');
   const [result, setResult] = useState<{
     created: { projectId: string; name: string }[];
@@ -315,25 +357,39 @@ function AddSource() {
     unmatched: { folderName: string; extracted: string }[];
     scannedFolders: number;
   } | null>(null);
+  const [iniResult, setIniResult] = useState<InitiativeResult | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
 
   const submit = async () => {
     if (!url.trim()) return;
-    setState('busy'); setResult(null); setErrorMsg('');
+    setState('busy'); setResult(null); setIniResult(null); setErrorMsg('');
     try {
       const res = await fetch('/api/drive', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'discover', url: url.trim() }),
+        body: JSON.stringify({
+          action: mode === 'initiatives' ? 'discover_initiatives' : 'discover',
+          url: url.trim(),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
-      setResult({
-        created:        data.created   || [],
-        linked:         data.linked    || [],
-        unmatched:      data.unmatched || [],
-        scannedFolders: data.scannedFolders ?? 0,
-      });
+      if (mode === 'initiatives') {
+        setIniResult({
+          created:  data.created  || [],
+          seen:     data.seen     || [],
+          renamed:  data.renamed  || [],
+          returned: data.returned || [],
+          missing:  data.missing  || [],
+        });
+      } else {
+        setResult({
+          created:        data.created   || [],
+          linked:         data.linked    || [],
+          unmatched:      data.unmatched || [],
+          scannedFolders: data.scannedFolders ?? 0,
+        });
+      }
       setState('ok');
       setUrl('');
       refreshProjects();
@@ -354,10 +410,36 @@ function AddSource() {
 
   return (
     <div className="pt-3">
+      <div className="flex gap-1 mb-3">
+        {([
+          { value: 'projects'    as SourceMode, label: 'Projetos (PRJ)' },
+          { value: 'initiatives' as SourceMode, label: 'Iniciativas' },
+        ]).map(opt => (
+          <button
+            key={opt.value}
+            onClick={() => { setMode(opt.value); setState('idle'); setResult(null); setIniResult(null); }}
+            className={`px-3 py-1 rounded text-xs font-semibold ${
+              mode === opt.value
+                ? 'bg-purple-700 text-white'
+                : 'bg-surface-2 text-ink-3 hover:bg-surface-3'
+            }`}
+          >{opt.label}</button>
+        ))}
+      </div>
       <p className="text-xs text-ink-muted mb-3">
-        Paste a Drive folder URL — the engine scans subfolders for any name containing{' '}
-        <code className="text-ink-3">PRJ</code>. Existing projects get the link attached;
-        unknown PRJ codes are created as new entries.
+        {mode === 'projects' ? (
+          <>
+            Paste a Drive folder URL — the engine scans subfolders for any name containing{' '}
+            <code className="text-ink-3">PRJ</code>. Existing projects get the link attached;
+            unknown PRJ codes are created as new entries.
+          </>
+        ) : (
+          <>
+            Cole a URL da pasta-mãe de iniciativas. Cada subpasta <strong>direta</strong> vira
+            uma iniciativa, com o nome que a equipe deu — não há convenção a seguir. A pasta
+            fica registrada, então subpastas e documentos adicionados depois entram sozinhos.
+          </>
+        )}
       </p>
       <div className="flex gap-2">
         <input
@@ -379,6 +461,45 @@ function AddSource() {
 
       {state === 'err' && (
         <div className="mt-2 text-xs text-red-400">{errorMsg}</div>
+      )}
+
+      {state === 'ok' && iniResult && (
+        <div className="mt-3 space-y-2 text-xs">
+          <div className="text-ink-muted">
+            {iniResult.created.length + iniResult.seen.length + iniResult.renamed.length} pasta(s) de
+            iniciativa · {iniResult.created.length} nova(s)
+          </div>
+          {iniResult.created.length + iniResult.seen.length + iniResult.renamed.length === 0 && (
+            <div className="text-ink-4 italic">Nenhuma subpasta direta encontrada nessa raiz.</div>
+          )}
+          {iniResult.created.length > 0 && (
+            <div>
+              <span className="text-green-400 font-semibold">+ {iniResult.created.length} nova(s):</span>{' '}
+              <span className="text-ink-3">
+                {iniResult.created.slice(0, 8).map(i => (
+                  <span key={i.projectId} className="inline-block mr-2 mb-1">
+                    <span className="font-mono text-ink-4">{i.projectId}</span> {i.folderName}
+                  </span>
+                ))}
+              </span>
+            </div>
+          )}
+          {iniResult.renamed.length > 0 && (
+            <div className="text-ink-4">
+              {iniResult.renamed.length} pasta(s) renomeada(s) — nome atualizado, iniciativa preservada
+            </div>
+          )}
+          {iniResult.returned.length > 0 && (
+            <div className="text-accent-text2">
+              {iniResult.returned.length} pasta(s) reapareceram no Drive
+            </div>
+          )}
+          {iniResult.missing.length > 0 && (
+            <div className="text-yellow-400">
+              ⚠ {iniResult.missing.length} iniciativa(s) não estão mais no Drive — marcadas, não apagadas
+            </div>
+          )}
+        </div>
       )}
 
       {state === 'ok' && result && (
@@ -657,6 +778,7 @@ function ProjectExplorer({
     if (filters.drive   === 'no')      out = out.filter(r => !r.linkFolder);
     if (filters.local   === 'yes')     out = out.filter(r => !!r.localPath);
     if (filters.local   === 'no')      out = out.filter(r => !r.localPath);
+    if (filters.source  !== 'any')     out = out.filter(r => r.source === filters.source);
 
     const dir = sort.dir === 'asc' ? 1 : -1;
     // For hasGoals (boolean), coerce to number for stable sort.
@@ -749,6 +871,14 @@ function ProjectExplorer({
                 filter={<FilterInput value={filters.projectId} onChange={v => updateFilter('projectId', v)} placeholder="PRJ…" />} />
               <ColumnHeader label="Name"    col="name"            sort={sort} onSort={toggleSort}
                 filter={<FilterInput value={filters.name} onChange={v => updateFilter('name', v)} placeholder="name…" />} />
+              <ColumnHeader label="Origem"  col="source"          sort={sort} onSort={toggleSort}
+                filter={<FilterSelect value={filters.source} onChange={v => updateFilter('source', v as ColumnFilters['source'])}
+                  options={[
+                    { value: 'any', label: 'All' },
+                    { value: 'excel', label: 'CDIO' },
+                    { value: 'drive', label: 'Drive' },
+                    { value: 'initiative', label: 'Iniciativa' },
+                  ]} />} />
               <ColumnHeader label="DDS"     col="dds"             sort={sort} onSort={toggleSort}
                 filter={<FilterSelect value={filters.dds} onChange={v => updateFilter('dds', v)}
                   options={[{ value: 'any', label: 'All' }, ...ddsValues.map(v => ({ value: v, label: v }))]} />} />
@@ -775,10 +905,10 @@ function ProjectExplorer({
           </thead>
           <tbody className="divide-y divide-line/60">
             {loading && rows === null && (
-              <tr><td colSpan={10} className="px-5 py-6 text-center text-ink-muted text-xs">Carregando…</td></tr>
+              <tr><td colSpan={11} className="px-5 py-6 text-center text-ink-muted text-xs">Carregando…</td></tr>
             )}
             {!loading && visible.length === 0 && rows !== null && (
-              <tr><td colSpan={10} className="px-5 py-6 text-center text-ink-muted text-xs italic">No matches.</td></tr>
+              <tr><td colSpan={11} className="px-5 py-6 text-center text-ink-muted text-xs italic">No matches.</td></tr>
             )}
             {visible.map(r => {
               const ps = syncAll?.perProject[r.projectId];
@@ -821,6 +951,22 @@ function ProjectExplorer({
                   </span>
                 </td>
                 <td className="px-2 py-1.5 text-ink-3 max-w-xs truncate" title={r.name}>{r.name || '—'}</td>
+                <td className="px-2 py-1.5 whitespace-nowrap">
+                  <span
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${SOURCE_BADGE[r.source].className}`}
+                    title={SOURCE_BADGE[r.source].title}
+                  >
+                    {SOURCE_BADGE[r.source].label}
+                  </span>
+                  {r.missingSince && (
+                    <span
+                      className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-900/40 text-red-300"
+                      title={`Folder no longer in Drive since ${r.missingSince}. Kept: its goals and impact edges are still valid.`}
+                    >
+                      fora do Drive
+                    </span>
+                  )}
+                </td>
                 <td className="px-2 py-1.5 text-ink-4">{r.dds || '—'}</td>
                 <td className="px-2 py-1.5 text-center text-ink-4">{r.gate || '—'}</td>
                 <td className="px-2 py-1.5 text-right font-mono">

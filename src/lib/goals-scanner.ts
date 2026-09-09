@@ -71,9 +71,10 @@ function monthFolderFromReview(reviewDate: string | null): string[] {
 
 // PRJxxxxx folder name may include a non-digit suffix (e.g. PRJ12345TR).
 // Match the same pattern as drive-engine for consistency.
-// Matches PRJxxxxxxx and PGMxxxxxxx folder names (PGM = portfolio-level
-// programme grouping used by CDIO alongside individual projects).
-const PRJ_FOLDER_NAME = /^((?:PRJ|PGM)[\s\-_]*[0-9]+[A-Z]{0,4})[_\- ]?(.*)$/i;
+// Matches PRJxxxxxxx, PGMxxxxxxx (portfolio-level programme grouping used by
+// CDIO alongside individual projects) and INIxxxxxxx (an initiative: documents
+// with no CDIO project behind them, see `initiatives` in db.ts).
+const PRJ_FOLDER_NAME = /^((?:PRJ|PGM|INI)[\s\-_]*[0-9]+[A-Z]{0,4})[_\- ]?(.*)$/i;
 
 /**
  * Stable fingerprint of a project's document set, used to decide whether its

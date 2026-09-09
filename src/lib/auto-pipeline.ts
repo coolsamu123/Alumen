@@ -1,6 +1,7 @@
 import { getDb } from './db';
 import {
   discoverAndAddProjectFromDrive,
+  discoverInitiativesFromDrive,
   runDriveDownload,
   getDriveStatus,
   extractDriveId,
@@ -23,12 +24,15 @@ export interface CycleReport {
   capExceeded: boolean;
 }
 
+export type RootKind = 'portfolio' | 'initiatives';
+
 interface WatchRoot {
   id: number;
   url: string;
   drive_id: string;
   label: string;
   enabled: number;
+  kind: RootKind;
 }
 
 let cycleRunning = false;
@@ -149,7 +153,7 @@ export async function runAutoDiscoveryCycle(
   try {
     const db = getDb();
     const roots = db.prepare(
-      'SELECT id, url, drive_id, label, enabled FROM drive_watch_roots WHERE enabled = 1'
+      'SELECT id, url, drive_id, label, enabled, kind FROM drive_watch_roots WHERE enabled = 1'
     ).all() as WatchRoot[];
 
     // ─── Stage 1: Discover ────────────────────────────────────────────────────
@@ -158,7 +162,15 @@ export async function runAutoDiscoveryCycle(
       currentRootLabel = root.label || root.url;
       const before = snapshotProjectIds();
       try {
-        await discoverAndAddProjectFromDrive(root.url);
+        // A portfolio root is scanned recursively for PRJ-named folders; an
+        // initiatives root turns each of its direct subfolders into one
+        // initiative. Both end up writing projects rows with a link_folder, so
+        // every stage below this one is identical for the two.
+        if (root.kind === 'initiatives') {
+          await discoverInitiativesFromDrive(root.url, { rootId: root.id });
+        } else {
+          await discoverAndAddProjectFromDrive(root.url);
+        }
         const after = snapshotProjectIds();
         let delta = 0;
         for (const id of after) {
@@ -260,16 +272,17 @@ export function listWatchRoots(): Array<{
   lastRunStatus: string | null;
   lastRunError: string;
   addedCount: number;
+  kind: RootKind;
 }> {
   const db = getDb();
   const rows = db.prepare(`
-    SELECT id, url, drive_id, label, enabled, added_at, last_run_at, last_run_status, last_run_error, added_count
+    SELECT id, url, drive_id, label, enabled, added_at, last_run_at, last_run_status, last_run_error, added_count, kind
     FROM drive_watch_roots
     ORDER BY added_at DESC
   `).all() as Array<{
     id: number; url: string; drive_id: string; label: string; enabled: number;
     added_at: string; last_run_at: string | null; last_run_status: string | null;
-    last_run_error: string; added_count: number;
+    last_run_error: string; added_count: number; kind: RootKind;
   }>;
   return rows.map(r => ({
     id: r.id,
@@ -282,18 +295,23 @@ export function listWatchRoots(): Array<{
     lastRunStatus: r.last_run_status,
     lastRunError: r.last_run_error,
     addedCount: r.added_count,
+    kind: r.kind === 'initiatives' ? 'initiatives' : 'portfolio',
   }));
 }
 
-export function addWatchRoot(url: string, label?: string): { id: number } {
+export function addWatchRoot(
+  url: string,
+  label?: string,
+  kind: RootKind = 'portfolio',
+): { id: number } {
   const driveId = extractDriveId(url);
   if (!driveId) throw new Error('Invalid Google Drive URL');
   const db = getDb();
   const result = db.prepare(`
-    INSERT INTO drive_watch_roots (url, drive_id, label)
-    VALUES (?, ?, ?)
-    ON CONFLICT(url) DO UPDATE SET label = excluded.label
-  `).run(url, driveId, label || '');
+    INSERT INTO drive_watch_roots (url, drive_id, label, kind)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(url) DO UPDATE SET label = excluded.label, kind = excluded.kind
+  `).run(url, driveId, label || '', kind);
   const id = Number(result.lastInsertRowid)
     || (db.prepare('SELECT id FROM drive_watch_roots WHERE url = ?').get(url) as { id: number }).id;
   return { id };

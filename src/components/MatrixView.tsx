@@ -25,6 +25,9 @@ export default function MatrixView() {
           dds: l.source === 'GIO_SERVICES' ? 'GIO' : 'Unknown',
           currentGate: '-',
           latestDecision: '-',
+          // Pseudo-node (GIO_SERVICES / an unresolved target), not a real
+          // project row — provenance is meaningless here.
+          source: 'excel' as const,
           costKEur: 0,
           description: '',
           remarks: '',
@@ -45,6 +48,9 @@ export default function MatrixView() {
           dds: l.target === 'GIO_SERVICES' ? 'GIO' : 'Unknown',
           currentGate: '-',
           latestDecision: '-',
+          // Pseudo-node (GIO_SERVICES / an unresolved target), not a real
+          // project row — provenance is meaningless here.
+          source: 'excel' as const,
           costKEur: 0,
           description: '',
           remarks: '',

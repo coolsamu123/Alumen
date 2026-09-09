@@ -33,10 +33,33 @@ export interface NarrativeContext {
    *  231-236 for the vocabulary). Unknown values fall back to "relates to". */
   direction: string;
   /** Per-explanation impact_type (e.g. "integration_required"). Pretty-printed
-   *  by replacing underscores with spaces. */
-  impactType: string;
-  /** Per-explanation severity: "high" | "medium" | "low" | ''. */
-  severity: string;
+   *  by replacing underscores with spaces. Optional: callers that only want
+   *  the shared half of the narrative (composeNarrativeParts().shared) can
+   *  leave it out, since the classifier clause is the only thing it feeds. */
+  impactType?: string;
+  /** Per-explanation severity: "high" | "medium" | "low" | ''. Optional for
+   *  the same reason as impactType. */
+  severity?: string;
+}
+
+/** composeNarrative() split at its one varying seam.
+ *
+ *  A GIO/DDS node (or a project edge) usually carries several explanations
+ *  that share the same source project, target and direction — they differ
+ *  only in impact_type / severity, which the universe panel already renders
+ *  as badges. Composing the full sentence for each of them made the panel
+ *  repeat an identical paragraph once per evidence quote (see the "Why this
+ *  matters" duplication in the Reason tab). Splitting lets a caller render
+ *  `shared` once above a group of quotes and drop `classifier` when it is
+ *  already shown some other way. */
+export interface NarrativeParts {
+  /** Relationship sentence + project-context sentence. Identical for every
+   *  explanation with the same (sourceProjectName, targetName, direction,
+   *  sourceSummary) — that identity is what makes grouping safe. */
+  shared: string;
+  /** Impact type + severity sentence. The only part that varies per
+   *  explanation. Empty when the row lost both bits of metadata. */
+  classifier: string;
 }
 
 // direction → verb phrase. Built from the prompts.ts → impact-engine mappings:
@@ -85,32 +108,49 @@ function stripTrailing(s: string): string {
   return s.replace(/[.\s]+$/g, '');
 }
 
-export function composeNarrative(ctx: NarrativeContext): string {
+/** Builds the three clauses. Shared by composeNarrative and
+ *  composeNarrativeParts so both stay in sync. */
+function clauses(ctx: NarrativeContext): { relation: string; classifier: string; context: string } {
   const verb = DIRECTION_VERBS[ctx.direction] ?? 'relates to';
   const source = stripTrailing(ctx.sourceProjectName || 'This project');
   const target = stripTrailing(ctx.targetName || 'an unspecified target');
 
   // First clause: the relationship in plain English.
-  const first = `${source} ${verb} ${target}.`;
+  const relation = `${source} ${verb} ${target}.`;
 
   // Second clause: classifier (impact type + severity). Skipped if both are
   // empty — happens for legacy rows that lost the metadata.
   const typeP = ctx.impactType ? prettyType(ctx.impactType) : '';
   const sevP = ctx.severity ? `${ctx.severity} severity` : '';
-  let second = '';
-  if (typeP && sevP) second = `${capitalize(typeP)} (${sevP}).`;
-  else if (typeP) second = `${capitalize(typeP)}.`;
-  else if (sevP) second = `${capitalize(sevP)}.`;
+  let classifier = '';
+  if (typeP && sevP) classifier = `${capitalize(typeP)} (${sevP}).`;
+  else if (typeP) classifier = `${capitalize(typeP)}.`;
+  else if (sevP) classifier = `${capitalize(sevP)}.`;
 
   // Third clause: project context as a standalone sentence so it reads cleanly
   // regardless of whether the summary is a noun phrase ("A study to evaluate
   // …") or a verb-led sentence ("Provides workforce identity capabilities
   // …"). We don't try to weave it into the first clause — past attempts at
   // "<source> is <summary>" broke for verb-led summaries.
-  let third = '';
+  let context = '';
   if (ctx.sourceSummary && ctx.sourceSummary.trim()) {
-    third = stripTrailing(ctx.sourceSummary.trim()) + '.';
+    context = stripTrailing(ctx.sourceSummary.trim()) + '.';
   }
 
-  return [first, second, third].filter(Boolean).join(' ');
+  return { relation, classifier, context };
+}
+
+export function composeNarrative(ctx: NarrativeContext): string {
+  const { relation, classifier, context } = clauses(ctx);
+  return [relation, classifier, context].filter(Boolean).join(' ');
+}
+
+/** Same content as composeNarrative, split so the varying classifier clause
+ *  can be rendered (or dropped) separately from the part that repeats. */
+export function composeNarrativeParts(ctx: NarrativeContext): NarrativeParts {
+  const { relation, classifier, context } = clauses(ctx);
+  return {
+    shared: [relation, context].filter(Boolean).join(' '),
+    classifier,
+  };
 }

@@ -2,10 +2,14 @@ import { NextResponse } from 'next/server';
 import path from 'path';
 import { getDb } from '@/lib/db';
 import { getDownloadedFilesByProject, getProjectLocalPath } from '@/lib/drive-engine';
+import type { ProjectSource } from '@/lib/types';
 
 interface ExplorerRow {
   projectId: string;
   name: string;
+  source: ProjectSource;
+  /** ISO timestamp since when an initiative's folder is gone from Drive. */
+  missingSince: string | null;
   dds: string;
   gate: string;
   filesDownloaded: number;
@@ -17,6 +21,14 @@ interface ExplorerRow {
   localPath: string;
 }
 
+// Every one of these routes reads mutable state (SQLite, the filesystem, live
+// run status). A GET handler that takes no `request` argument is statically
+// prerendered at build time by the production build — the response gets baked
+// into .next and served forever, so a project added after the build is
+// invisible until the next one. That never showed under `next dev`, which
+// prerenders nothing.
+export const dynamic = 'force-dynamic';
+
 // One row per project (deduped across review batches), with download/goal/impact
 // counts joined in. Used by the Drive Sync project explorer.
 export async function GET() {
@@ -27,7 +39,7 @@ export async function GET() {
     // Using MAX(uploaded_at) here was unreliable because Excel uploads insert all
     // duplicates in a single transaction, so their uploaded_at is identical.
     const rows = db.prepare(`
-      SELECT p.project_id, p.name, p.dds, p.gate,
+      SELECT p.project_id, p.name, p.dds, p.gate, p.source,
              p.link_folder, p.link_positions, p.link_cioo
       FROM projects p
       WHERE p.id = (
@@ -35,9 +47,20 @@ export async function GET() {
       )
       ORDER BY p.project_id ASC
     `).all() as Array<{
-      project_id: string; name: string; dds: string; gate: string;
+      project_id: string; name: string; dds: string; gate: string; source: string | null;
       link_folder: string | null; link_positions: string | null; link_cioo: string | null;
     }>;
+
+    // Initiatives whose Drive folder has disappeared. They are kept — the goals
+    // and impact edges already computed stay valid — but the table has to say
+    // so, otherwise a stale row is indistinguishable from a live one.
+    const missingMap = new Map<string, string>();
+    try {
+      const rowsMissing = db.prepare(
+        'SELECT project_id, missing_since FROM initiatives WHERE missing_since IS NOT NULL'
+      ).all() as { project_id: string; missing_since: string }[];
+      for (const r of rowsMissing) missingMap.set(r.project_id, r.missing_since);
+    } catch { /* table not migrated yet */ }
 
     // Goals: which projects have a successful goals row.
     const goalRows = (() => {
@@ -72,6 +95,8 @@ export async function GET() {
       return {
         projectId: r.project_id,
         name: r.name,
+        source: (r.source === 'initiative' || r.source === 'drive' ? r.source : 'excel'),
+        missingSince: missingMap.get(r.project_id) ?? null,
         dds: r.dds || '',
         gate: r.gate || '',
         filesDownloaded: filesMap.get(r.project_id) || 0,

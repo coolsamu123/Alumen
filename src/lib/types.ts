@@ -39,6 +39,14 @@ export interface CIOOProject {
 }
 
 // Deduplicated project (latest gate review per ServiceNow #)
+/**
+ * How a project row came to exist.
+ *   'excel'      — governed by the CDIO sheet (the historical only case)
+ *   'drive'      — a PRJ folder found in Drive with no sheet row behind it
+ *   'initiative' — a Drive folder with documents but no project at all
+ */
+export type ProjectSource = 'excel' | 'drive' | 'initiative';
+
 export interface ProjectSummary {
   projectId: string;
   name: string;
@@ -50,6 +58,7 @@ export interface ProjectSummary {
   remarks: string;
   reviewCount: number;
   lastReviewDate: string;
+  source: ProjectSource;
   linkPositions: string;
   linkFolder: string;
   linkCIOO: string;

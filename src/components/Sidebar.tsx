@@ -136,7 +136,26 @@ export default function Sidebar() {
           <div className="p-4 flex-1">
             <div className="text-[10px] text-accent-text2 font-bold tracking-widest mb-1.5">SELECTED PROJECT</div>
             <div className="text-sm font-bold text-ink-1 leading-tight mb-1">{selectedProject.name}</div>
-            <div className="text-[10px] text-ink-4 font-mono mb-4">{selectedProject.projectId}</div>
+            <div className="text-[10px] text-ink-4 font-mono mb-2">{selectedProject.projectId}</div>
+            {/* Provenance. An initiative has no gate, DDS or cost by nature —
+                without this the panel reads as a project with missing data. */}
+            {selectedProject.source && selectedProject.source !== 'excel' && (
+              <div className="mb-4">
+                <span
+                  className={`px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide ${
+                    selectedProject.source === 'initiative'
+                      ? 'bg-amber-900/40 text-amber-300'
+                      : 'bg-blue-900/40 text-blue-300'
+                  }`}
+                  title={selectedProject.source === 'initiative'
+                    ? 'Pasta do Drive com documentos, sem projeto no CDIO'
+                    : 'Pasta PRJ encontrada no Drive, sem linha na planilha CDIO'}
+                >
+                  {selectedProject.source === 'initiative' ? 'INICIATIVA' : 'DRIVE'}
+                </span>
+              </div>
+            )}
+            {selectedProject.source === 'excel' && <div className="mb-4" />}
             
             <div className="text-[10px] text-purple-400 font-bold tracking-widest mb-2 border-t border-line pt-4">SERVICES</div>
             

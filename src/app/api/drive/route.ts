@@ -3,12 +3,14 @@ import {
   runDriveDownload,
   runDriveDownloadSingle,
   discoverAndAddProjectFromDrive,
+  discoverInitiativesFromDrive,
   getDriveStatus,
   getAllDocumentTexts,
   getProjectLocalPath,
   resetDriveData,
 } from '@/lib/drive-engine';
 import { getDb } from '@/lib/db';
+import { addWatchRoot } from '@/lib/auto-pipeline';
 
 export async function GET() {
   try {
@@ -132,6 +134,31 @@ export async function POST(request: NextRequest) {
         linked: result.linked,
         unmatched: result.unmatched,
         scannedFolders: result.scannedFolders,
+      });
+    }
+
+    if (action === 'discover_initiatives') {
+      if (!body.url) {
+        return NextResponse.json({ error: 'Missing url' }, { status: 400 });
+      }
+
+      // Register the root before scanning it. An initiatives folder is a living
+      // place — teams keep adding folders and documents to it — so a one-shot
+      // scan would be the wrong shape. Persisting it also scopes the
+      // disappeared-folder check to this root, so scanning one root can never
+      // mark another root's initiatives as gone.
+      const { id: rootId } = addWatchRoot(body.url.trim(), body.label?.trim(), 'initiatives');
+      const result = await discoverInitiativesFromDrive(body.url, { rootId });
+
+      const found = result.created.length + result.seen.length + result.renamed.length;
+      return NextResponse.json({
+        message: `${found} initiative folder(s) — ${result.created.length} new`,
+        rootId,
+        created: result.created,
+        seen: result.seen,
+        renamed: result.renamed,
+        returned: result.returned,
+        missing: result.missing,
       });
     }
 

@@ -608,7 +608,7 @@ export async function discoverAndAddProjectFromDrive(
   // Build a digit-key index of existing projects so we can match folders whose
   // PRJ id differs only by zero-padding (e.g. folder "PRJ-18641" → DB "PRJ0018641").
   const existingRows = db.prepare(
-    "SELECT project_id, name, link_folder FROM projects WHERE project_id LIKE 'PRJ%'"
+    'SELECT project_id, name, link_folder FROM projects'
   ).all() as Array<{ project_id: string; name: string | null; link_folder: string | null }>;
   const byCanonical = new Map<string, { project_id: string; name: string | null; link_folder: string | null }>();
   const byDigits    = new Map<string, { project_id: string; name: string | null; link_folder: string | null }>();
@@ -646,7 +646,9 @@ export async function discoverAndAddProjectFromDrive(
       // explicitly opts in to this; Sync All passes createMissing=false to
       // avoid populating projects table with junk stubs picked up during a
       // bulk root scan.
-      db.prepare('INSERT INTO projects (project_id, name, link_folder) VALUES (?, ?, ?)').run(proj.canonical, proj.folderName, folderLink);
+      db.prepare(
+        "INSERT INTO projects (project_id, name, link_folder, source) VALUES (?, ?, ?, 'drive')"
+      ).run(proj.canonical, proj.folderName, folderLink);
       created.push({ projectId: proj.canonical, name: proj.folderName });
       unmatched.push({ folderName: proj.folderName, extracted: proj.canonical });
     } else {
@@ -655,6 +657,220 @@ export async function discoverAndAddProjectFromDrive(
   }
 
   return { created, linked, unmatched, scannedFolders };
+}
+
+// ─── Discover initiatives from a Drive root ─────────────────────────────────
+//
+// An initiative is work that has documents but no CDIO project. Two things make
+// this discovery deliberately unlike the PRJ one above:
+//
+//   - It does not recurse. Every DIRECT subfolder of the root is one
+//     initiative; anything deeper is that initiative's own filing. Recursing
+//     would turn each internal subfolder into a separate initiative.
+//   - Identity is the Drive folder id, not the folder name. The name is written
+//     by whoever created the folder, in whatever language, and will be edited.
+//     Keying on it would fork a second initiative on the first rename.
+//
+// The INI code is allocated here and is not meant to be seen or typed. Teams
+// name the folder however they like.
+
+export interface DiscoveredInitiative {
+  projectId: string;
+  folderName: string;
+  driveFolderId: string;
+}
+
+interface InitiativeRow {
+  id: number;
+  project_id: string;
+  drive_folder_id: string;
+  folder_name: string;
+  missing_since: string | null;
+}
+
+/** Direct subfolders of `folderId`, shortcuts resolved, paginated. */
+async function listChildFolders(
+  drive: ReturnType<typeof google.drive>,
+  folderId: string,
+): Promise<{ id: string; name: string }[]> {
+  const out: { id: string; name: string }[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const res = await drive.files.list({
+      // Shortcuts are included explicitly: a Drive root of initiatives is very
+      // likely to be assembled from shortcuts to folders that live elsewhere.
+      q: `'${folderId}' in parents and trashed = false and (`
+        + `mimeType = 'application/vnd.google-apps.folder' or `
+        + `mimeType = 'application/vnd.google-apps.shortcut')`,
+      fields: 'nextPageToken, files(id, name, mimeType, shortcutDetails)',
+      pageSize: 1000,
+      pageToken,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+
+    for (const f of res.data.files || []) {
+      if (!f.id || !f.name) continue;
+      if (f.mimeType === 'application/vnd.google-apps.shortcut') {
+        const target = f.shortcutDetails;
+        if (target?.targetMimeType !== 'application/vnd.google-apps.folder') continue;
+        if (!target.targetId) continue;
+        out.push({ id: target.targetId, name: f.name });
+      } else {
+        out.push({ id: f.id, name: f.name });
+      }
+    }
+
+    pageToken = res.data.nextPageToken || undefined;
+  } while (pageToken);
+
+  return out;
+}
+
+/**
+ * Next free INI code, as a canonical id.
+ *
+ * Derived from the existing rows rather than an AUTOINCREMENT so the code stays
+ * readable and gap-free; callers must run this inside the same transaction as
+ * the INSERT, since two concurrent discovery passes would otherwise compute the
+ * same number. `UNIQUE(project_id)` is the backstop if they ever do.
+ */
+function nextInitiativeId(db: ReturnType<typeof getDb>): string {
+  const rows = db.prepare("SELECT project_id FROM initiatives").all() as { project_id: string }[];
+  let max = 0;
+  for (const r of rows) {
+    const m = r.project_id.match(/^INI([0-9]+)/i);
+    if (m) max = Math.max(max, parseInt(m[1], 10) || 0);
+  }
+  return `INI${String(max + 1).padStart(7, '0')}`;
+}
+
+export async function discoverInitiativesFromDrive(
+  rootUrl: string,
+  opts: { rootId?: number } = {},
+): Promise<{
+  created: DiscoveredInitiative[];
+  seen: DiscoveredInitiative[];
+  renamed: DiscoveredInitiative[];
+  returned: DiscoveredInitiative[];
+  missing: DiscoveredInitiative[];
+}> {
+  const drive = getDriveClient();
+  const rootId = extractDriveId(rootUrl);
+  if (!rootId) throw new Error('Invalid Google Drive URL');
+
+  // Prove the root is reachable before reading anything into it. files.list on
+  // a parent that does not exist — a typo'd id, a folder deleted, sharing
+  // revoked on the service account — returns an empty list, not an error. Left
+  // unguarded, that empty list is indistinguishable from "every initiative was
+  // removed", and one bad URL would mark the whole root missing.
+  try {
+    await drive.files.get({ fileId: rootId, fields: 'id,mimeType', supportsAllDrives: true });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Initiatives root is not reachable (${rootId}): ${msg}`);
+  }
+
+  const folders = await listChildFolders(drive, rootId);
+  const db = getDb();
+
+  const created:  DiscoveredInitiative[] = [];
+  const seen:     DiscoveredInitiative[] = [];
+  const renamed:  DiscoveredInitiative[] = [];
+  const returned: DiscoveredInitiative[] = [];
+  const missing:  DiscoveredInitiative[] = [];
+
+  const byFolderId = new Map<string, InitiativeRow>();
+  for (const row of db.prepare(
+    'SELECT id, project_id, drive_folder_id, folder_name, missing_since FROM initiatives'
+  ).all() as InitiativeRow[]) {
+    byFolderId.set(row.drive_folder_id, row);
+  }
+
+  const apply = db.transaction(() => {
+    for (const folder of folders) {
+      const folderLink = `https://drive.google.com/drive/folders/${folder.id}`;
+      const existing = byFolderId.get(folder.id);
+
+      if (!existing) {
+        const projectId = nextInitiativeId(db);
+        db.prepare(`
+          INSERT INTO initiatives (project_id, drive_folder_id, folder_name, root_id)
+          VALUES (?, ?, ?, ?)
+        `).run(projectId, folder.id, folder.name, opts.rootId ?? null);
+        // The projects row is what makes the rest of the pipeline pick this up:
+        // Sync All selects on link_folder, the downloader writes into
+        // data/drive/<project_id>/, and the goals scanner reads that directory.
+        // No stage below needs to know initiatives exist.
+        db.prepare(`
+          INSERT INTO projects (project_id, name, link_folder, source)
+          VALUES (?, ?, ?, 'initiative')
+        `).run(projectId, folder.name, folderLink);
+        created.push({ projectId, folderName: folder.name, driveFolderId: folder.id });
+        continue;
+      }
+
+      const entry: DiscoveredInitiative = {
+        projectId: existing.project_id,
+        folderName: folder.name,
+        driveFolderId: folder.id,
+      };
+
+      db.prepare(
+        "UPDATE initiatives SET last_seen_at = datetime('now'), missing_since = NULL WHERE id = ?"
+      ).run(existing.id);
+      if (existing.missing_since) returned.push(entry);
+
+      if (existing.folder_name !== folder.name) {
+        db.prepare('UPDATE initiatives SET folder_name = ? WHERE id = ?').run(folder.name, existing.id);
+        db.prepare('UPDATE projects SET name = ? WHERE project_id = ?').run(folder.name, existing.project_id);
+        renamed.push(entry);
+      } else {
+        seen.push(entry);
+      }
+
+      // Re-assert the link: a project row can lose it through an unrelated edit,
+      // and without it the folder silently stops being downloaded.
+      const proj = db.prepare('SELECT link_folder FROM projects WHERE project_id = ?')
+        .get(existing.project_id) as { link_folder: string | null } | undefined;
+      if (!proj) {
+        db.prepare(`
+          INSERT INTO projects (project_id, name, link_folder, source)
+          VALUES (?, ?, ?, 'initiative')
+        `).run(existing.project_id, folder.name, folderLink);
+      } else if (!(proj.link_folder || '').includes(folderLink)) {
+        db.prepare('UPDATE projects SET link_folder = ? WHERE project_id = ?')
+          .run(folderLink, existing.project_id);
+      }
+    }
+
+    // Folders that vanished from this root. Marked, never deleted: the goals and
+    // impact edges already computed stay valid, and rebuilding them costs LLM
+    // calls. Only rows belonging to this root are considered, so scanning one
+    // root never marks another root's initiatives missing.
+    const presentIds = new Set(folders.map(f => f.id));
+    const ownRows = (opts.rootId === undefined
+      ? db.prepare('SELECT id, project_id, drive_folder_id, folder_name, missing_since FROM initiatives WHERE root_id IS NULL')
+      : db.prepare('SELECT id, project_id, drive_folder_id, folder_name, missing_since FROM initiatives WHERE root_id = ?')
+    ).all(...(opts.rootId === undefined ? [] : [opts.rootId])) as InitiativeRow[];
+
+    for (const row of ownRows) {
+      if (presentIds.has(row.drive_folder_id)) continue;
+      if (!row.missing_since) {
+        db.prepare("UPDATE initiatives SET missing_since = datetime('now') WHERE id = ?").run(row.id);
+      }
+      missing.push({
+        projectId: row.project_id,
+        folderName: row.folder_name,
+        driveFolderId: row.drive_folder_id,
+      });
+    }
+  });
+
+  apply();
+
+  return { created, seen, renamed, returned, missing };
 }
 
 export async function runDriveDownload(): Promise<void> {
@@ -968,7 +1184,9 @@ export function getDownloadedFilesByProject(): Map<string, number> {
 
   for (const entry of fs.readdirSync(DRIVE_LOCAL_ROOT, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
-    const m = entry.name.match(/^(PRJ[0-9]+)/i);
+    // Every prefix the scanner accepts must be counted here too. This read
+    // `/^(PRJ[0-9]+)/` and so reported 0 files for PGM programmes.
+    const m = entry.name.match(/^((?:PRJ|PGM|INI)[0-9]+)/i);
     if (!m) continue;
     const projectId = m[1].toUpperCase();
     const count = countFilesRecursive(path.join(DRIVE_LOCAL_ROOT, entry.name));

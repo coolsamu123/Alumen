@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fetchSheetCsv } from '@/lib/sheets-engine';
 import { parse } from 'csv-parse/sync';
 import { getDb } from '@/lib/db';
+import { normalizeProjectId } from '@/lib/project-id';
 
 /** Merge all sheet rows into the projects table (non-empty values win). */
 function syncSheetToProjects(db: ReturnType<typeof getDb>, records: Record<string, string>[]): number {
@@ -9,8 +10,13 @@ function syncSheetToProjects(db: ReturnType<typeof getDb>, records: Record<strin
   for (const row of records) {
     const rawId = row['Project # in ServiceNow'] || row['Project ID'] || row['project_id'];
     if (!rawId) continue;
-    const projectId = String(rawId).trim().toUpperCase();
-    if (!projectId.startsWith('PRJ')) continue;
+    // Canonicalise rather than testing the prefix by hand: this accepts PGM
+    // and INI alongside PRJ, and — more importantly — pads the digits the way
+    // the Excel importer already does (excel-parser.ts), so a sheet writing
+    // "PRJ12345" updates PRJ0012345 instead of inserting a second row for the
+    // same project.
+    const projectId = normalizeProjectId(rawId);
+    if (!projectId) continue;
     if (!grouped.has(projectId)) grouped.set(projectId, []);
     grouped.get(projectId)!.push(row);
   }

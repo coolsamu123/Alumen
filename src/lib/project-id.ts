@@ -15,6 +15,13 @@
 //
 // Canonical form: PREFIX + 7 digits (zero-padded) + optional alpha suffix,
 // e.g. `PRJ0017301`, `PGM0001197`, `PRJ0012345TR`.
+//
+// `INI` is a fourth prefix with a different origin: it is allocated by the
+// application for a Drive folder that has documents but no CDIO project (see
+// `initiatives` in db.ts). Unlike PRJ/PGM it never appears in a document, so it
+// contributes nothing to `extractProjectIds` in practice — it lives here so
+// that the rest of the pipeline, which canonicalises every id it handles and
+// drops whatever returns null, treats an initiative as a first-class node.
 
 /** Zero-padding width. 289 of 301 ids in the CDIO sheet already use 7 digits. */
 const ID_DIGITS = 7;
@@ -31,9 +38,10 @@ const PREFIX_ALIASES: Readonly<Record<string, string>> = {
   PRJ: 'PRJ',
   PGM: 'PGM',
   PROG: 'PGM',
+  INI: 'INI',
 };
 
-const ID_PATTERN = /(PRJ|PGM|PROG)[\s\-_]*([0-9]+)([A-Z]{0,4})/i;
+const ID_PATTERN = /(PRJ|PGM|PROG|INI)[\s\-_]*([0-9]+)([A-Z]{0,4})/i;
 const ID_PATTERN_GLOBAL = new RegExp(ID_PATTERN.source, 'gi');
 
 function canonicalise(prefixRaw: string, digitsRaw: string, suffixRaw: string): string | null {

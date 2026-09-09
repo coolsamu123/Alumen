@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 
+// Reads mutable state — must not be prerendered at build time. See the note in
+// api/drive/projects/route.ts.
+export const dynamic = 'force-dynamic';
+
 // Read-only counts for the Strom Architecture header + StatsTab.
 // One endpoint, ~1KB response, polled at most every few seconds by the UI.
 export async function GET() {

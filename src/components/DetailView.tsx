@@ -2,6 +2,8 @@
 
 import { useProjectContext } from '@/context/ProjectContext';
 import { getDDSColor, getGateColor, getDecisionColor } from '@/lib/constants';
+import ProjectPlanningPanel from './ProjectPlanningPanel';
+import { usePlanAllState, type PerProjectPlanState } from '@/hooks/usePlanAllState';
 
 const UNRELIABLE_VALUES = new Set([
   '', 'n/a', 'na', 'none', 'unknown', 'not identified',
@@ -17,15 +19,72 @@ function isUseful(value: string | null | undefined): value is string {
   return true;
 }
 
+function planBarClasses(status: PerProjectPlanState['status']): string {
+  switch (status) {
+    case 'running': return 'bg-gradient-to-r from-purple-600 via-fuchsia-500 to-cyan-500 animate-pulse';
+    case 'done': return 'bg-emerald-500';
+    case 'error': return 'bg-red-500';
+    case 'skipped': return 'bg-ink-muted/40';
+    default: return 'bg-ink-muted/15';
+  }
+}
+
+function planBarTitle(e: PerProjectPlanState): string {
+  switch (e.status) {
+    case 'pending': return 'Queued for planning';
+    case 'running': return 'Generating plan…';
+    case 'done': return e.cached ? 'Plan already up to date' : `Plan generated${e.durationMs ? ` in ${(e.durationMs / 1000).toFixed(1)}s` : ''}`;
+    case 'error': return `Failed: ${e.errorMessage}`;
+    case 'skipped': return e.errorMessage || 'Skipped';
+    default: return '';
+  }
+}
+
 export default function DetailView() {
   const { filtered, selected, setSelected } = useProjectContext();
+  const { state: planState, start: startPlanAll, stop: stopPlanAll } = usePlanAllState();
+  const isPlanning = planState?.status === 'running' || planState?.status === 'stopping';
 
   return (
     <div className="flex-1 overflow-auto p-6 animate-fadeIn">
+      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+        <div className="text-xs text-ink-4">{filtered.length} project{filtered.length === 1 ? '' : 's'}</div>
+        <div className="flex items-center gap-3">
+          {planState && planState.status !== 'idle' && (
+            <span className="text-[11px] text-ink-muted">
+              {isPlanning ? `Planning… ${planState.doneProjects}/${planState.totalProjects}` : `Done: ${planState.doneProjects}/${planState.totalProjects}`}
+              {planState.capExceeded && <span className="text-amber-500 ml-1.5">· daily LLM cap reached</span>}
+            </span>
+          )}
+          {isPlanning ? (
+            <button
+              type="button"
+              onClick={() => stopPlanAll()}
+              className="px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider bg-red-600/80 hover:bg-red-600 text-white transition-colors"
+            >
+              ■ Stop
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => startPlanAll(filtered.map(p => p.projectId))}
+              disabled={filtered.length === 0}
+              title="Generates the Project Planning panel (Timeline/Gates/Actions/CAPEX-OPEX) for every project shown below. Syncs Drive documents first when needed. Already-planned projects are near-instant (cached)."
+              className="px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider text-white transition-colors
+                bg-gradient-to-r from-purple-700 via-fuchsia-600 to-cyan-600 hover:from-purple-600 hover:via-fuchsia-500 hover:to-cyan-500
+                disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              🗓️ Plan all ({filtered.length})
+            </button>
+          )}
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {filtered.map(p => {
           const color = getDDSColor(p.dds);
           const isSelected = selected === p.projectId;
+          const planEntry = planState?.perProject[p.projectId];
 
           return (
             <div
@@ -123,131 +182,27 @@ export default function DetailView() {
                 </div>
               )}
 
-              {/* Expanded detail when selected */}
-              {isSelected && (
-                <div className="mt-4 pt-4 border-t border-line-strong space-y-3 animate-fadeIn">
-                  {p.remarks && (
-                    <div>
-                      <div className="text-[10px] text-ink-muted font-semibold mb-1">REMARKS</div>
-                      <div className="text-xs text-ink-3 leading-relaxed">{p.remarks}</div>
-                    </div>
-                  )}
-
-                  {p.lastReviewDate && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="bg-surface-2 rounded-lg p-2">
-                        <div className="text-[10px] text-ink-muted">Last Review</div>
-                        <div className="text-xs font-semibold text-ink-2">{p.lastReviewDate}</div>
-                      </div>
-                      <div className="bg-surface-2 rounded-lg p-2">
-                        <div className="text-[10px] text-ink-muted">Cost</div>
-                        <div className="text-xs font-semibold text-ink-2">{p.costKEur ? `${p.costKEur}k€` : 'N/A'}</div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Sub-App AI Extracted Fields */}
-                  {p.subappAnalyzed && (
-                    (() => {
-                      const hasAnyInsight =
-                        isUseful(p.digitalTechnologies) ||
-                        isUseful(p.businessAppsCis) ||
-                        isUseful(p.gioSlDdsImpacts) ||
-                        isUseful(p.ddsGioWorkload) ||
-                        isUseful(p.changeManagement) ||
-                        isUseful(p.regionalImpacts) ||
-                        isUseful(p.securityImpacts) ||
-                        isUseful(p.iaEmbedded);
-                      if (!hasAnyInsight) return null;
-                      return (
-                        <div className="space-y-3 mt-4">
-                          <div className="text-[11px] font-bold text-accent-text2 uppercase tracking-wider border-b border-line-strong pb-1">AI Extracted Insights</div>
-                          
-                          {isUseful(p.digitalTechnologies) && (
-                            <div>
-                              <div className="text-[10px] text-ink-muted font-semibold mb-0.5">DIGITAL TECHNOLOGIES</div>
-                              <div className="text-xs text-ink-3 leading-relaxed">{p.digitalTechnologies}</div>
-                            </div>
-                          )}
-                          
-                          {isUseful(p.businessAppsCis) && (
-                            <div>
-                              <div className="text-[10px] text-ink-muted font-semibold mb-0.5">BUSINESS APPS & CIs</div>
-                              <div className="text-xs text-ink-3 leading-relaxed">{p.businessAppsCis}</div>
-                            </div>
-                          )}
-                          
-                          {isUseful(p.gioSlDdsImpacts) && (
-                            <div>
-                              <div className="text-[10px] text-ink-muted font-semibold mb-0.5">GIO SL / DDS IMPACTS</div>
-                              <div className="text-xs text-ink-3 leading-relaxed">{p.gioSlDdsImpacts}</div>
-                            </div>
-                          )}
-                          
-                          {isUseful(p.ddsGioWorkload) && (
-                            <div>
-                              <div className="text-[10px] text-ink-muted font-semibold mb-0.5">DDS / GIO WORKLOAD</div>
-                              <div className="text-xs text-ink-3 leading-relaxed">{p.ddsGioWorkload}</div>
-                            </div>
-                          )}
-                          
-                          {isUseful(p.changeManagement) && (
-                            <div>
-                              <div className="text-[10px] text-ink-muted font-semibold mb-0.5">CHANGE MANAGEMENT</div>
-                              <div className="text-xs text-ink-3 leading-relaxed">{p.changeManagement}</div>
-                            </div>
-                          )}
-                          
-                          {isUseful(p.regionalImpacts) && (
-                            <div>
-                              <div className="text-[10px] text-ink-muted font-semibold mb-0.5">REGIONAL IMPACTS</div>
-                              <div className="text-xs text-ink-3 leading-relaxed">{p.regionalImpacts}</div>
-                            </div>
-                          )}
-                          
-                          {isUseful(p.securityImpacts) && (
-                            <div>
-                              <div className="text-[10px] text-red-500 font-semibold mb-0.5">SECURITY IMPACTS</div>
-                              <div className="text-xs text-ink-3 leading-relaxed">{p.securityImpacts}</div>
-                            </div>
-                          )}
-                          
-                          {isUseful(p.iaEmbedded) && (
-                            <div>
-                              <div className="text-[10px] text-purple-500 font-semibold mb-0.5">AI EMBEDDED</div>
-                              <div className="text-xs text-ink-3 leading-relaxed">{p.iaEmbedded}</div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()
-                  )}
-
-                  {/* Review history */}
-                  {p.history && p.history.length > 1 && (
-                    <div>
-                      <div className="text-[10px] text-ink-muted font-semibold mb-1">REVIEW HISTORY ({p.history.length})</div>
-                      <div className="space-y-1 max-h-32 overflow-y-auto">
-                        {p.history.slice(0, 8).map((h, i) => (
-                          <div key={i} className="flex justify-between text-[10px] text-ink-4 bg-surface-2/50 rounded px-2 py-1">
-                            <span>{h.reviewDate || '—'}</span>
-                            <span style={{ color: getGateColor(h.gate) }}>
-                              {isUseful(h.gate) ? `G${h.gate}` : '—'}
-                            </span>
-                            <span style={{ color: getDecisionColor(h.decision) }}>
-                              {isUseful(h.decision) ? h.decision : '—'}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+              {/* Plan-all progress bar — only shown once this card is part of a run */}
+              {planEntry && (
+                <div
+                  className="mt-3 h-[3px] rounded-full overflow-hidden bg-surface-2"
+                  title={planBarTitle(planEntry)}
+                >
+                  <div className={`h-full w-full ${planBarClasses(planEntry.status)}`} />
                 </div>
               )}
+
             </div>
           );
         })}
       </div>
+
+      {selected && (() => {
+        const selectedProject = filtered.find(p => p.projectId === selected);
+        return selectedProject
+          ? <ProjectPlanningPanel project={selectedProject} onClose={() => setSelected(null)} />
+          : null;
+      })()}
     </div>
   );
 }

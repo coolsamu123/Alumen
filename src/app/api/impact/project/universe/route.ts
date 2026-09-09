@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getProjectImpacts, aggregateImpacts } from '@/lib/impact-engine';
-import { composeNarrative } from '@/lib/impact-narrative';
+import { composeNarrativeParts } from '@/lib/impact-narrative';
 import { getActiveOutputLanguage } from '@/lib/llm';
 import type { ProjectImpact, ImpactCitation } from '@/lib/types';
 
@@ -30,9 +30,11 @@ interface PseudoNodeImpact {
   impactTypeByExplanation: string[];
   severityByExplanation: string[];
   // Parallel: synthesised "Why this matters" narrative composed from
-  // project name + direction + target + impact_type + severity + summary.
-  // Renders as the headline of the Reason tab; the original verbatim quote
-  // (explanations[i]) becomes the audit-grade "Evidence" companion.
+  // project name + direction + target + summary. Renders as the headline of
+  // the Reason tab; the original verbatim quote (explanations[i]) becomes the
+  // audit-grade "Evidence" companion. Every entry of this array is the SAME
+  // string for a given node/edge (see composeNarrativeParts) — the UI groups
+  // on it so the paragraph is shown once above all of its quotes.
   narrativeByExplanation: string[];
   // The "primary" explanation (longest at highest severity)
   explanation: string;
@@ -152,6 +154,13 @@ function fanOutPseudo(
       const nodeSeverity = kept_sbe.length > 0 ? pickMaxSeverityFromList(kept_sbe) : imp.severity;
       const nodeImpactTypes = Array.from(new Set(kept_itbe.filter(Boolean)));
 
+      const nodeNarrative = composeNarrativeParts({
+        sourceProjectName: sourceName,
+        sourceSummary,
+        targetName: name,
+        direction: imp.direction,
+      }).shared;
+
       const arr = byName.get(name) ?? [];
       arr.push({
         impactId: imp.id,
@@ -162,14 +171,13 @@ function fanOutPseudo(
         citationsByExplanation: keepIdx.map(i => cbe[i] ?? []),
         impactTypeByExplanation: kept_itbe,
         severityByExplanation: kept_sbe,
-        narrativeByExplanation: keepIdx.map(i => composeNarrative({
-          sourceProjectName: sourceName,
-          sourceSummary,
-          targetName: name,
-          direction: imp.direction,
-          impactType: itbe[i] ?? imp.impactType,
-          severity: sbe[i] ?? imp.severity,
-        })),
+        // One narrative for the whole node, not one per explanation: the
+        // sentence only depends on (source, target, direction), so composing
+        // it per explanation produced N identical paragraphs stacked in the
+        // Reason panel. The classifier clause (impact_type + severity) is
+        // deliberately dropped — the UI renders those as per-explanation
+        // badges, so repeating them in prose was the other half of the noise.
+        narrativeByExplanation: keepIdx.map(() => nodeNarrative),
         explanation: imp.explanation,
       });
       byName.set(name, arr);
@@ -283,7 +291,7 @@ function enrichEmptyCitations(impacts: ProjectImpact[]): void {
 
 // Latest summary_one_line per project from project_goals, scoped to the
 // active output language so the narrative matches the language of the impact
-// rows we're rendering. Used by composeNarrative for the "Why this matters"
+// rows we're rendering. Used by composeNarrativeParts for the "Why this matters"
 // project-context sentence. Falls back gracefully when a project has no
 // extracted goal row in the active language — narrative omits that sentence.
 function lookupProjectSummaries(
@@ -397,7 +405,7 @@ export async function GET(request: NextRequest) {
     };
 
     // 3) Look up summary_one_line for every source project referenced by any
-    //    aggregated row. Used by composeNarrative to add a project-context
+    //    aggregated row. Used by composeNarrativeParts to add a project-context
     //    sentence ("X is a study to evaluate…") to each "Why this matters".
     const allSourceIds = Array.from(new Set(
       aggregated.flatMap(imp => [imp.sourceProjectId, imp.targetProjectId])
@@ -447,6 +455,12 @@ export async function GET(request: NextRequest) {
       const sourceName = srcInfo?.name || imp.sourceProjectId;
       const targetName = tgtInfo?.name || imp.targetProjectId;
       const sourceSummary = srcInfo?.summary || '';
+      const edgeNarrative = composeNarrativeParts({
+        sourceProjectName: sourceName,
+        sourceSummary,
+        targetName,
+        direction: imp.direction,
+      }).shared;
       return {
         otherProjectId: otherId,
         otherProjectName: meta?.name || otherId,
@@ -458,14 +472,8 @@ export async function GET(request: NextRequest) {
         citationsByExplanation: cbe,
         impactTypeByExplanation: itbe,
         severityByExplanation: sbe,
-        narrativeByExplanation: explanations.map((_, i) => composeNarrative({
-          sourceProjectName: sourceName,
-          sourceSummary,
-          targetName,
-          direction: imp.direction,
-          impactType: itbe[i] ?? imp.impactType,
-          severity: sbe[i] ?? imp.severity,
-        })),
+        // Same shared-narrative rationale as the GIO/DDS fan-out above.
+        narrativeByExplanation: explanations.map(() => edgeNarrative),
         explanation: imp.explanation,
         count: imp.count ?? 1,
         bidirectional: imp.bidirectional ?? false,

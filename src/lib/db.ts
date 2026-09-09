@@ -158,6 +158,30 @@ function initSchema(db: Database.Database) {
       added_count     INTEGER NOT NULL DEFAULT 0
     );
 
+    -- Drive folders that are tracked as initiatives: work that has documents
+    -- but no CDIO project yet. Identity is the Drive folder id, NOT the folder
+    -- name — the name is free-form and expected to change, and keying on it
+    -- would spawn a duplicate initiative on every rename (which is exactly how
+    -- PRJ folders behave, and is tolerable only because their names carry the
+    -- id). project_id is an INI code allocated here, never typed by a human:
+    -- it exists for the internal plumbing, and never appears in any document.
+    CREATE TABLE IF NOT EXISTS initiatives (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id      TEXT NOT NULL UNIQUE,
+      drive_folder_id TEXT NOT NULL UNIQUE,
+      folder_name     TEXT NOT NULL,
+      root_id         INTEGER,
+      created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+      last_seen_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      -- NULL while the folder is still in Drive. Set to an ISO timestamp when a
+      -- discovery pass over its root no longer finds it. Deliberately not a
+      -- DELETE: the goals and impact edges already computed for this initiative
+      -- stay valid and expensive to rebuild.
+      missing_since   TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_initiatives_root ON initiatives(root_id);
+
     CREATE TABLE IF NOT EXISTS auto_runs (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       started_at    TEXT NOT NULL,
@@ -210,6 +234,25 @@ function initSchema(db: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_deep_dives_project ON impact_deep_dives(project_id);
     -- idx_deep_dives_lang created in migrateOutputLanguage() (same reason).
+
+    -- Timeline / Gates / Actions / CAPEX-OPEX extraction for the Details view
+    -- "Project Planning" panel. Separate from impact_deep_dives: that table's
+    -- shape (target edge, prose + [n] citation markers) is built for GIO/DDS/
+    -- project impact narratives, not a dateful/structured plan.
+    CREATE TABLE IF NOT EXISTS project_planning (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id      TEXT NOT NULL,
+      response_json   TEXT NOT NULL,
+      llm_provider    TEXT NOT NULL,
+      llm_model       TEXT NOT NULL,
+      generated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      source_sig      TEXT NOT NULL,
+      duration_ms     INTEGER,
+      output_language TEXT NOT NULL DEFAULT 'en',
+      UNIQUE(project_id, output_language)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_project_planning_project ON project_planning(project_id);
 
     CREATE TABLE IF NOT EXISTS project_goals (
       id                    INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -368,6 +411,37 @@ function initSchema(db: Database.Database) {
   }
   try {
     db.exec('ALTER TABLE projects ADD COLUMN services TEXT DEFAULT "[]"');
+  } catch {
+    // Ignore if column already exists
+  }
+
+  // Provenance. Three ways a project row can come into existence, and they are
+  // not interchangeable to a reader: 'excel' is governed by the CDIO sheet,
+  // 'drive' was found as a PRJ folder with no sheet row, 'initiative' has no
+  // project at all. Without this, the latter two render as governed projects
+  // with most columns empty.
+  //
+  // Defaulting to 'excel' leaves every pre-existing row correct except the
+  // stubs that Drive discovery created with createMissing — those are exactly
+  // the rows with an empty batch_id, since only the Excel importer writes that
+  // field (excel-parser.ts) and the stub INSERT in drive-engine.ts does not.
+  // Guarded on the ALTER succeeding so the backfill runs once, not on boot.
+  try {
+    db.exec("ALTER TABLE projects ADD COLUMN source TEXT NOT NULL DEFAULT 'excel'");
+    const n = db.prepare(
+      "UPDATE projects SET source = 'drive' WHERE COALESCE(batch_id, '') = ''"
+    ).run().changes;
+    if (n > 0) console.log(`[db] provenance backfill: ${n} row(s) marked source='drive'`);
+  } catch {
+    // Ignore if column already exists
+  }
+
+  // A watch root is either a portfolio root (scanned recursively for PRJ-named
+  // folders) or an initiatives root (whose direct subfolders each become one
+  // initiative). Pre-existing roots are portfolio roots — that is all that
+  // existed when they were added.
+  try {
+    db.exec("ALTER TABLE drive_watch_roots ADD COLUMN kind TEXT NOT NULL DEFAULT 'portfolio'");
   } catch {
     // Ignore if column already exists
   }

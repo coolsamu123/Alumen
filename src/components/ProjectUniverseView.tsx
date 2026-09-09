@@ -172,6 +172,48 @@ function dedupExplanationsWithCitations(
   };
 }
 
+// The "Why this matters" narrative is a function of (source project, target,
+// direction) alone — see composeNarrativeParts in src/lib/impact-narrative.ts
+// — so every explanation on a node/edge carries the SAME string. Rendering one
+// card per explanation therefore stacked the identical paragraph down the
+// Reason panel, once per evidence quote. Group the explanations by their
+// narrative so the caller prints it once, with each verbatim quote (plus its
+// own badges and sources) listed underneath.
+//
+// Legacy rows that arrive without a narrative fall into one group each (keyed
+// by index) and render standalone, exactly as they did before.
+interface NarrativeGroup {
+  narrative: string;
+  items: {
+    explanation: string;
+    citations: SourceRef[];
+    impactType: string;
+    severity: string;
+  }[];
+}
+
+function groupByNarrative(d: EdgeDetails): NarrativeGroup[] {
+  const groups: NarrativeGroup[] = [];
+  const byKey = new Map<string, NarrativeGroup>();
+  d.explanations.forEach((exp, i) => {
+    const narrative = (d.narrativeByExplanation?.[i] || '').trim();
+    const key = narrative || `__no-narrative-${i}`;
+    let g = byKey.get(key);
+    if (!g) {
+      g = { narrative, items: [] };
+      byKey.set(key, g);
+      groups.push(g);
+    }
+    g.items.push({
+      explanation: exp,
+      citations: d.citationsByExplanation?.[i] ?? [],
+      impactType: d.impactTypeByExplanation?.[i] || '',
+      severity: d.severityByExplanation?.[i] || '',
+    });
+  });
+  return groups;
+}
+
 // Custom edge that draws a thicker hit-area for easier clicking + the visible stroke
 function ClickableEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, data, markerEnd }: EdgeProps) {
   const [edgePath] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
@@ -717,54 +759,75 @@ export default function ProjectUniverseView() {
                   <div className="animate-fadeIn">
                     <div className="text-[11px] uppercase tracking-wider text-ink-muted mb-2">Reason for the impact</div>
                     <div className="space-y-2">
-                      {selectedDetails.explanations.map((exp, i) => {
-                        const cites = selectedDetails.citationsByExplanation?.[i] ?? [];
-                        const it = selectedDetails.impactTypeByExplanation?.[i];
-                        const sv = selectedDetails.severityByExplanation?.[i];
-                        const narrative = selectedDetails.narrativeByExplanation?.[i] || '';
-                        const sevColor = sv ? SEVERITY_COLOR[sv] : undefined;
-                        // Whenever the API gave us a narrative, surface it as the
-                        // headline ("Why this matters") and demote the verbatim
-                        // quote to a smaller "Evidence" companion — the goal of
-                        // the read-side composer (see src/lib/impact-narrative.ts).
-                        // Legacy rows without a narrative fall back to rendering
-                        // the explanation alone, exactly as before.
-                        const hasNarrative = narrative && narrative.trim().length > 0;
-                        return (
-                          <div key={i} className="text-xs text-ink-2 leading-relaxed bg-surface-1/60 border border-line rounded-md p-3 flex flex-col gap-2">
-                            {hasNarrative ? (
-                              <>
-                                <div className="flex items-start gap-2">
-                                  <div className="flex-1 min-w-0">
-                                    <div className="text-[9px] uppercase tracking-wider text-accent-text2 font-bold mb-1">Why this matters</div>
-                                    <div className="text-ink-1">{narrative}</div>
+                      {groupByNarrative(selectedDetails).map((group, gi) => (
+                        <div key={gi} className="text-xs text-ink-2 leading-relaxed bg-surface-1/60 border border-line rounded-md p-3 flex flex-col gap-2">
+                          {/* Whenever the API gave us a narrative, surface it as
+                              the headline ("Why this matters") once for the whole
+                              group and demote the verbatim quotes to smaller
+                              "Evidence" companions — the goal of the read-side
+                              composer (see src/lib/impact-narrative.ts). Legacy
+                              rows without a narrative fall back to rendering the
+                              explanation alone, exactly as before. */}
+                          {group.narrative ? (
+                            <>
+                              <div>
+                                <div className="text-[9px] uppercase tracking-wider text-accent-text2 font-bold mb-1">Why this matters</div>
+                                <div className="text-ink-1">{group.narrative}</div>
+                              </div>
+                              <div className="border-t border-line/40 pt-2">
+                                <div className="text-[9px] uppercase tracking-wider text-ink-muted font-bold mb-1.5">
+                                  Evidence{group.items.length > 1 ? ` (${group.items.length})` : ''}
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                  {group.items.map((item, ii) => {
+                                    const sevColor = item.severity ? SEVERITY_COLOR[item.severity] : undefined;
+                                    return (
+                                      <div key={ii} className={ii > 0 ? 'border-t border-line/25 pt-2' : ''}>
+                                        <div className="flex items-start gap-2">
+                                          <div className="flex-1 min-w-0 text-ink-4 italic leading-snug">&ldquo;{item.explanation}&rdquo;</div>
+                                          {item.citations.length > 0 && <SourcePopover sources={item.citations} label="Sources" />}
+                                        </div>
+                                        {(item.impactType || item.severity) && (
+                                          <div className="flex gap-1.5 flex-wrap mt-1.5">
+                                            {item.severity && sevColor && (
+                                              <Badge label={item.severity} bg={`${sevColor}33`} fg={sevColor} />
+                                            )}
+                                            {item.impactType && (
+                                              <Badge label={item.impactType.replace(/_/g, ' ')} bg="#1e3a8a55" fg="#93c5fd" />
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            group.items.map((item, ii) => {
+                              const sevColor = item.severity ? SEVERITY_COLOR[item.severity] : undefined;
+                              return (
+                                <div key={ii} className="flex flex-col gap-2">
+                                  <div className="flex items-start gap-2">
+                                    <div className="flex-1 min-w-0">{item.explanation}</div>
+                                    {item.citations.length > 0 && <SourcePopover sources={item.citations} label="Sources" />}
                                   </div>
-                                  {cites.length > 0 && <SourcePopover sources={cites} label="Sources" />}
+                                  {(item.impactType || item.severity) && (
+                                    <div className="flex gap-1.5 flex-wrap pt-1 border-t border-line/40">
+                                      {item.severity && sevColor && (
+                                        <Badge label={item.severity} bg={`${sevColor}33`} fg={sevColor} />
+                                      )}
+                                      {item.impactType && (
+                                        <Badge label={item.impactType.replace(/_/g, ' ')} bg="#1e3a8a55" fg="#93c5fd" />
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
-                                <div className="border-t border-line/40 pt-2">
-                                  <div className="text-[9px] uppercase tracking-wider text-ink-muted font-bold mb-1">Evidence</div>
-                                  <div className="text-ink-4 italic leading-snug">&ldquo;{exp}&rdquo;</div>
-                                </div>
-                              </>
-                            ) : (
-                              <div className="flex items-start gap-2">
-                                <div className="flex-1 min-w-0">{exp}</div>
-                                {cites.length > 0 && <SourcePopover sources={cites} label="Sources" />}
-                              </div>
-                            )}
-                            {(it || sv) && (
-                              <div className="flex gap-1.5 flex-wrap pt-1 border-t border-line/40">
-                                {sv && sevColor && (
-                                  <Badge label={sv} bg={`${sevColor}33`} fg={sevColor} />
-                                )}
-                                {it && (
-                                  <Badge label={it.replace(/_/g, ' ')} bg="#1e3a8a55" fg="#93c5fd" />
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                              );
+                            })
+                          )}
+                        </div>
+                      ))}
                       {selectedDetails.explanations.length === 0 && (
                         <div className="text-xs text-ink-muted italic">No explanation on record.</div>
                       )}

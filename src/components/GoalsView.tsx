@@ -128,6 +128,7 @@ export default function GoalsView() {
   const [goals, setGoals] = useState<ProjectGoals[]>([]);
   const [status, setStatus] = useState<RunStatus | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [evidenceOpenId, setEvidenceOpenId] = useState<string | null>(null);
   const [filterRegion, setFilterRegion] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [search, setSearch] = useState('');
@@ -438,7 +439,10 @@ export default function GoalsView() {
 
                         {/* Evidence-anchored extraction (Onda 2/3). Every item
                             below carries the sentence it came from, which is
-                            what makes the Impact graph auditable. */}
+                            what makes the Impact graph auditable. Claims/relations/
+                            out-of-scope are already surfaced (post-materialization)
+                            in the Impact tab, so here they're collapsed by default
+                            behind a toggle instead of shown as always-open boxes. */}
                         {(() => {
                           const claims = parseObjArray<ImpactClaim>(g.impact_claims);
                           const relations = parseObjArray<ProjectRelation>(g.project_relations);
@@ -447,7 +451,8 @@ export default function GoalsView() {
                           const mcb = tl?.must_complete_before ?? [];
                           const blocked = tl?.blocked_by ?? [];
                           const hasTimeline = !!tl && (tl.gate1_actual || tl.gate2_target || tl.go_live_target || mcb.length > 0 || blocked.length > 0);
-                          if (!claims.length && !relations.length && !exclusions.length && !hasTimeline) return null;
+                          const evidenceCount = claims.length + relations.length + exclusions.length;
+                          if (!evidenceCount && !hasTimeline) return null;
 
                           const Section = ({ title, count, children }: { title: string; count: number; children: React.ReactNode }) => (
                             <div className="bg-surface-1 rounded-lg border border-line-strong p-4">
@@ -458,50 +463,78 @@ export default function GoalsView() {
                             </div>
                           );
 
+                          const evidenceOpen = evidenceOpenId === g.project_id;
+
                           return (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                              {claims.length > 0 && (
-                                <Section title="Impact claims" count={claims.length}>
-                                  {claims.map((c, i) => (
-                                    <div key={i} className="text-sm">
-                                      <div className="flex flex-wrap gap-1.5 items-center">
-                                        <span className={`px-2 py-0.5 rounded text-[11px] font-mono border ${c.target_kind === 'gio' ? 'bg-cyan-900/40 text-cyan-200 border-cyan-800/60' : 'bg-emerald-900/40 text-emerald-200 border-emerald-800/60'}`}>{c.target}</span>
-                                        <span className="text-[11px] text-ink-3">{(c.role || '').replace(/_/g, ' ')}</span>
-                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase border ${c.severity === 'high' ? 'bg-red-900/40 text-red-200 border-red-800/60' : 'bg-surface-2 text-ink-3 border-line-strong'}`}>{c.severity}</span>
-                                        <span className="text-[10px] text-ink-muted font-mono">{(c.impact_type || '').replace(/_/g, ' ')}</span>
-                                        {c.confidence === 'inferred' && <span className="text-[10px] text-amber-300/80 italic">inferred</span>}
-                                      </div>
-                                      <Evidence quote={c.evidence_quote} file={c.evidence_file} />
-                                    </div>
-                                  ))}
-                                </Section>
-                              )}
+                            <div className="mt-4 space-y-4">
+                              {evidenceCount > 0 && (
+                                <div className="bg-surface-1 rounded-lg border border-line-strong">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEvidenceOpenId(evidenceOpen ? null : g.project_id)}
+                                    className="w-full flex items-center justify-between px-4 py-2.5 text-left"
+                                  >
+                                    <span className="text-[10px] font-bold tracking-widest text-ink-muted uppercase">
+                                      Extraction evidence
+                                      <span className="text-ink-faint ml-1.5">
+                                        {claims.length > 0 && `${claims.length} claim${claims.length === 1 ? '' : 's'}`}
+                                        {claims.length > 0 && (relations.length > 0 || exclusions.length > 0) && ' · '}
+                                        {relations.length > 0 && `${relations.length} relation${relations.length === 1 ? '' : 's'}`}
+                                        {relations.length > 0 && exclusions.length > 0 && ' · '}
+                                        {exclusions.length > 0 && `${exclusions.length} out of scope`}
+                                      </span>
+                                    </span>
+                                    <span className="text-ink-faint text-xs">{evidenceOpen ? '▲' : '▼'}</span>
+                                  </button>
 
-                              {relations.length > 0 && (
-                                <Section title="Project relations" count={relations.length}>
-                                  {relations.map((r, i) => (
-                                    <div key={i} className="text-sm">
-                                      <div className="flex flex-wrap gap-1.5 items-center">
-                                        <span className="px-2 py-0.5 rounded text-[11px] font-mono border bg-surface-2 text-ink-3 border-line-strong">{r.project_id}</span>
-                                        <span className="text-[11px] text-ink-3">{(r.kind || '').replace(/_/g, ' ')}</span>
-                                        {r.confidence === 'inferred' && <span className="text-[10px] text-amber-300/80 italic">inferred</span>}
-                                      </div>
-                                      {r.relation && <div className="text-[11px] text-ink-3 mt-0.5">{r.relation}</div>}
-                                      <Evidence quote={r.evidence_quote} file={r.source_file} />
-                                    </div>
-                                  ))}
-                                </Section>
-                              )}
+                                  {evidenceOpen && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 pt-0">
+                                      {claims.length > 0 && (
+                                        <Section title="Impact claims" count={claims.length}>
+                                          {claims.map((c, i) => (
+                                            <div key={i} className="text-sm">
+                                              <div className="flex flex-wrap gap-1.5 items-center">
+                                                <span className={`px-2 py-0.5 rounded text-[11px] font-mono border ${c.target_kind === 'gio' ? 'bg-cyan-900/40 text-cyan-200 border-cyan-800/60' : 'bg-emerald-900/40 text-emerald-200 border-emerald-800/60'}`}>{c.target}</span>
+                                                <span className="text-[11px] text-ink-3">{(c.role || '').replace(/_/g, ' ')}</span>
+                                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase border ${c.severity === 'high' ? 'bg-red-900/40 text-red-200 border-red-800/60' : 'bg-surface-2 text-ink-3 border-line-strong'}`}>{c.severity}</span>
+                                                <span className="text-[10px] text-ink-muted font-mono">{(c.impact_type || '').replace(/_/g, ' ')}</span>
+                                                {c.confidence === 'inferred' && <span className="text-[10px] text-amber-300/80 italic">inferred</span>}
+                                              </div>
+                                              <Evidence quote={c.evidence_quote} file={c.evidence_file} />
+                                            </div>
+                                          ))}
+                                        </Section>
+                                      )}
 
-                              {exclusions.length > 0 && (
-                                <Section title="Explicitly out of scope" count={exclusions.length}>
-                                  {exclusions.map((o, i) => (
-                                    <div key={i} className="text-sm">
-                                      <span className="text-[12px] text-ink-3 font-medium">{o.topic}</span>
-                                      <Evidence quote={o.evidence_quote} file={o.source_file} />
+                                      {relations.length > 0 && (
+                                        <Section title="Project relations" count={relations.length}>
+                                          {relations.map((r, i) => (
+                                            <div key={i} className="text-sm">
+                                              <div className="flex flex-wrap gap-1.5 items-center">
+                                                <span className="px-2 py-0.5 rounded text-[11px] font-mono border bg-surface-2 text-ink-3 border-line-strong">{r.project_id}</span>
+                                                <span className="text-[11px] text-ink-3">{(r.kind || '').replace(/_/g, ' ')}</span>
+                                                {r.confidence === 'inferred' && <span className="text-[10px] text-amber-300/80 italic">inferred</span>}
+                                              </div>
+                                              {r.relation && <div className="text-[11px] text-ink-3 mt-0.5">{r.relation}</div>}
+                                              <Evidence quote={r.evidence_quote} file={r.source_file} />
+                                            </div>
+                                          ))}
+                                        </Section>
+                                      )}
+
+                                      {exclusions.length > 0 && (
+                                        <Section title="Explicitly out of scope" count={exclusions.length}>
+                                          {exclusions.map((o, i) => (
+                                            <div key={i} className="text-sm">
+                                              <span className="text-[12px] text-ink-3 font-medium">{o.topic}</span>
+                                              <Evidence quote={o.evidence_quote} file={o.source_file} />
+                                            </div>
+                                          ))}
+                                        </Section>
+                                      )}
                                     </div>
-                                  ))}
-                                </Section>
+                                  )}
+                                </div>
                               )}
 
                               {hasTimeline && (

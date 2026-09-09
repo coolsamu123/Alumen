@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getTodayLLMStats } from '@/lib/llm';
 
+// Reads mutable state — must not be prerendered at build time. See the note in
+// api/drive/projects/route.ts.
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   const today = getTodayLLMStats();
 

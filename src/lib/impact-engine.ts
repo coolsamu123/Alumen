@@ -6,8 +6,8 @@ import { getPrompts } from './prompts';
 import { generateContent, getActiveOutputLanguage, type OutputLanguage } from './llm';
 import { normalizeDdsList } from './dds-catalog';
 import { isCanonicalTarget, IMPACT_TYPES, IMPACT_DIRECTIONS } from './target-catalog';
-import { normalizeProjectId } from './project-id';
-import type { CIOOProject, CIOOService, ProjectImpact, ProjectSummary, ImpactAnalysisStatus } from './types';
+import { isProjectId, normalizeProjectId } from './project-id';
+import type { CIOOProject, CIOOService, ProjectImpact, ProjectSource, ProjectSummary, ImpactAnalysisStatus } from './types';
 
 // ─── Module-level state for tracking analysis progress ───────────────────────
 
@@ -31,7 +31,7 @@ export const IMPACT_ANALYSIS_QUERY = `
     g.output_language,
     p.name as proj_name, p.dds, p.gate as proj_gate, p.decision, p.cost_keur, p.description, p.remarks,
     p.review_date, p.link_positions, p.link_folder, p.link_cioo,
-    p.services
+    p.services, p.source
   FROM project_goals g
   LEFT JOIN projects p ON g.project_id = p.project_id
   WHERE g.project_id != '' AND g.status = 'success' AND g.output_language = ?
@@ -142,6 +142,16 @@ export interface ProjectFullRecord {
   services: CIOOService[];
   goalEntries: GoalEntry[];
   tags: string[];
+  /** Where this row came from. '' when the LEFT JOIN found no projects row. */
+  source: ProjectSource;
+}
+
+/**
+ * The LEFT JOIN means a goals row can exist with no projects row behind it, in
+ * which case `source` arrives as null. Everything else is trusted as written.
+ */
+function normalizeSource(raw: unknown): ProjectSource {
+  return raw === 'initiative' || raw === 'drive' || raw === 'excel' ? raw : 'excel';
 }
 
 function fetchAllProjectRecords(lang: OutputLanguage = getActiveOutputLanguage()): ProjectFullRecord[] {
@@ -289,6 +299,7 @@ function fetchAllProjectRecords(lang: OutputLanguage = getActiveOutputLanguage()
         } catch { return [] as CIOOService[]; }
       })(),
       goalEntries,
+      source: normalizeSource(latestByReview.source),
       tags: extractTags({
         name: resolvedName,
         description: bestDescription,
@@ -346,6 +357,7 @@ export function fetchProjectSummariesForViews(): ProjectSummary[] {
     costKEur: r.costKEur,
     description: r.description,
     remarks: r.remarks,
+    source: r.source,
     reviewCount: r.goalEntries.length,
     lastReviewDate: r.reviewDate,
     linkPositions: r.linkPositions,
@@ -1016,7 +1028,7 @@ function storeImpacts(impacts: RawImpact[], batchId: string, lang: OutputLanguag
       return JSON.stringify(matches.map(idx => ({ goal_id: g.goal_id, claim_idx: idx, source: 'claim' as const })));
     }
     // Project↔project → match against project_relations by target project_id.
-    if (item.target && item.target.startsWith('PRJ')) {
+    if (item.target && isProjectId(item.target)) {
       let relations: Array<{ project_id: string }> = [];
       try { const v = JSON.parse(g.project_relations || '[]'); if (Array.isArray(v)) relations = v as typeof relations; } catch { /* ignore */ }
       const matchIdx = relations.findIndex(r => r.project_id === item.target);

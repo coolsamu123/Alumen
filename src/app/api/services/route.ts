@@ -5,6 +5,10 @@ import path from 'path';
 const MAPPINGS_FILE = path.join(process.cwd(), 'data', 'service_mappings.json');
 const CSV_FILE = '/home/samuel/Téléchargements/service_offering.csv';
 
+// Reads mutable state — must not be prerendered at build time. See the note in
+// api/drive/projects/route.ts.
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     let mappings: { domain: string; owner: string }[] = [];
