@@ -10,6 +10,7 @@ import {
 } from '@/lib/auto-pipeline';
 import { getTodayLLMStats } from '@/lib/llm';
 import { getSyncAllState, isSyncAllRunning } from '@/lib/drive-sync-all';
+import { getUpstreamSnapshot, type UpstreamSnapshot } from '@/lib/upstream-sync';
 
 export interface DrivePanelState {
   pipeline: {
@@ -43,6 +44,9 @@ export interface DrivePanelState {
     impactsAdded: number;
     errorCount: number;
   }>;
+  /** Stages 0–1 of the chain: the two Apps Script control spreadsheets,
+   *  mirrored by upstream-sync.ts on its own cadence. */
+  upstream: UpstreamSnapshot;
   generatedAt: string;
 }
 
@@ -154,6 +158,11 @@ export function buildDrivePanelState(): DrivePanelState {
       impactsAdded: r.impacts_added,
       errorCount: (() => { try { return JSON.parse(r.errors_json).length; } catch { return 0; } })(),
     })),
+    // Cache read only — getUpstreamSnapshot() never touches Google on this
+    // path (PLAN_LIVE_DATAFLOW.md §3.3: the SSE ticks up to 120×/min per open
+    // tab). Its own timer does the fetching; a failure there surfaces as
+    // upstream.error and leaves the last good rows in place.
+    upstream: getUpstreamSnapshot(),
     generatedAt: new Date().toISOString(),
   };
 }

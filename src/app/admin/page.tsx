@@ -24,6 +24,8 @@ export default function AdminPage() {
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [testResult, setTestResult] = useState('');
+  const [upstreamStatus, setUpstreamStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [upstreamResult, setUpstreamResult] = useState('');
   const [stats, setStats] = useState<{ analyses: number; documents: number } | null>(null);
 
   // Service account state
@@ -123,6 +125,34 @@ export default function AdminPage() {
     } catch (e: unknown) {
       setStatus('error');
       setTestResult(e instanceof Error ? e.message : 'Save failed');
+    }
+  };
+
+  const handleUpstreamTest = async () => {
+    setUpstreamStatus('testing');
+    setUpstreamResult('');
+    try {
+      const res = await fetch('/api/admin/upstream-test', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Request failed');
+      if (!data.ok) {
+        // Surface Google's own message: a 403 here names the service account
+        // address that has to be added to the CopyUtility folder.
+        setUpstreamStatus('error');
+        setUpstreamResult(data.error);
+        return;
+      }
+      setUpstreamStatus('success');
+      setUpstreamResult(
+        `${data.total} row(s): ${data.byStage.copy} copy, ${data.byStage.cleanup} cleanup.\n` +
+        data.sample
+          .map((r: { projectId: string; stage: string; status: string; detail: Record<string, unknown> }) =>
+            `  ${r.projectId} · ${r.stage} · ${r.status} · ${JSON.stringify(r.detail)}`)
+          .join('\n')
+      );
+    } catch (e: unknown) {
+      setUpstreamStatus('error');
+      setUpstreamResult(e instanceof Error ? e.message : 'Test failed');
     }
   };
 
@@ -533,6 +563,29 @@ export default function AdminPage() {
           )}
           {langStatus === 'error' && (
             <div style={{ fontSize: 13, color: '#f87171', marginTop: 10 }}>Could not save language preference.</div>
+          )}
+        </div>
+
+        {/* Upstream (Apps Script control sheets) */}
+        <div style={panelStyle}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink-1)', marginBottom: 4 }}>Upstream (Apps Script)</div>
+          <div style={{ fontSize: 13, color: 'var(--ink-muted)', marginBottom: 16 }}>
+            Reads the two control spreadsheets in the <code style={{ color: 'var(--ink-4)' }}>CopyUtility</code> folder
+            to show stages 0–1 of the chain. Read-only — the Apps Script is the only writer.
+          </div>
+          <button onClick={handleUpstreamTest} disabled={upstreamStatus === 'testing'}
+            style={{ ...btnPurple, opacity: upstreamStatus === 'testing' ? 0.5 : 1 }}>
+            {upstreamStatus === 'testing' ? 'Testing...' : 'Test upstream'}
+          </button>
+          {upstreamStatus === 'success' && (
+            <div style={{ marginTop: 14, background: '#052e16', border: '1px solid #166534', borderRadius: 8, padding: 12, fontSize: 13, color: '#86efac', whiteSpace: 'pre-wrap' }}>
+              {upstreamResult}
+            </div>
+          )}
+          {upstreamStatus === 'error' && (
+            <div style={{ marginTop: 14, background: '#450a0a', border: '1px solid #7f1d1d', borderRadius: 8, padding: 12, fontSize: 13, color: '#fca5a5', whiteSpace: 'pre-wrap' }}>
+              {upstreamResult}
+            </div>
           )}
         </div>
 

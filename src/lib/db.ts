@@ -255,6 +255,38 @@ function initSchema(db: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_user_scopes_user ON user_scopes(user_id);
 
+    -- Local mirror of what the Apps Script control spreadsheets say
+    -- (PLAN_LIVE_DATAFLOW.md section 4). The spreadsheet is the source of
+    -- truth; this is cache + history, so the UI can show transitions even
+    -- though the script overwrites the row in place.
+    --
+    -- sheet_at is the spreadsheet's own "Last Updated". It arrives as an
+    -- Excel serial in Europe/Paris wall-clock (verified 2026-09-09: serial
+    -- 46274.649 reads 15:34 while the file's Drive modifiedTime is 13:35Z —
+    -- exactly the CEST offset), so it is stored WITHOUT a timezone suffix and
+    -- must not be treated as UTC. observed_at is written by Alumen and is the
+    -- one that can be compared against anything else.
+    CREATE TABLE IF NOT EXISTS upstream_status (
+      project_id   TEXT NOT NULL,
+      stage        TEXT NOT NULL,          -- 'copy' | 'cleanup'
+      status       TEXT NOT NULL,          -- QUEUED|IN_PROGRESS|DONE|ERROR|UNKNOWN
+      detail_json  TEXT NOT NULL DEFAULT '{}',
+      sheet_at     TEXT,                   -- sheet-local wall clock, no offset
+      observed_at  TEXT NOT NULL,
+      PRIMARY KEY (project_id, stage)
+    );
+
+    -- Only the transitions, for the per-project timeline.
+    CREATE TABLE IF NOT EXISTS upstream_events (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id  TEXT NOT NULL,
+      stage       TEXT NOT NULL,
+      from_status TEXT,
+      to_status   TEXT NOT NULL,
+      observed_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_upstream_events_project ON upstream_events(project_id, id);
+
     CREATE TABLE IF NOT EXISTS impact_deep_dives (
       id              INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id      TEXT NOT NULL,
