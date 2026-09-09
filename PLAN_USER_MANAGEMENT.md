@@ -17,7 +17,7 @@ Auditoria feita sobre `middleware.ts`, `public-host.ts`, `layout.tsx`,
 | Fase | Estado | Quando |
 |---|---|---|
 | 1 — Identidade | ✅ **done — implantado em produção** | 2026-09-09 |
-| 2 — Escopo | ⬜ não iniciada | — |
+| 2 — Escopo | ✅ **done — implantado em produção** | 2026-09-09 |
 | 3 — Gestão | ⬜ não iniciada | — |
 | 4 — Acabamento | ⬜ não iniciada | — |
 | 5 — Matar modo público | ⬜ não iniciada (deliberadamente por último, §7.1) | — |
@@ -320,9 +320,27 @@ senha. Um segundo usuário de teste criado durante a verificação
    corte de fase: a Fase 3 é quem constrói a tela de gestão; um indicador
    simples de sessão pode entrar ali ou antes, a seu critério.
 
-**Fase 2 — Escopo.** `user_scopes`, `access.ts`, filtro em `/api/projects` e
-`/api/impact`, stats pós-filtro, regra das duas pontas, dropdown de DDS do
-Toolbar restrito. Fase pequena — é a §4.1 inteira, dois endpoints.
+**Fase 2 — Escopo. ✅ done (2026-09-09), implantada.**
+
+- [x] Tabela `user_scopes` (`db.ts`) — exceção, `ON DELETE CASCADE` (FKs já
+      ligadas via `PRAGMA foreign_keys = ON`)
+- [x] `src/lib/access.ts` — `getVisibleProjectIds(session)`, retorna `'ALL'`
+      no caso comum (early return); resolve grants de DDS dinamicamente contra
+      `projects` a cada leitura
+- [x] `GET /api/projects` — filtra a lista, `stats` recalculado pós-filtro
+- [x] `GET /api/impact` — regra das duas pontas (`isImpactEndpointVisible`),
+      aplicada também em `rawTotal` (não só em `total`/`impacts`), com exceção
+      pro nó virtual `GIO_SERVICES`
+- [x] Dropdown de DDS do Toolbar — **nenhuma mudança necessária**; já deriva
+      de `projects` (contexto), que vem filtrado do servidor
+- [x] `npm run build` limpo
+- [x] Testado ponta a ponta contra host externo simulado com um usuário basic
+      real, grant `dds=GIO`: sem login → 66 projetos/12 DDS; com o grant → 13
+      projetos, só DDS='GIO'; impactos caíram de 199 para 29 (13 deles via
+      `GIO_SERVICES`, confirmando a exceção); `rawTotal` também consistente
+      (426 → 87). Usuário e grant de teste removidos do banco antes do deploy.
+- [x] Implantado — `npm run build && systemctl restart alumen`, validado pós-
+      restart (66 projetos, leitura pública externa continua sem exigir login)
 
 **Fase 3 — Gestão.** `/admin/users` completo, com preview de contagem.
 

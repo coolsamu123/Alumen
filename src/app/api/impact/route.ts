@@ -7,6 +7,8 @@ import {
   clearAllImpacts,
 } from '@/lib/impact-engine';
 import { isAnonymousExternal } from '@/lib/public-host';
+import { getSession } from '@/lib/auth';
+import { getVisibleProjectIds, isImpactEndpointVisible } from '@/lib/access';
 
 // Destructive / expensive actions (start a Gemini run, wipe stored impacts)
 // must not be triggerable from the public hostname unless the caller has
@@ -29,8 +31,23 @@ export async function GET(request: NextRequest) {
     const raw = searchParams.get('raw') === '1';
 
     const rawImpacts = getAllImpacts();
-    const impacts = raw ? rawImpacts : aggregateImpacts(rawImpacts);
+    const aggregated = raw ? rawImpacts : aggregateImpacts(rawImpacts);
     const status = getImpactStatus();
+
+    // An edge only survives if BOTH endpoints are visible. Under this scope
+    // model that's not about secrecy (§2.1) — it's that an edge pointing at a
+    // project missing from the list is a render bug: a dangling Graph node, a
+    // Matrix column with no row (§2.3).
+    const session = await getSession();
+    const visible = getVisibleProjectIds(session);
+    const impacts =
+      visible === 'ALL'
+        ? aggregated
+        : aggregated.filter(
+            imp =>
+              isImpactEndpointVisible(imp.sourceProjectId, visible) &&
+              isImpactEndpointVisible(imp.targetProjectId, visible)
+          );
 
     // Stats reflect the returned set (one entry per pair when aggregated).
     const bySeverity: Record<string, number> = {};
@@ -47,11 +64,24 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Same scope rule applied to the pre-aggregation count — otherwise a
+    // scoped user would see e.g. "total: 12" next to "rawTotal: 500", which
+    // is exactly the "counter that doesn't match the list" bug §2.1 warns
+    // about, just on the raw side instead of the aggregated one.
+    const rawTotal =
+      visible === 'ALL'
+        ? rawImpacts.length
+        : rawImpacts.filter(
+            imp =>
+              isImpactEndpointVisible(imp.sourceProjectId, visible) &&
+              isImpactEndpointVisible(imp.targetProjectId, visible)
+          ).length;
+
     return NextResponse.json({
       impacts,
       stats: {
         total: impacts.length,
-        rawTotal: rawImpacts.length,
+        rawTotal,
         bySeverity,
         byType,
         byDirection,

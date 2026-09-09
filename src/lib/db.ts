@@ -239,6 +239,22 @@ function initSchema(db: Database.Database) {
       last_login_at TEXT
     );
 
+    -- Exception list, not an allowlist: a user with no rows here sees the
+    -- whole portfolio (PLAN_USER_MANAGEMENT.md section 2.1/3 - restricting
+    -- visibility is the rare case, not the default). Admin ignores this
+    -- table entirely (src/lib/access.ts). 'dds' grants are resolved against
+    -- the live projects table at read time, so scope_value for that type
+    -- is never validated against a snapshot -- a project added to a granted
+    -- DDS later appears on its own.
+    CREATE TABLE IF NOT EXISTS user_scopes (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      scope_type  TEXT NOT NULL CHECK (scope_type IN ('dds','project')),
+      scope_value TEXT NOT NULL,
+      UNIQUE (user_id, scope_type, scope_value)
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_scopes_user ON user_scopes(user_id);
+
     CREATE TABLE IF NOT EXISTS impact_deep_dives (
       id              INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id      TEXT NOT NULL,

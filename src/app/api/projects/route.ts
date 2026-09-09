@@ -3,6 +3,8 @@ import { getDb } from '@/lib/db';
 import type { CIOOProject } from '@/lib/types';
 import { fetchProjectSummariesForViews } from '@/lib/impact-engine';
 import { getDownloadedFilesByProject } from '@/lib/drive-engine';
+import { getSession } from '@/lib/auth';
+import { getVisibleProjectIds } from '@/lib/access';
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,7 +13,8 @@ export async function GET(request: NextRequest) {
     const mode = searchParams.get('mode') || 'summary';
 
     if (mode === 'raw') {
-      // Return all raw rows, enriched with the count of locally downloaded files.
+      // Admin/debug path, not wired to any view (PLAN_USER_MANAGEMENT.md
+      // §4.1 scopes Fase 2 to the summary path below) — left unfiltered.
       const rows = db.prepare('SELECT * FROM projects ORDER BY review_date DESC').all() as DbRow[];
       const fileCounts = getDownloadedFilesByProject();
       const projects = rows.map(row => ({
@@ -22,8 +25,15 @@ export async function GET(request: NextRequest) {
     }
 
     // Default: delegate to the Impact engine so the views see the same set as Impact
-    const summaries = fetchProjectSummariesForViews();
+    const allSummaries = fetchProjectSummariesForViews();
 
+    const session = await getSession();
+    const visible = getVisibleProjectIds(session);
+    const summaries =
+      visible === 'ALL' ? allSummaries : allSummaries.filter(s => visible.has(s.projectId));
+
+    // Computed AFTER the filter — a count that doesn't match the list on
+    // screen is a visible bug, not a privacy concern under this model (§2.1).
     const stats = {
       totalProjects: summaries.length,
       totalRows: summaries.reduce((sum, s) => sum + s.reviewCount, 0),
