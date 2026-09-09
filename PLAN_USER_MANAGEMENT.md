@@ -12,6 +12,21 @@ Auditoria feita sobre `middleware.ts`, `public-host.ts`, `layout.tsx`,
 
 ---
 
+## 0. Status
+
+| Fase | Estado | Quando |
+|---|---|---|
+| 1 — Identidade | ✅ **done** — código pronto e testado, **não implantado em produção** | 2026-09-09 |
+| 2 — Escopo | ⬜ não iniciada | — |
+| 3 — Gestão | ⬜ não iniciada | — |
+| 4 — Acabamento | ⬜ não iniciada | — |
+| 5 — Matar modo público | ⬜ não iniciada (deliberadamente por último, §7.1) | — |
+| 6 — Okta | ⬜ bloqueada pela demanda MMS (§8) | — |
+
+Ver §6 para o detalhamento marcado item a item de cada fase.
+
+---
+
 ## 1. O que existe hoje
 
 Já há um esqueleto de dois níveis — mas ele **não é um sistema de usuários**:
@@ -260,11 +275,50 @@ juntos, nunca um sem o outro.
 
 Cada fase deixa o sistema íntegro. Nada de estado intermediário quebrado.
 
-**Fase 1 — Identidade.** Tabela `users`, hash scrypt, cookie assinado, página de
-login, logout, seed do primeiro admin, `getSession()`, gate de role no
-middleware. *Ainda sem escopo:* todo autenticado vê o portfólio inteiro; muda
-só quem entra e o que Admin/Drive Sync exigem. Já é ganho isolado — acaba com a
-senha compartilhada.
+**Fase 1 — Identidade. ✅ done (2026-09-09), não implantada.**
+
+- [x] Tabela `users` (`db.ts`) — schema conforme §3, sem `user_scopes` ainda (Fase 2)
+- [x] Hash de senha — scrypt, `src/lib/password.ts`
+- [x] Cookie de sessão assinado, verificável no Edge e no Node — `src/lib/session.ts`
+- [x] `getSession()` autoritativo (relê `is_active`/`token_version` do banco) — `src/lib/auth.ts`
+- [x] `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`
+- [x] Página `/login`
+- [x] Seed automático do primeiro admin a partir de `ADMIN_BASIC_AUTH` — `seedInitialAdmin()` em `db.ts`
+- [x] Break-glass — `scripts/create-admin.mjs` (upsert por email, roda via SSH)
+- [x] `middleware.ts` reescrito: Basic Auth → sessão; gate de role (`admin`) nos
+      `PROTECTED_PREFIXES`/`PROTECTED_BY_METHOD` existentes; bypass local
+      preservado (§2.4, ainda em aberto para decidir depois)
+- [x] `npm run build` limpo (typecheck + lint)
+- [x] Testado manualmente contra host externo simulado (`Host: *.amazonaws.com`):
+      redirect para `/login` sem sessão, 401 em API sem sessão, 403 com sessão
+      não-admin, login com senha errada rejeitado, login correto libera
+      `/admin`, `/api/auth/me` retorna o usuário, logout revoga o acesso
+
+*Ainda sem escopo:* todo autenticado vê o portfólio inteiro; muda só quem entra
+e o que Admin/Drive Sync exigem. Isso é intencional (linha 269).
+
+**Pendências antes de considerar isto "em produção":**
+
+1. **Não implantado.** `npm run build` local foi rodado só para validar — o
+   serviço systemd `alumen` continua na versão anterior (Basic Auth), confirmado
+   via `systemctl status` (mesmo PID, sem restart). Implantar exige rodar
+   `npm run build && sudo systemctl restart alumen` na EC2 — decisão consciente,
+   porque troca o mecanismo de login de todo host externo de uma vez.
+2. **O seed já rodou contra o banco de produção real** (`data/cioo.db`), sem
+   querer: `next build` executa código o bastante para chamar `getDb()`, e o
+   arquivo de dados é o mesmo da produção (não há banco de teste separado).
+   Existe hoje 1 linha em `users`: `email='admin'` (vindo literalmente do
+   usuário do `ADMIN_BASIC_AUTH`), role admin. Funciona para o break-glass, mas
+   **não é um email corporativo** — corrigir com
+   `node scripts/create-admin.mjs <email-real> "<nome>" <senha>` antes de
+   contar isso como pronto para Okta (§8.1, §8.6). Um segundo usuário de teste
+   criado durante a verificação (`test.admin@airliquide.com`) já foi removido.
+3. **UI ainda não fala com sessão.** `ProjectContext`/`Header`/`layout.tsx`
+   continuam lendo `isPublic` via `isAnonymousExternal` (Basic-Auth-shaped, só
+   que agora alimentado por sessão) — funciona, mas não há indicação visual de
+   "logado como fulano" nem botão de logout na UI ainda. Isso é natural do
+   corte de fase: a Fase 3 é quem constrói a tela de gestão; um indicador
+   simples de sessão pode entrar ali ou antes, a seu critério.
 
 **Fase 2 — Escopo.** `user_scopes`, `access.ts`, filtro em `/api/projects` e
 `/api/impact`, stats pós-filtro, regra das duas pontas, dropdown de DDS do

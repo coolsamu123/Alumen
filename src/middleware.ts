@@ -1,25 +1,41 @@
-// External-host Basic Auth gate.
+// External-host session gate.
 //
 // Goal: on any host that matches PUBLIC_HOSTS (currently the EC2 hostname),
 // protect admin pages, write endpoints, and the heavier batch APIs behind a
-// Basic Auth challenge. Local requests (no PUBLIC_HOSTS match) bypass this
-// middleware entirely — same UX as before.
+// real login (PLAN_USER_MANAGEMENT.md Fase 1) instead of the one shared
+// Basic Auth password this replaces. Local requests (no PUBLIC_HOSTS match)
+// bypass this middleware entirely — same UX as before, and still an open
+// question for a later fase (§2.4).
 //
 // Flow:
 //   - Local host                       → next() (no challenge).
 //   - External host, public path       → next() (graph / timeline / detail /
-//                                                 impact-read still work).
+//                                                 impact-read still work,
+//                                                 login or not — public mode
+//                                                 dies last, Fase 5).
 //   - External host, protected path:
-//       - No ADMIN_BASIC_AUTH set      → 503 (server misconfigured).
-//       - Missing / wrong creds        → 401 + WWW-Authenticate → browser
-//                                                                  shows native dialog.
-//       - Valid creds                  → next(), injecting `x-strom-authed: 1`
-//                                        on the request so the layout knows to
-//                                        unlock the full UI.
+//       - No session cookie, or it fails signature/expiry verification
+//                                       → redirect to /login (page) or 401
+//                                         JSON (API).
+//       - Valid session, role != admin → 403 (Admin/Drive Sync are
+//                                         admin-only per the original ask).
+//       - Valid admin session          → next(), injecting `x-strom-authed: 1`
+//                                        so the layout unlocks the full UI —
+//                                        same signal isAnonymousExternal reads
+//                                        as before, just driven by a session
+//                                        now instead of a Basic Auth header.
+//
+// This file runs on the Edge runtime — no better-sqlite3, no node:crypto.
+// verifySessionToken() (src/lib/session.ts) only checks the cookie's
+// signature/shape/expiry; it does NOT reread token_version/is_active from
+// SQLite. That authoritative recheck happens in src/lib/auth.ts, used by
+// route handlers that need to know a deactivated user is rejected
+// immediately rather than only once its cookie naturally expires.
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { isPublicHost, AUTHED_HEADER } from '@/lib/public-host';
+import { SESSION_COOKIE, verifySessionToken } from '@/lib/session';
 
 // Match-all-methods prefixes. Anything starting with these requires auth from
 // an external client.
@@ -52,80 +68,57 @@ function isProtected(pathname: string, method: string): boolean {
   return PROTECTED_BY_METHOD.some(r => pathStartsWith(pathname, r.prefix) && r.methods.includes(m));
 }
 
-function parseBasicAuth(header: string | null): { user: string; pass: string } | null {
-  if (!header || !header.toLowerCase().startsWith('basic ')) return null;
-  try {
-    // atob is available in the edge runtime that powers Next middleware.
-    const decoded = atob(header.slice(6).trim());
-    const idx = decoded.indexOf(':');
-    if (idx < 0) return null;
-    return { user: decoded.slice(0, idx), pass: decoded.slice(idx + 1) };
-  } catch {
-    return null;
-  }
-}
-
-function expectedCreds(): { user: string; pass: string } | null {
-  const raw = process.env.ADMIN_BASIC_AUTH;
-  if (!raw) return null;
-  const idx = raw.indexOf(':');
-  if (idx < 0) return null;
-  return { user: raw.slice(0, idx), pass: raw.slice(idx + 1) };
-}
-
-function timingSafeEqual(a: string, b: string): boolean {
-  // Edge runtime has no node:crypto — emulate constant-time compare.
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
-function unauthorized(): NextResponse {
-  return new NextResponse('Authentication required.\n', {
-    status: 401,
-    headers: {
-      'WWW-Authenticate': 'Basic realm="Alumen - restricted area", charset="UTF-8"',
-      'Content-Type': 'text/plain; charset=utf-8',
-      'Cache-Control': 'no-store',
-    },
-  });
-}
-
-function misconfigured(): NextResponse {
-  return new NextResponse(
-    'Admin access disabled. Set ADMIN_BASIC_AUTH=user:password in .env.local and restart.\n',
-    {
-      status: 503,
-      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
-    },
+function unauthorizedJson(): NextResponse {
+  return NextResponse.json(
+    { error: 'Authentication required.' },
+    { status: 401, headers: { 'Cache-Control': 'no-store' } }
   );
 }
 
-export function middleware(request: NextRequest) {
+function forbiddenJson(): NextResponse {
+  return NextResponse.json(
+    { error: 'Admin role required.' },
+    { status: 403, headers: { 'Cache-Control': 'no-store' } }
+  );
+}
+
+function forbiddenPage(): NextResponse {
+  return new NextResponse('Admin access required.\n', {
+    status: 403,
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+  });
+}
+
+export async function middleware(request: NextRequest) {
   const host = request.headers.get('host');
   if (!isPublicHost(host)) return NextResponse.next();
 
   const { pathname } = request.nextUrl;
   const method = request.method;
+  const isApi = pathname.startsWith('/api/');
 
-  const expected = expectedCreds();
-  const got = parseBasicAuth(request.headers.get('authorization'));
-  const authed = !!(
-    expected &&
-    got &&
-    timingSafeEqual(got.user, expected.user) &&
-    timingSafeEqual(got.pass, expected.pass)
-  );
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  const session = await verifySessionToken(token);
+  const isAdmin = session?.role === 'admin';
 
   if (isProtected(pathname, method)) {
-    if (!expected) return misconfigured();
-    if (!authed) return unauthorized();
+    if (!session) {
+      if (isApi) return unauthorizedJson();
+      const loginUrl = new URL('/login', request.url);
+      loginUrl.searchParams.set('next', pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+    if (!isAdmin) {
+      return isApi ? forbiddenJson() : forbiddenPage();
+    }
   }
 
-  if (authed) {
+  if (session) {
     // Stamp a hint on the downstream request so the root layout / admin layout
-    // can flip the UI into "full access" mode for this external session.
+    // can flip the UI into "full access" mode for this external session —
+    // same signal as before, now driven by a verified session instead of a
+    // Basic Auth header. Any authenticated role counts here: the protected-
+    // path admin check above is the one that actually gates by role.
     const reqHeaders = new Headers(request.headers);
     reqHeaders.set(AUTHED_HEADER, '1');
     return NextResponse.next({ request: { headers: reqHeaders } });

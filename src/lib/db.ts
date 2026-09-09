@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { hashPassword } from './password';
 
 const DB_DIR = path.join(process.cwd(), 'data');
 const DB_PATH = path.join(DB_DIR, 'cioo.db');
@@ -214,6 +215,28 @@ function initSchema(db: Database.Database) {
       key        TEXT PRIMARY KEY,
       value      TEXT NOT NULL,
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- User accounts. See PLAN_USER_MANAGEMENT.md. email is the identity that
+    -- will later be matched against the Okta SAML assertion (§8.1) — always
+    -- store it lowercased. password_hash is NULL for auth_provider='okta'
+    -- accounts (§8.2); role is granted only from inside the app, never taken
+    -- from an IdP claim (§8.5) — a JIT-created Okta account is always seeded
+    -- as 'basic'. token_version is bumped on deactivate/role-change/password
+    -- reset so any session cookie issued before that moment is rejected on
+    -- its next authoritative recheck (src/lib/auth.ts), even though the
+    -- cookie itself doesn't expire until SESSION_MAX_AGE_SECONDS.
+    CREATE TABLE IF NOT EXISTS users (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      email         TEXT NOT NULL UNIQUE,
+      name          TEXT NOT NULL DEFAULT '',
+      auth_provider TEXT NOT NULL DEFAULT 'local' CHECK (auth_provider IN ('local','okta')),
+      password_hash TEXT,
+      role          TEXT NOT NULL CHECK (role IN ('admin','basic')),
+      is_active     INTEGER NOT NULL DEFAULT 1,
+      token_version INTEGER NOT NULL DEFAULT 1,
+      created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      last_login_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS impact_deep_dives (
@@ -509,6 +532,42 @@ function initSchema(db: Database.Database) {
   // reality). Uniqueness becomes (canonical_key, output_language) so the same
   // project can carry one analysis per language without colliding.
   migrateOutputLanguage(db);
+  seedInitialAdmin(db);
+}
+
+/**
+ * First-boot bootstrap: if `users` is empty and ADMIN_BASIC_AUTH is set
+ * (the shared-password credential this table replaces), seed one admin from
+ * it so upgrading this deployment doesn't require a manual step. Username
+ * from ADMIN_BASIC_AUTH is very unlikely to be a real corporate email — that
+ * is a known, deliberate gap: PLAN_USER_MANAGEMENT.md §8.1/§8.6 both call out
+ * that every admin row needs a real corporate email before Okta (Fase 6) is
+ * turned on. Fix it with `node scripts/create-admin.mjs <email> <name>
+ * <password>` (upserts by email) any time before then.
+ */
+function seedInitialAdmin(db: Database.Database) {
+  const { c } = db.prepare('SELECT COUNT(*) as c FROM users').get() as { c: number };
+  if (c > 0) return;
+
+  const raw = process.env.ADMIN_BASIC_AUTH;
+  if (!raw) return;
+  const idx = raw.indexOf(':');
+  if (idx < 0) return;
+  const email = raw.slice(0, idx).trim().toLowerCase();
+  const password = raw.slice(idx + 1);
+  if (!email || !password) return;
+
+  db.prepare(
+    `INSERT INTO users (email, name, auth_provider, password_hash, role, is_active, token_version, created_at)
+     VALUES (?, 'Admin', 'local', ?, 'admin', 1, 1, datetime('now'))`
+  ).run(email, hashPassword(password));
+
+  console.warn(
+    `[users] Seeded initial admin '${email}' from ADMIN_BASIC_AUTH. ` +
+    `Replace with a real corporate email before enabling Okta SSO — ` +
+    `see PLAN_USER_MANAGEMENT.md §8.1. Update it with: ` +
+    `node scripts/create-admin.mjs <email> "<name>" <password>`
+  );
 }
 
 /**
