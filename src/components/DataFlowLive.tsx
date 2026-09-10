@@ -181,100 +181,216 @@ function ChainView({ state }: { state: DataFlowState | null }) {
     upstream?.rows.filter(r => r.stage === stage && r.status === status).length ?? 0;
 
   const total = counts?.totalProjects ?? 0;
+  const anyRunning = Boolean(pipeline?.drive || pipeline?.goals || pipeline?.impact);
+
+  const copyDone = upstreamCount('copy', 'DONE');
+  const cleanDone = upstreamCount('cleanup', 'DONE');
 
   return (
-    <div className="p-8 flex flex-col gap-6 max-w-5xl mx-auto">
+    <div className="p-8 flex flex-col gap-2 max-w-6xl mx-auto">
       {upstream?.error && (
-        <div className="px-4 py-2.5 rounded-lg bg-amber-950/40 border border-amber-800/50 text-amber-300 text-[12px]">
+        <div className="mb-4 px-4 py-2.5 rounded-lg bg-amber-950/40 border border-amber-800/50 text-amber-300 text-[12px]">
           ⚠ Upstream (Apps Script) não pôde ser lido: {upstream.error} — mostrando o último dado bom.
         </div>
       )}
 
-      {/* External — outside Alumen */}
-      <Section label="🌐 Fora do Alumen — Apps Script">
-        <div className="grid grid-cols-2 gap-4">
-          <StageBox
-            num={0}
-            icon="📥"
-            title="Copy"
-            sub="syncProjectFiles"
-            counts={[
-              { label: 'DONE', value: upstreamCount('copy', 'DONE'), tone: 'emerald' },
-              { label: 'ERROR', value: upstreamCount('copy', 'ERROR'), tone: 'red' },
-              { label: 'EM ANDAMENTO', value: upstreamCount('copy', 'IN_PROGRESS'), tone: 'cyan' },
-            ]}
-          />
-          <StageBox
-            num={1}
-            icon="🧹"
-            title="Cleanup"
-            sub="removeClassification*"
-            counts={[
-              { label: 'DONE', value: upstreamCount('cleanup', 'DONE'), tone: 'emerald' },
-              { label: 'ERROR', value: upstreamCount('cleanup', 'ERROR'), tone: 'red' },
-              { label: 'EM ANDAMENTO', value: upstreamCount('cleanup', 'IN_PROGRESS'), tone: 'cyan' },
-            ]}
-          />
-        </div>
-        {upstream && (
-          <div className="text-[10px] text-ink-faint mt-2">
-            {upstream.stale ? 'última leitura em cache' : 'lido agora'}
-            {upstream.readAt && ` · ${new Date(upstream.readAt).toLocaleTimeString()}`}
-          </div>
-        )}
-      </Section>
-
-      <div className="flex items-center justify-center">
-        <div className="w-px h-6 bg-line-strong" />
+      {/* ── Faixa 1: fora do Alumen ─────────────────────────────────────── */}
+      <LaneLabel
+        text="Fora do Alumen · Apps Script"
+        hint={upstream ? `${upstream.stale ? 'cache' : 'ao vivo'}${upstream.readAt ? ' · ' + new Date(upstream.readAt).toLocaleTimeString() : ''}` : undefined}
+      />
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-0">
+        <StageNode
+          num={0} icon="📥" title="Copy" sub="syncProjectFiles"
+          metric={{ value: copyDone, label: 'copiados' }}
+          errors={upstreamCount('copy', 'ERROR')}
+          running={upstreamCount('copy', 'IN_PROGRESS') > 0}
+        />
+        <Conduit active={copyDone > 0} />
+        <StageNode
+          num={1} icon="🧹" title="Cleanup" sub="removeClassification"
+          metric={{ value: cleanDone, label: 'limpos' }}
+          errors={upstreamCount('cleanup', 'ERROR')}
+          running={upstreamCount('cleanup', 'IN_PROGRESS') > 0}
+        />
       </div>
 
-      {/* Alumen pipeline */}
-      <Section label="🔷 Alumen · Analysis Pipeline">
-        <div className="grid grid-cols-2 gap-4">
-          <StageBox
-            num={2}
-            icon="🔍"
-            title="Discover"
-            sub="Scans PRJ-XXXXX folders"
-            counts={[{ label: 'projetos conhecidos', value: total, tone: 'cyan' }]}
-          />
-          <StageBox
-            num={3}
-            icon="⬇️"
-            title="Download"
-            sub="DOCX · XLSX · PDF · Docs"
-            running={pipeline?.drive}
-            counts={[{ label: 'com arquivos', value: counts?.withFiles ?? 0, of: total, tone: 'cyan' }]}
-          />
-          <StageBox
-            num={4}
-            icon="🧠"
-            title="Goals Extraction"
-            sub="Technologies · DDS · GIO"
-            badge="Gemini"
-            running={pipeline?.goals}
-            counts={[{ label: 'com goals', value: counts?.withGoals ?? 0, of: total, tone: 'emerald' }]}
-          />
-          <StageBox
-            num={5}
-            icon="🔗"
-            title="Impact Analysis"
-            sub="Cross-project · Citations"
-            badge="Gemini"
-            running={pipeline?.impact}
-            counts={[{ label: 'com impactos', value: counts?.withImpacts ?? 0, of: total, tone: 'orange' }]}
-          />
-        </div>
-      </Section>
+      {/* conduíte vertical entre os dois mundos */}
+      <div className="flex justify-center py-1">
+        <Conduit vertical active={cleanDone > 0} />
+      </div>
 
-      {/* Outputs */}
-      <Section label="📤 Saídas">
-        <div className="flex flex-wrap gap-3 text-[11px] text-ink-4">
-          {['Projects', 'Goals', 'Impact Graph', 'Matrix'].map(o => (
-            <span key={o} className="px-3 py-1.5 rounded-lg bg-surface-1 border border-line">{o}</span>
-          ))}
+      {/* ── Faixa 2: dentro do Alumen ───────────────────────────────────── */}
+      <LaneLabel text="Alumen · Analysis Pipeline" accent />
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-0">
+        <StageNode
+          num={2} icon="🔍" title="Discover" sub="pastas PRJ-XXXXX"
+          metric={{ value: total, label: 'projetos' }}
+        />
+        <Conduit active={total > 0} />
+        <StageNode
+          num={3} icon="⬇️" title="Download" sub="DOCX · XLSX · PDF"
+          metric={{ value: counts?.withFiles ?? 0, of: total, label: 'com arquivos' }}
+          running={pipeline?.drive}
+        />
+        <Conduit active={(counts?.withFiles ?? 0) > 0} fast={pipeline?.goals} />
+        <StageNode
+          num={4} icon="🧠" title="Goals" sub="Tech · DDS · GIO" badge="Gemini"
+          metric={{ value: counts?.withGoals ?? 0, of: total, label: 'com goals' }}
+          running={pipeline?.goals}
+        />
+        <Conduit active={(counts?.withGoals ?? 0) > 0} fast={pipeline?.impact} />
+        <StageNode
+          num={5} icon="🔗" title="Impact" sub="cruzamentos · citações" badge="Gemini"
+          metric={{ value: counts?.withImpacts ?? 0, of: total, label: 'com impactos' }}
+          running={pipeline?.impact}
+        />
+      </div>
+
+      <div className="flex justify-center py-1">
+        <Conduit vertical active={(counts?.withImpacts ?? 0) > 0} />
+      </div>
+
+      {/* ── Saídas ──────────────────────────────────────────────────────── */}
+      <LaneLabel text="Saídas" />
+      <div className="flex flex-wrap gap-2">
+        {['Projects', 'Goals', 'Impact Graph', 'Matrix'].map(o => (
+          <span key={o}
+            className="px-3 py-1.5 rounded-lg bg-surface-1 border border-line text-[11px] text-ink-3">
+            {o}
+          </span>
+        ))}
+      </div>
+
+      {anyRunning && (
+        <p className="mt-4 text-[11px] text-accent-text flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-accent-text animate-pulse" />
+          pipeline em execução — os conduítes ativos correm mais rápido
+        </p>
+      )}
+    </div>
+  );
+}
+
+function LaneLabel({ text, hint, accent }: { text: string; hint?: string; accent?: boolean }) {
+  return (
+    <div className="flex items-baseline gap-2 mt-4 mb-2">
+      <span className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${accent ? 'text-accent-text' : 'text-ink-4'}`}>
+        {text}
+      </span>
+      <span className="flex-1 h-px bg-line" />
+      {hint && <span className="text-[10px] text-ink-faint">{hint}</span>}
+    </div>
+  );
+}
+
+/**
+ * O conduíte entre duas etapas. As partículas são o dado em trânsito.
+ *
+ * `active` = já passou coisa por aqui (senão o trilho fica inerte, e a ausência
+ * de movimento é informação: nada chegou nesta etapa ainda).
+ * `fast`   = a etapa seguinte está processando agora.
+ *
+ * A animação usa left/top em %, então funciona em qualquer largura sem medir
+ * nada em JS. Em telas estreitas o conduíte vira vertical junto com o layout.
+ */
+function Conduit({ active, fast, vertical }: { active?: boolean; fast?: boolean; vertical?: boolean }) {
+  const dur = fast ? '1.1s' : '2.8s';
+  const dots = [0, 1, 2];
+
+  if (vertical) {
+    return (
+      <div className="relative w-px h-8" aria-hidden>
+        <div className={`absolute inset-0 w-px ${active ? 'alumen-track-live-y' : 'bg-line'}`} />
+        {active && dots.map(i => (
+          <span key={i}
+            className="alumen-particle alumen-particle-y w-1 h-1 bg-accent-text"
+            style={{ ['--flow-dur' as string]: dur, animationDelay: `${i * 0.9}s` }} />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative flex-1 min-w-[28px] h-px sm:h-px my-4 sm:my-0 mx-0 sm:mx-1" aria-hidden>
+      <div className={`absolute inset-0 h-px ${active ? 'alumen-track-live' : 'bg-line'}`} />
+      {active && dots.map(i => (
+        <span key={i}
+          className="alumen-particle alumen-particle-x w-1 h-1 bg-accent-text"
+          style={{ ['--flow-dur' as string]: dur, animationDelay: `${i * 0.9}s` }} />
+      ))}
+    </div>
+  );
+}
+
+function StageNode({
+  num, icon, title, sub, badge, running, metric, errors,
+}: {
+  num: number;
+  icon: string;
+  title: string;
+  sub: string;
+  badge?: string;
+  running?: boolean;
+  errors?: number;
+  metric: { value: number; of?: number; label: string };
+}) {
+  const pct = metric.of && metric.of > 0
+    ? Math.min(100, Math.round((metric.value / metric.of) * 100))
+    : null;
+
+  return (
+    <div
+      className={`relative flex-1 min-w-0 rounded-2xl border p-4 transition-all
+        ${running
+          ? 'border-accent-border bg-surface-2 alumen-halo'
+          : 'border-line bg-surface-1 hover:border-line-strong'}`}
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <span className="w-5 h-5 shrink-0 rounded-full bg-surface-2 border border-line
+                         text-[10px] font-bold text-ink-4 flex items-center justify-center">
+          {num}
+        </span>
+        <span className="text-base leading-none">{icon}</span>
+        <span className="text-[13px] font-bold text-ink-1 truncate">{title}</span>
+        {badge && (
+          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-900/40 text-purple-300 shrink-0">
+            {badge}
+          </span>
+        )}
+      </div>
+
+      <div className="text-[10px] text-ink-muted mb-3 truncate">{sub}</div>
+
+      <div className="flex items-end gap-1.5">
+        <span className="text-2xl font-mono font-bold text-ink-1 leading-none">{metric.value}</span>
+        {metric.of !== undefined && (
+          <span className="text-[11px] font-mono text-ink-faint leading-none mb-0.5">/ {metric.of}</span>
+        )}
+      </div>
+      <div className="text-[9px] uppercase tracking-wider text-ink-faint mt-1">{metric.label}</div>
+
+      {pct !== null && (
+        <div className="mt-2.5 h-1 rounded-full bg-surface-2 overflow-hidden">
+          <div
+            className="h-full rounded-full bg-accent-text transition-all duration-700"
+            style={{ width: `${pct}%` }}
+          />
         </div>
-      </Section>
+      )}
+
+      {(running || (errors ?? 0) > 0) && (
+        <div className="mt-2.5 flex items-center gap-2">
+          {running && (
+            <span className="flex items-center gap-1 text-[10px] text-accent-text">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent-text animate-pulse" /> rodando
+            </span>
+          )}
+          {(errors ?? 0) > 0 && (
+            <span className="text-[10px] text-red-300">{errors} com erro</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -284,55 +400,6 @@ function Section({ label, children }: { label: string; children: React.ReactNode
     <div>
       <div className="text-[11px] font-semibold text-ink-4 uppercase tracking-wider mb-2.5">{label}</div>
       {children}
-    </div>
-  );
-}
-
-function StageBox({
-  num,
-  icon,
-  title,
-  sub,
-  badge,
-  running,
-  counts,
-}: {
-  num: number;
-  icon: string;
-  title: string;
-  sub: string;
-  badge?: string;
-  running?: boolean;
-  counts: Array<{ label: string; value: number; of?: number; tone: 'cyan' | 'emerald' | 'orange' | 'red' }>;
-}) {
-  const toneClass = (tone: string) =>
-    tone === 'emerald' ? 'text-emerald-300' : tone === 'orange' ? 'text-orange-300'
-    : tone === 'red' ? 'text-red-300' : 'text-cyan-300';
-
-  return (
-    <div className={`relative rounded-xl border p-4 bg-surface-1 ${running ? 'border-accent-border shadow-[0_0_0_1px_var(--accent-border)]' : 'border-line'}`}>
-      <div className="flex items-center gap-2 mb-1.5">
-        <span className="w-5 h-5 rounded-full bg-surface-2 text-[10px] font-bold text-ink-4 flex items-center justify-center">{num}</span>
-        <span className="text-lg">{icon}</span>
-        <span className="text-sm font-bold text-ink-1">{title}</span>
-        {badge && <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-900/40 text-purple-300">{badge}</span>}
-        {running && (
-          <span className="ml-auto flex items-center gap-1 text-[10px] text-accent-text">
-            <span className="w-1.5 h-1.5 rounded-full bg-accent-text animate-pulse" /> rodando
-          </span>
-        )}
-      </div>
-      <div className="text-[11px] text-ink-muted mb-3">{sub}</div>
-      <div className="flex flex-wrap gap-x-4 gap-y-1">
-        {counts.map(c => (
-          <div key={c.label} className="flex flex-col leading-tight">
-            <span className="text-[9px] uppercase tracking-wider text-ink-faint">{c.label}</span>
-            <span className={`text-base font-mono font-bold ${toneClass(c.tone)}`}>
-              {c.value}{c.of !== undefined ? ` / ${c.of}` : ''}
-            </span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

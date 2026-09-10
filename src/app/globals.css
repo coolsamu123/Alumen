@@ -290,3 +290,60 @@ body {
 [data-theme="light"] .border-orange-500\/50,
 [data-theme="light"] .border-orange-800,
 [data-theme="light"] .border-orange-800\/50 { border-color: rgb(249 115 22 / 0.4); }
+
+/* ── Data Flow: conduítes animados ────────────────────────────────────────
+ * As partículas percorrem o conduíte usando left/top em porcentagem, não
+ * translate em pixels: assim a animação funciona em qualquer largura, sem o
+ * componente precisar medir nada.
+ */
+@keyframes alumen-flow-x {
+  0%   { left: -4%;  opacity: 0; }
+  12%  { opacity: 1; }
+  88%  { opacity: 1; }
+  100% { left: 104%; opacity: 0; }
+}
+@keyframes alumen-flow-y {
+  0%   { top: -8%;   opacity: 0; }
+  12%  { opacity: 1; }
+  88%  { opacity: 1; }
+  100% { top: 108%;  opacity: 0; }
+}
+/* Brilho que corre pelo trilho, dando direção ao fluxo mesmo parado */
+@keyframes alumen-track {
+  0%   { background-position: 0% 0; }
+  100% { background-position: 200% 0; }
+}
+/* Halo de etapa ativa */
+@keyframes alumen-halo {
+  0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); }
+  50%      { box-shadow: 0 0 0 6px transparent; }
+}
+
+.alumen-particle { position: absolute; border-radius: 9999px; }
+.alumen-particle-x { top: 50%; margin-top: -2px; animation: alumen-flow-x var(--flow-dur, 3s) linear infinite; }
+.alumen-particle-y { left: 50%; margin-left: -2px; animation: alumen-flow-y var(--flow-dur, 3s) linear infinite; }
+
+.alumen-track-live {
+  background-image: linear-gradient(90deg,
+    var(--border) 0%, var(--accent-border) 25%, var(--border) 50%,
+    var(--border) 100%);
+  background-size: 200% 100%;
+  animation: alumen-track 3s linear infinite;
+}
+.alumen-track-live-y {
+  background-image: linear-gradient(180deg,
+    var(--border) 0%, var(--accent-border) 25%, var(--border) 50%,
+    var(--border) 100%);
+  background-size: 100% 200%;
+  animation: alumen-track 3s linear infinite;
+}
+.alumen-halo { animation: alumen-halo 2.4s ease-in-out infinite; }
+
+/* Movimento é decoração: quem pede menos movimento recebe o mesmo dado, parado. */
+@media (prefers-reduced-motion: reduce) {
+  .alumen-particle,
+  .alumen-track-live,
+  .alumen-track-live-y,
+  .alumen-halo { animation: none !important; }
+  .alumen-particle { opacity: .55; }
+}
