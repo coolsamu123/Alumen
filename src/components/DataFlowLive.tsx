@@ -22,7 +22,10 @@ type StageStatus = 'DONE' | 'ERROR' | 'IN_PROGRESS' | 'PENDING' | 'NONE';
 
 interface DataFlowState {
   upstream: UpstreamSnapshot;
-  counts: { totalProjects: number; withFiles: number; withGoals: number; withImpacts: number };
+  counts: {
+    totalProjects: number; withFiles: number; withGoals: number; withImpacts: number;
+    upstreamInAlumen?: number; upstreamTotal?: number;
+  };
   pipelineRunning: { drive: boolean; goals: boolean; impact: boolean };
   generatedAt: string;
 }
@@ -183,6 +186,10 @@ function ChainView({ state }: { state: DataFlowState | null }) {
   const total = counts?.totalProjects ?? 0;
   const anyRunning = Boolean(pipeline?.drive || pipeline?.goals || pipeline?.impact);
 
+  // How many upstream projects actually exist inside Alumen.
+  const upstreamTotal = counts?.upstreamTotal ?? 0;
+  const bridged = counts?.upstreamInAlumen ?? 0;
+
   const copyDone = upstreamCount('copy', 'DONE');
   const cleanDone = upstreamCount('cleanup', 'DONE');
 
@@ -215,9 +222,20 @@ function ChainView({ state }: { state: DataFlowState | null }) {
         />
       </div>
 
-      {/* vertical conduit between the two worlds */}
-      <div className="flex justify-center py-1">
-        <Conduit vertical active={cleanDone > 0} />
+      {/* The bridge between the two worlds. Deliberately NOT driven by
+          "cleanup finished": a project can be copied and cleaned and still never
+          reach Alumen, which is exactly what happened while the destination
+          folder was not registered as a Drive source. The conduit only carries
+          what actually crossed. */}
+      <div className="flex flex-col items-center py-1 gap-1">
+        <Conduit vertical active={bridged > 0} />
+        {upstreamTotal > 0 && (
+          <span className={`text-[10px] ${bridged === upstreamTotal ? 'text-ink-faint' : 'text-amber-400'}`}>
+            {bridged === upstreamTotal
+              ? `${bridged}/${upstreamTotal} upstream projects reached Alumen`
+              : `only ${bridged} of ${upstreamTotal} upstream projects reached Alumen — check Drive sources`}
+          </span>
+        )}
       </div>
 
       {/* ── Faixa 2: dentro do Alumen ───────────────────────────────────── */}

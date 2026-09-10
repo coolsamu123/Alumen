@@ -28,6 +28,19 @@ export interface DrivePanelState {
     withFiles: number;
     withGoals: number;
     withImpacts: number;
+    /**
+     * How many upstream projects (Copy/Cleanup, from the Apps Script control
+     * sheet) actually exist in Alumen's own `projects` table.
+     *
+     * This is the only number that says whether the two halves of the chain are
+     * connected. They were not, for a long time: the copy destination was never
+     * registered as a Drive watch root, so nothing the Apps Script produced ever
+     * reached Discover. Everything still looked healthy, because each half was
+     * fine on its own — which is exactly why the join deserves its own counter
+     * instead of being inferred from "cleanup finished".
+     */
+    upstreamInAlumen: number;
+    upstreamTotal: number;
   };
   todayLLM: ReturnType<typeof getTodayLLMStats>;
   watchRoots: ReturnType<typeof listWatchRoots>;
@@ -87,6 +100,22 @@ export function buildDrivePanelState(): DrivePanelState {
     withGoals = r.c;
   } catch { /* table may not exist yet */ }
 
+  // The bridge between upstream and the pipeline: how many of the projects
+  // copy/cleanup know about actually made it into the projects table.
+  let upstreamInAlumen = 0;
+  let upstreamTotal = 0;
+  try {
+    const r = db.prepare(`
+      SELECT
+        COUNT(DISTINCT u.project_id) AS total,
+        COUNT(DISTINCT CASE WHEN p.project_id IS NOT NULL THEN u.project_id END) AS dentro
+      FROM upstream_status u
+      LEFT JOIN projects p ON p.project_id = u.project_id
+    `).get() as { total: number; dentro: number };
+    upstreamTotal = r.total ?? 0;
+    upstreamInAlumen = r.dentro ?? 0;
+  } catch { /* upstream tables may not exist yet */ }
+
   const impactRow = db.prepare(`
     SELECT COUNT(*) c FROM (
       SELECT source_project_id AS pid FROM projects_impact
@@ -142,7 +171,7 @@ export function buildDrivePanelState(): DrivePanelState {
       elapsedSec: Math.round(elapsedSec),
       etaSec,
     },
-    counts: { totalProjects, withFiles, withGoals, withImpacts },
+    counts: { totalProjects, withFiles, withGoals, withImpacts, upstreamInAlumen, upstreamTotal },
     todayLLM: getTodayLLMStats(),
     watchRoots: listWatchRoots(),
     lastRun: getLastAutoRun(),

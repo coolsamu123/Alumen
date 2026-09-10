@@ -3,7 +3,13 @@ import fs from 'fs';
 import path from 'path';
 
 const MAPPINGS_FILE = path.join(process.cwd(), 'data', 'service_mappings.json');
-const CSV_FILE = '/home/samuel/Téléchargements/service_offering.csv';
+// Was an absolute path into a developer's own home directory
+// (/home/samuel/Téléchargements/...), which exists on no server. The route
+// degrades to an empty list when the file is missing, so the service catalogue
+// had simply been empty in production without ever raising an error. Now it
+// sits in data/ like every other runtime file, and the response says whether
+// the source was found so the silence is diagnosable.
+const CSV_FILE = path.join(process.cwd(), 'data', 'service_offering.csv');
 
 // Reads mutable state — must not be prerendered at build time. See the note in
 // api/drive/projects/route.ts.
@@ -17,12 +23,12 @@ export async function GET() {
     }
 
     if (!fs.existsSync(CSV_FILE)) {
-      return NextResponse.json({ services: [] });
+      return NextResponse.json({ services: [], sourceMissing: true, expectedAt: CSV_FILE });
     }
 
     const csvContent = fs.readFileSync(CSV_FILE, 'utf-8');
     const lines = csvContent.split('\n').filter(line => line.trim() !== '');
-    if (lines.length < 2) return NextResponse.json({ services: [] });
+    if (lines.length < 2) return NextResponse.json({ services: [], sourceMissing: false });
 
     const headers = lines[0].split('","').map(h => h.replace(/^"|"$/g, ''));
     const ownedByIndex = headers.indexOf('owned_by');
