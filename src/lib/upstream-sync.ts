@@ -23,20 +23,28 @@ import { normalizeProjectId } from './project-id';
 const SERVICE_ACCOUNT_PATH = path.join(process.cwd(), 'data', 'service-account.json');
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-// Both spreadsheets keep their data in a tab literally named "SyncStatus"
-// (verified 2026-09-09). Selecting by name rather than gid sidesteps the gid
-// ambiguity in PLAN §4 entirely — the XLSX export carries every tab anyway.
-const TAB_NAME = 'SyncStatus';
-
+// Since the 2026-09-10 restructure both control tables live in ONE spreadsheet
+// on the "Alumen" Shared Drive, in two differently named tabs. Sheet id and tab
+// name are therefore separate settings: the ids happen to be equal today, but
+// the parsers stay independent so splitting them again costs one setting.
+//
+// Selecting the tab by name rather than gid sidesteps the gid ambiguity in
+// PLAN §4 entirely — the XLSX export carries every tab anyway.
 export const UPSTREAM_SETTINGS = {
   controlSheetId: 'upstream_control_sheet_id',
   cleanupSheetId: 'upstream_cleanup_sheet_id',
+  controlTab: 'upstream_control_tab',
+  cleanupTab: 'upstream_cleanup_tab',
   pollSeconds: 'upstream_poll_seconds',
 } as const;
 
+const UNIFIED_SHEET_ID = '1V1RMGUKJpJVOqWsM4tU5r9VmI2JnmOJkWRmh_U_jh7U';
+
 const DEFAULTS = {
-  controlSheetId: '1AG9e9ihBBE6rfGGUPEQBwobKSE7ql63MxK8AviGr-JQ',
-  cleanupSheetId: '1a0M4Xue8NbrPfPbrJJdpJ1MjHTtx_7QsYTIPTruCo_Q',
+  controlSheetId: UNIFIED_SHEET_ID,
+  cleanupSheetId: UNIFIED_SHEET_ID,
+  controlTab: 'SyncStatus',
+  cleanupTab: 'Update Control File',
   pollSeconds: 15,
 };
 
@@ -73,7 +81,7 @@ function setting(key: string, fallback: string): string {
   }
 }
 
-async function exportTabRows(fileId: string): Promise<unknown[][]> {
+async function exportWorkbook(fileId: string): Promise<XLSX.WorkBook> {
   if (!fs.existsSync(SERVICE_ACCOUNT_PATH)) {
     throw new Error('Service account key not found at data/service-account.json');
   }
@@ -83,14 +91,21 @@ async function exportTabRows(fileId: string): Promise<unknown[][]> {
   });
   const drive = google.drive({ version: 'v3', auth });
 
+  // files.export needs no supportsAllDrives: unlike files.get / files.list it
+  // does not accept the parameter and reaches Shared Drive files regardless
+  // (verified 2026-09-10 against the unified sheet).
   const res = await drive.files.export(
     { fileId, mimeType: XLSX_MIME },
     { responseType: 'arraybuffer' }
   );
-  const wb = XLSX.read(Buffer.from(res.data as ArrayBuffer), { type: 'buffer' });
-  const sheet = wb.Sheets[TAB_NAME];
+  return XLSX.read(Buffer.from(res.data as ArrayBuffer), { type: 'buffer' });
+}
+
+/** Pulls one named tab out of an exported workbook as raw rows. */
+function tabRows(wb: XLSX.WorkBook, tabName: string): unknown[][] {
+  const sheet = wb.Sheets[tabName];
   if (!sheet) {
-    throw new Error(`Tab "${TAB_NAME}" not found (tabs: ${wb.SheetNames.join(', ')})`);
+    throw new Error(`Tab "${tabName}" not found (tabs: ${wb.SheetNames.join(', ')})`);
   }
   return XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: true, defval: null });
 }
@@ -119,10 +134,18 @@ function dataRows(rows: unknown[][]): unknown[][] {
 
 /**
  * Excel serial → the wall-clock string the spreadsheet shows. Deliberately
- * returns no timezone suffix: the serial is Europe/Paris local time (the
- * Apps Script declares that timezone), so stamping a Z would shift it by the
- * Paris offset. Callers treat this as display text; observed_at is the field
- * to compare against.
+ * returns no timezone suffix: the serial is local to the SPREADSHEET's
+ * timezone (File > Settings > Time zone), not to Paris and not to UTC, so
+ * stamping a Z would shift it by that offset. Callers treat this as display
+ * text; observed_at is the field to compare against.
+ *
+ * Caveat worth knowing (measured 2026-09-10): the two stages only agree if
+ * both Apps Script sides write a real Date. The copy side's updateStatus()
+ * wrote `new Date().toLocaleString()` — a string in the SCRIPT's timezone,
+ * which Sheets then re-parses as wall-clock in the SPREADSHEET's timezone.
+ * With the script on Paris and the sheet on UTC-7 that put the copy stamp 9h
+ * ahead of a cleanup stamp written two minutes later. If copy timestamps ever
+ * look shifted again, suspect a toLocaleString() before suspecting this code.
  */
 function serialToSheetLocal(value: unknown): string | null {
   if (typeof value !== 'number' || !isFinite(value) || value <= 0) return null;
@@ -200,12 +223,20 @@ function parseCleanup(rows: unknown[][]): UpstreamRow[] {
 export async function readUpstreamOnce(): Promise<UpstreamRow[]> {
   const controlId = setting(UPSTREAM_SETTINGS.controlSheetId, DEFAULTS.controlSheetId);
   const cleanupId = setting(UPSTREAM_SETTINGS.cleanupSheetId, DEFAULTS.cleanupSheetId);
+  const controlTab = setting(UPSTREAM_SETTINGS.controlTab, DEFAULTS.controlTab);
+  const cleanupTab = setting(UPSTREAM_SETTINGS.cleanupTab, DEFAULTS.cleanupTab);
 
-  const [control, cleanup] = await Promise.all([
-    exportTabRows(controlId),
-    exportTabRows(cleanupId),
+  // Same file in the normal case: export it once instead of pulling the same
+  // XLSX twice every poll.
+  const [controlWb, cleanupWb] = await Promise.all([
+    exportWorkbook(controlId),
+    controlId === cleanupId ? Promise.resolve(null) : exportWorkbook(cleanupId),
   ]);
-  return [...parseControl(control), ...parseCleanup(cleanup)];
+
+  return [
+    ...parseControl(tabRows(controlWb, controlTab)),
+    ...parseCleanup(tabRows(cleanupWb ?? controlWb, cleanupTab)),
+  ];
 }
 
 // ─── Persistence ────────────────────────────────────────────────────────────

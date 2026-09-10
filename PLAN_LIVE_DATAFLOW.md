@@ -31,6 +31,9 @@ Auditoria feita sobre os dois Apps Scripts (`syncProjectFiles` e
 | 4 — Worker permanente no Apps Script | ⬜ | — |
 | 5 — Acabamento: heartbeat, erros, retry | ⬜ | — |
 
+> **2026-09-10 — migração para o Shared Drive "Alumen".** As duas planilhas
+> viraram **uma só**, com duas abas. Ver §0.5.
+
 As Fases 1–2 entregam valor sozinhas e **não exigem nenhuma mudança no Apps
 Script**. Só a Fase 3 em diante mexe no que você mantém à mão. Isso é
 deliberado: dá pra parar depois da Fase 2 se o custo das seguintes não se
@@ -103,15 +106,43 @@ Correção: ler valores brutos em vez de formatados. A primeira ideia foi Sheets
 API com `valueRenderOption: 'UNFORMATTED_VALUE'` — descartada logo em seguida,
 porque a Sheets API não pode ser habilitada. Ver §0.2: o export XLSX resolve.
 
-### ✅ Dissolvido: `toLocaleString()` não é o problema que eu supus
+### ⚠️ REABERTO em 2026-09-10: `toLocaleString()` **é** um problema
 
-A §3.4 partia de que a data chegaria como string ambígua. Na prática o Google
-Sheets **já converteu para valor de data real** (serial `46274.647…`), com
-`timeZone: "Europe/Paris"` declarado no `appsscript.json`.
-Lido como valor bruto (export XLSX, §0.2) chega o serial, sem ambiguidade nenhuma.
+Esta seção dizia "dissolvido". Estava errada, e a medição na estrutura nova
+mostra por quê.
 
-**Isso remove uma edição manual do Apps Script**: não é preciso trocar
-`toLocaleString()` por `toISOString()`.
+O que continua valendo: o Sheets converte para valor de data real (serial), e o
+export XLSX entrega o serial sem ambiguidade. O que eu não tinha visto é que os
+**dois estágios gravam de formas diferentes**:
+
+| Estágio | Como grava | Efeito |
+|---|---|---|
+| cleanup — `_updateRow()` | `new Date()` (objeto Date) | correto: o Sheets guarda o instante e exibe no fuso **da planilha** |
+| copy — `updateStatus()` | `new Date().toLocaleString()` (**string**) | a string sai no fuso **do script**, e o Sheets a re-interpreta como hora de parede no fuso **da planilha** |
+
+**Evidência (planilha unificada, 2026-09-10):**
+
+- revisão do Drive: `09:29:45.380Z`
+- serial do cleanup: `46275.10398817129` → `02:29:44` — que é `09:29:44.578Z`
+  lido em UTC-7, ou seja, **0,8 s antes do commit da revisão**. Bate.
+  Isso prova que **o fuso da planilha é UTC-7**.
+- serial do copy: `46275.47738425926` → `11:27:26`. Como UTC-7 daria `18:27Z`,
+  no futuro — impossível. Só fecha como Paris (`09:27:26Z`), que é o fuso **do
+  script**.
+
+Resultado: duas escritas com 2 minutos de diferença aparecem com **9 h de
+distância**, e o cleanup parece ter rodado na madrugada anterior.
+
+**Duas correções, ambas manuais:**
+
+1. No Apps Script — trocar as 2 ocorrências de `new Date().toLocaleString()`
+   por `new Date()` (`updateStatus()` e `resetErrors()`). Já aplicado no
+   `Alumen_COMPLETO.gs` publicado no Drive.
+2. Na planilha — *Arquivo › Configurações › Fuso horário* → **Paris**. Sem
+   isso as horas continuam corretas como instante, mas exibidas em UTC-7.
+
+O lado do Alumen não precisa de mudança: `serialToSheetLocal()` já devolve a
+hora de parede da planilha, sem sufixo de fuso.
 
 ### ⛔ A Sheets API não pode ser habilitada — e por que isso melhora o desenho
 
@@ -301,6 +332,68 @@ Não é bug: pra uma tela de diagnóstico de pipeline, ver os 305 — incluindo
 entradas que nunca passaram de "descoberto" — é mais útil do que ver só os 66
 que chegaram à visão curada. Registrado aqui pra não parecer inconsistência
 da próxima vez que alguém comparar os dois números.
+
+---
+
+## 0.5. Migração para o Shared Drive "Alumen" (2026-09-10)
+
+A estrutura antiga (duas planilhas soltas em Meu Drive) foi substituída por um
+**Shared Drive**. O que mudou e o que isso quebrou.
+
+### Os IDs novos
+
+| O quê | ID |
+|---|---|
+| Shared Drive "Alumen" | `0AL21FotUWFXyUk9PVA` |
+| Pasta `Projects` (base das cópias) | `1_NH0S9bv3q5SF4dfZG3MPy-jtPgSIA3X` |
+| Pasta `Copy Utility` (controle) | `1eu-7Gz4WfEdzUzHu5feoR0N023xDI7bP` |
+| **Planilha unificada** | `1V1RMGUKJpJVOqWsM4tU5r9VmI2JnmOJkWRmh_U_jh7U` |
+| Apps Script "Copy Utility" | `1AUNqYeU0DKBuRnYRLTWwfWX_NjgMcktgREkoy1jgNBOfpuwVhdAhBEpy` |
+
+Uma planilha, duas abas: **`SyncStatus`** (cópia) e **`Update Control File`**
+(limpeza). Some a premissa de que "as duas abas se chamam `SyncStatus`" — daí a
+separação entre *id da planilha* e *nome da aba* nas configurações.
+
+### 🐞 `supportsAllDrives`: a pegadinha do Shared Drive — e onde ela **não** se aplica
+
+Num Shared Drive, `files.get` e `files.list` sem `supportsAllDrives: true`
+respondem **`File not found`** — erro enganoso, que parece falta de
+compartilhamento. Perdi tempo com isso e cheguei a pedir para compartilhar
+pastas que já estavam compartilhadas.
+
+**Mas `files.export` é exceção.** `Params$Resource$Files$Export` só aceita
+`fileId` e `mimeType` — não existe `supportsAllDrives` nele, e o export alcança
+o Shared Drive assim mesmo. Verificado em 2026-09-10 contra a planilha
+unificada: export sem a flag ✅, `files.get` sem a flag ❌, `files.get` com a
+flag ✅.
+
+Auditoria das 12 chamadas ao Drive no Alumen: as 11 que precisam da flag já a
+têm; a 12ª é o `files.export` do `upstream-sync.ts`, que não a aceita. **Nada a
+corrigir.**
+
+### 🐞 O espelho não é podado ao trocar de planilha
+
+`persistUpstream()` faz *upsert* e nunca apaga. Trocar as planilhas de origem
+deixa em `upstream_status` as linhas da fonte antiga — 55 projetos que descrevem
+um pipeline desativado, exibidos como estado atual no Data Flow.
+
+`upstream_status` é estado derivado (reconstruído a cada poll); `upstream_events`
+é o histórico append-only. Logo a limpeza correta é **apagar só o espelho** e
+deixar o poll de 15 s reconstruí-lo:
+
+```sql
+DELETE FROM upstream_status;   -- upstream_events preservado
+```
+
+Backup consistente já gerado: `data/cioo.db.bak-upstream-2026-09-10T0952`.
+
+### Mudanças no `src/lib/upstream-sync.ts`
+
+- `controlSheetId` e `cleanupSheetId` → ambos a planilha unificada
+- **novas** configurações `upstream_control_tab` / `upstream_cleanup_tab`
+  (padrão `SyncStatus` e `Update Control File`)
+- `exportTabRows()` virou `exportWorkbook()` + `tabRows()`: sendo o mesmo
+  arquivo, o XLSX é baixado **uma vez** por poll em vez de duas
 
 ---
 
