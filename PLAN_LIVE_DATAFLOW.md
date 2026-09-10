@@ -219,6 +219,43 @@ segunda API.
 escrever o código de nenhum dos dois scripts, mesmo o que está numa pasta com
 Editor. **Toda a Fase 4 (§6.3) é manual, sem exceção.**
 
+### ✅ CORRIGIDO em 2026-09-10: a conclusão acima estava ERRADA
+
+O parágrafo anterior fica registrado porque o erro é instrutivo: eu testei
+**uma** rota (a Apps Script API), ela falhou, e eu generalizei para "não existe
+caminho por API". Não testei a outra.
+
+**A Drive API edita projetos Apps Script**, por uma rota antiga que continua
+viva:
+
+```
+files.export(fileId, mimeType='application/vnd.google-apps.script+json')  → lê
+files.update(fileId, media.mimeType='...script+json')                     → escreve
+```
+
+Requisitos, ambos satisfeitos aqui:
+
+- escopo **`https://www.googleapis.com/auth/drive.scripts`** — o `auth/drive`
+  genérico não basta, e o erro é explícito: *"The drive.scripts scope is
+  required to update Apps Script content."*
+- `canEdit = true` no arquivo do script
+
+Verificado de ponta a ponta em 2026-09-10 contra o **Copy Utility**
+(`1AUNqYeU0DKBuRnYRLTWwfWX_NjgMcktgREkoy1jgNBOfpuwVhdAhBEpy`): leitura do fonte,
+escrita e releitura conferindo byte a byte. O projeto voltou como v14.
+
+O payload é `{"files":[{id,name,type,source}]}`, com `type` em `server_js` ou
+`json`. O `appsscript.json` viaja junto — sobrescrevê-lo sem cuidado derruba o
+`enabledAdvancedServices` (o `Drive` v3 de que a dedup depende) e o `timeZone`.
+Preserve-o e compare **semanticamente** depois: o Google reserializa o texto,
+então diff de string acusa falso positivo.
+
+**Consequência para o plano:** a Fase 4 deixa de ser manual. E a §6.3 pode ser
+aplicada e verificada daqui, com backup do fonte anterior antes de cada escrita.
+
+O que continua fora de alcance é a **Sheets API** — fuso da planilha e apagar
+aba seguem manuais.
+
 ---
 
 ## 0.3. Resultados da Fase 1 (2026-09-09)
@@ -386,6 +423,55 @@ DELETE FROM upstream_status;   -- upstream_events preservado
 ```
 
 Backup consistente já gerado: `data/cioo.db.bak-upstream-2026-09-10T0952`.
+
+### 🐞 Unificar as planilhas criou uma classe de bug: constantes que colidiram
+
+O script foi escrito quando as duas tabelas viviam em **arquivos diferentes**.
+Nesse mundo, dois pares de constantes podiam ter o mesmo valor sem se atrapalhar,
+porque o `openById()` diferente já separava as coisas. Ao unificar, cada par
+passou a apontar para a mesma aba.
+
+Três ocorrências, achadas lendo o fonte ao vivo em 2026-09-10:
+
+| Onde | Antes | Depois da unificação |
+|---|---|---|
+| `FILTER_SHEET_GID` vs `SHEET_GID` | ambos `537920132`, em arquivos distintos | ambos a aba `Update Control File` |
+| `ALUMEN_TAB` em `alumenControlSheet_()` vs `alumenCorrigirFormato()` | ambos `'SyncStatus'`, em arquivos distintos | ambos a aba `SyncStatus` |
+
+**1. O filtro da limpeza vinha da aba errada — o mais grave.**
+
+`_getFilterList()` lia o gid `537920132`, que é a `Update Control File`; e
+`_initSheet()` **apaga** essa mesma aba. Como o filtro é lido *antes* do clear,
+a limpeza filtrava pelo próprio resultado da rodada anterior, não pela fila.
+
+Isso explica o sintoma relatado — *"a cópia funciona, mas a remoção de
+classificação não"*: projeto recém-enfileirado na `SyncStatus` é copiado, mas
+nunca entra no filtro da limpeza.
+
+Pior: `_getFilterList()` devolve `null` quando a aba está vazia, e `null`
+significa **processar TODAS as pastas**, modo em que a dedup apaga em definitivo,
+sem lixeira. A rodada do `PRJ0021863` passou por sorte — a aba já tinha esse ID
+da vez anterior.
+
+*Como identifiquei qual aba é o gid `537920132`, sem Sheets API:* `_getSheetByGid`
+cai em `getSheets()[0]` quando o gid não existe. Se fosse esse o caso, o progresso
+da limpeza teria ido para a primeira aba (`SyncStatus`); ele está na
+`Update Control File`, que tem 7 colunas contra as 5 da `SyncStatus`.
+
+Corrigido buscando por nome — `getSheetByName('SyncStatus')` —, sem depender de
+gid nenhum.
+
+**2. `alumenCorrigirFormato()` operaria sobre a fila.** Ela abre
+`ALUMEN_CLEANUP_ID` e pede `ALUMEN_TAB` (`'SyncStatus'`), mas mira as colunas
+D:E da tabela de limpeza (`Labels Removed` / `Duplicates Deleted`). Na
+`SyncStatus`, D:E são `Last Updated` / `Error` — aplicar formato de inteiro ali
+destrói a data. Latente: só dispara se a função for chamada. Corrigido com um
+`ALUMEN_CLEANUP_TAB` separado.
+
+**Lição para o resto do plano:** toda constante duplicada entre os dois lados do
+script merged é suspeita enquanto a unificação não for revisada inteira. O padrão
+seguro é endereçar aba por **nome**, nunca por gid, já que os nomes são únicos
+dentro de um arquivo e os gids não dizem nada sobre a intenção.
 
 ### Mudanças no `src/lib/upstream-sync.ts`
 
