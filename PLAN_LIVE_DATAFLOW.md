@@ -535,6 +535,45 @@ eram as cópias velhas. Se o próprio Apps Script (que roda como o usuário) tam
 só enxergasse essas, excluir a base antiga faria a cópia trazer zero. A
 re-execução é o teste.
 
+### ✅ Resultado final da estrutura nova (2026-09-10) — e o achado dos labels
+
+Depois das correções, a cadeia fecha e os números concordam pela primeira vez:
+
+| | Antes | Depois |
+|---|---|---|
+| Arquivos na pasta | 10 (3 documentos duplicados) | **3** (1 cópia cada) |
+| `Files Copied` | 14 (contava pastas) | **3** |
+| `Files Processed` | 10 | **3** |
+| `Labels Removed` | 10 | **3** |
+| `Duplicates Deleted` | 0 (sintoma) | **0** (correto — nada a deduplicar) |
+| Fuso dos carimbos | copy 9 h à frente da limpeza | ambos Paris, ordem certa |
+
+#### 🔑 O label de classificação esconde o arquivo da service account
+
+Achado ao investigar por que o Alumen não enxergava os 3 arquivos recém-copiados
+enquanto o usuário os via normalmente no navegador.
+
+| Rodada | Limpeza rodou depois? | Service account enxerga? |
+|---|---|---|
+| 09:2x — 10 arquivos | sim, 10 labels removidas | sim |
+| 13:38 — 3 arquivos | ainda não | **não** |
+| 15:54 — os mesmos 3 | sim, 3 labels removidas | **sim** |
+
+Não é atraso de indexação: o teste foi repetido 10+ minutos depois, com resultado
+zero, e só mudou após a limpeza. Enquanto o Drive Label da Air Liquide está
+aplicado, o arquivo é invisível para a service account — `files.list` devolve a
+pasta mas nenhum filho.
+
+**Consequência de desenho, não bug:** o Drive Sync do Alumen só consegue indexar
+projeto **já limpo**. A ordem cópia → limpeza → indexação é obrigatória, não
+preferência. Um projeto copiado mas não limpo aparece no Data Flow (que lê a
+planilha) e some do Drive Sync (que lê o Drive) — e isso é esperado.
+
+**Ao diagnosticar "o arquivo não está lá":** antes de suspeitar da cópia,
+verifique se a limpeza já rodou. Eu passei por essa armadilha — cheguei a
+concluir que a correção anti-duplicação havia zerado a cópia, quando os arquivos
+estavam lá o tempo todo, apenas invisíveis para mim.
+
 ### Mudanças no `src/lib/upstream-sync.ts`
 
 - `controlSheetId` e `cleanupSheetId` → ambos a planilha unificada
