@@ -237,6 +237,10 @@ function Stat({ label, value, tone }: { label: string; value: number | undefined
 function SourcesSection({ state }: { state: DrivePanelState | null }) {
   return (
     <div className="space-y-3">
+      <CollapsibleCard title="Fontes do Drive" subtitle="As pastas que o ciclo automático revisita">
+        <WatchRoots />
+      </CollapsibleCard>
+
       <CollapsibleCard title="Add a Drive source" subtitle="Descobrir projetos PRJ, ou registrar uma raiz de iniciativas">
         <AddSource />
       </CollapsibleCard>
@@ -274,6 +278,155 @@ function CollapsibleCard({ title, subtitle, defaultOpen = false, children }: {
         <span className="text-ink-muted text-sm">{open ? '▾' : '▸'}</span>
       </button>
       {open && <div className="px-5 pb-5 pt-1 border-t border-line">{children}</div>}
+    </div>
+  );
+}
+
+// ─── Fontes do Drive (watch roots) ──────────────────────────────────────────
+// A API de roots (listar, ligar/desligar, remover) já existia inteira em
+// /api/auto-discovery, mas nenhuma tela a consumia — então uma pasta cadastrada
+// simplesmente sumia de vista, e não havia como saber o que o ciclo automático
+// revisitava, nem desligar uma fonte sem mexer no banco.
+
+interface WatchRoot {
+  id: number;
+  url: string;
+  driveId: string;
+  label: string;
+  enabled: boolean;
+  addedAt: string;
+  lastRunAt: string | null;
+  lastRunStatus: string | null;
+  lastRunError: string;
+  addedCount: number;
+  kind: 'portfolio' | 'initiatives';
+}
+
+function WatchRoots() {
+  const [roots, setRoots] = useState<WatchRoot[] | null>(null);
+  const [busy, setBusy] = useState<number | null>(null);
+  const [error, setError] = useState('');
+
+  const load = async () => {
+    try {
+      const res = await fetch('/api/auto-discovery');
+      const data = await res.json();
+      setRoots(data.roots ?? []);
+      setError('');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const toggle = async (r: WatchRoot) => {
+    setBusy(r.id);
+    try {
+      const res = await fetch('/api/auto-discovery/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: r.id, enabled: !r.enabled }),
+      });
+      const data = await res.json();
+      if (data.roots) setRoots(data.roots); else await load();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally { setBusy(null); }
+  };
+
+  const remove = async (r: WatchRoot) => {
+    if (!confirm(`Remover a fonte "${r.label || r.url}"?\n\nOs projetos já descobertos continuam; só o ciclo automático deixa de revisitar esta pasta.`)) return;
+    setBusy(r.id);
+    try {
+      const res = await fetch(`/api/auto-discovery?id=${r.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.roots) setRoots(data.roots); else await load();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally { setBusy(null); }
+  };
+
+  if (roots === null) return <p className="text-[12px] text-ink-muted">carregando…</p>;
+
+  if (roots.length === 0) {
+    return (
+      <p className="text-[12px] text-ink-muted">
+        Nenhuma fonte registrada. Use <span className="text-ink-3">Add a Drive source</span> abaixo —
+        a pasta passa a ser revisitada pelo ciclo automático.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {error && <p className="text-[12px] text-rose-400">{error}</p>}
+      {roots.map(r => (
+        <div key={r.id}
+          className={`rounded-lg border p-3 ${r.enabled ? 'border-line bg-surface-1' : 'border-line bg-surface-1 opacity-55'}`}>
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[13px] font-semibold text-ink-1 truncate">
+                  {r.label || r.driveId}
+                </span>
+                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                  r.kind === 'initiatives'
+                    ? 'bg-purple-900/40 text-purple-300'
+                    : 'bg-accent-soft text-accent-text'}`}>
+                  {r.kind === 'initiatives' ? 'INICIATIVAS' : 'PORTFÓLIO'}
+                </span>
+                {!r.enabled && (
+                  <span className="text-[10px] text-ink-faint uppercase tracking-wider">desligada</span>
+                )}
+              </div>
+
+              <a href={r.url} target="_blank" rel="noopener noreferrer"
+                 className="block text-[11px] text-ink-muted hover:text-accent-text truncate mt-0.5">
+                {r.url}
+              </a>
+
+              <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1.5 text-[10px] text-ink-faint">
+                <span>
+                  {r.kind === 'initiatives'
+                    ? 'cada subpasta direta vira uma iniciativa'
+                    : 'varre recursivamente atrás de pastas PRJxxxxx'}
+                </span>
+                <span>{r.addedCount} projeto(s) adicionado(s)</span>
+                <span>
+                  {r.lastRunAt
+                    ? `última varredura ${new Date(r.lastRunAt + 'Z').toLocaleString()}`
+                    : 'nunca varrida'}
+                  {r.lastRunStatus === 'error' && <span className="text-rose-400"> · falhou</span>}
+                </span>
+              </div>
+
+              {r.lastRunError && (
+                <p className="mt-1 text-[10px] text-rose-400 break-words">{r.lastRunError}</p>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                onClick={() => toggle(r)}
+                disabled={busy === r.id}
+                className="px-2.5 py-1 rounded text-[11px] border border-line text-ink-3
+                           hover:bg-surface-2 disabled:opacity-40 cursor-pointer transition-all"
+              >
+                {r.enabled ? 'Desligar' : 'Ligar'}
+              </button>
+              <button
+                onClick={() => remove(r)}
+                disabled={busy === r.id}
+                className="px-2.5 py-1 rounded text-[11px] border border-line text-rose-400
+                           hover:bg-surface-2 disabled:opacity-40 cursor-pointer transition-all"
+              >
+                Remover
+              </button>
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

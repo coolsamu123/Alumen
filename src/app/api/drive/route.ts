@@ -126,10 +126,18 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Missing url' }, { status: 400 });
       }
 
+      // Registra o root ANTES de varrer, como o ramo de initiatives já fazia.
+      // Sem isto a varredura era única e a pasta era esquecida: nada em
+      // drive_watch_roots, logo o ciclo automático nunca voltava nela, e nada
+      // aparecia na lista de fontes. Uma pasta de portfólio é viva — projetos
+      // novos caem lá depois — então ela precisa ser lembrada como as outras.
+      const { id: rootId } = addWatchRoot(body.url.trim(), body.label?.trim(), 'portfolio');
+
       const result = await discoverAndAddProjectFromDrive(body.url);
 
       return NextResponse.json({
         message: `Processed ${result.created.length + result.linked.length} project(s)`,
+        rootId,
         created: result.created,
         linked: result.linked,
         unmatched: result.unmatched,
