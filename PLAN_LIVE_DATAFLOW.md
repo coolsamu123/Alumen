@@ -574,6 +574,85 @@ verifique se a limpeza já rodou. Eu passei por essa armadilha — cheguei a
 concluir que a correção anti-duplicação havia zerado a cópia, quando os arquivos
 estavam lá o tempo todo, apenas invisíveis para mim.
 
+### 🐞 Segunda forma de duplicação: pastas de origem IRMÃS
+
+Achada no `PRJ0021172`, depois que a correção mãe/filha já estava no ar. Copiou
+**16 arquivos** para **10 documentos distintos**.
+
+As duas pastas de origem são irmãs, e ambas casam o número do projeto:
+
+```
+APAC - Bar+ Mobile - PRJ0021172 - Gate 1/     ← casa o filtro
+PRJ0021172 - Bar+ Mobile/                     ← casa o filtro
+```
+
+Nenhuma é ancestral da outra, então `_hasAncestorMatching()` não as alcança — e
+elas compartilham documentos **na origem corporativa**. A duplicação aqui não é
+fabricada pela cópia: é herdada da estrutura de origem.
+
+A causa técnica é `buildExistingIndex()` montar o índice **por pasta de
+destino**: o mesmo arquivo entra de novo numa pasta irmã porque o índice daquela
+pasta não o conhece.
+
+#### A chave certa é o `srcId`, não o nome
+
+`copyFileIfNotExists()` já grava `srcId:<id-da-origem>` na descrição de cada
+cópia. Duas cópias com o mesmo `srcId` são **provadamente** o mesmo arquivo de
+origem. Isso é mais forte que qualquer alternativa:
+
+| Critério | Problema |
+|---|---|
+| nome | dois `Gate 1 - Note` podem ser documentos diferentes |
+| md5 | arquivo nativo do Google **não tem** md5 |
+| **srcId** | prova a identidade da origem |
+
+**Correção (v29):** `buildExistingIndexRecursivo_()` varre a árvore inteira do
+destino, e o índice passa a ser **compartilhado** por toda a recursão de
+`copyFolderContentsById()`. Uma cópia por documento, na primeira pasta
+processada.
+
+**Efeito colateral que é preciso querer:** um documento que legitimamente esteja
+em Gate 1 *e* Gate 2 passa a existir só num dos dois. Para o corpus de análise
+que o Alumen consome, é o desejável. Para um espelho fiel da origem, não —
+quem quiser repetição deve reverter isto.
+
+Resultado depois da correção e da limpeza das 6 sobras: **13 arquivos, zero
+duplicatas** nos três critérios (mesma pasta, pastas diferentes, mesmo conteúdo).
+
+### ℹ️ A visibilidade dos arquivos demora a propagar
+
+Registrado porque me fez levantar um falso mistério: logo após a limpeza eu
+contava **14** arquivos contra os **16** que a cópia reportou, e cheguei a dizer
+que não sabia explicar. Minutos depois eram 16.
+
+A remoção do label não torna o arquivo visível instantaneamente para a service
+account — há propagação. **Ao conferir contagem logo após uma limpeza, meça duas
+vezes com alguns minutos de intervalo antes de concluir que falta arquivo.**
+
+### ⚙️ A limpeza virou automática
+
+`syncHeartbeat()` ganhou um segundo estágio. Antes ele só disparava cópia; agora:
+
+1. **cópia tem prioridade** — havendo projeto pendente, copia e devolve;
+2. **sem cópia pendente**, `alumenPendentesDeLimpeza_()` calcula quem está `DONE`
+   na `SyncStatus` sem linha concluída na `Update Control File`, e dispara
+   `removeClassificationStart()`.
+
+Um ciclo de cada vez: checa os gatilhos de `syncProjectFiles` **e** de
+`removeClassificationResume` antes de disparar qualquer coisa. Duas passagens
+concorrendo pelas mesmas pastas seriam perigosas — uma delas apaga em definitivo.
+
+**`❌ Error` conta como "já tratado"**, de propósito: sem isso um projeto que
+falha viraria laço, tentando a cada 10 min para sempre, com a dedup junto. O
+custo é que erro não se auto-recupera — fica na planilha esperando
+`removeClassificationStart()` manual.
+
+**Ineficiência herdada, não introduzida:** `removeClassificationStart()`
+reconstrói a `Update Control File` do zero e reprocessa **todos** os projetos do
+filtro. Com 2 é irrelevante; com 200 será uma varredura completa a cada projeto
+novo. A saída é preservar as linhas já concluídas em vez de limpar a aba — mudança
+maior no script existente, deliberadamente não misturada com esta.
+
 ### Mudanças no `src/lib/upstream-sync.ts`
 
 - `controlSheetId` e `cleanupSheetId` → ambos a planilha unificada
