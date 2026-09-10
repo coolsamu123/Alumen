@@ -158,9 +158,35 @@ arquivo JSON na pasta. Barato pelo que compra.
 
 A `CopyUtility` contém `Control File`, `Update Control File` e um único Apps
 Script — `Remove Class`, que é o script 2 (fonte conferida: mesmas 12 funções e
-as mesmas constantes). O projeto do script 1 (`syncProjectFiles`) não é visível
-para o service account. **As edições da §6.3 continuam sendo manuais suas** —
-não há como alcançá-lo daqui.
+as mesmas constantes; id `1AoWpu0dufbT3-lPvbLacxugHPHR89J2-8gRyrlYAx7r-I-quCGt0z-uM`).
+O projeto do script 1 (`syncProjectFiles`) não é visível para o service
+account. **As edições da §6.3 continuam sendo manuais suas** — não há como
+alcançá-lo daqui.
+
+### ⛔ Testado em 2026-09-10: mesmo o script 2, visível, não é editável por API
+
+"Editor" numa pasta do Drive dá acesso ao **arquivo** do script (listar, mover,
+renomear) — não ao **código**. Editar o código passa pela Apps Script API
+(`script.googleapis.com`), uma API diferente da Drive API, que precisa estar
+habilitada no projeto GCP.
+
+Tentativa real com o service account, escopo
+`script.projects.readonly`, contra o id acima:
+
+```
+Apps Script API has not been used in project 1092014033242 before or it is
+disabled. Enable it by visiting
+https://console.developers.google.com/apis/api/script.googleapis.com/...
+```
+
+`1092014033242` é o mesmo projeto (`al-bco-e9997-talend-etl-292614`) que já
+bloqueia a Sheets API (§0.2) — é o projeto de ETL da AL, habilitar serviço novo
+não está ao alcance do usuário. Mesma restrição, agora confirmada para uma
+segunda API.
+
+**Conclusão prática, sem ambiguidade:** não existe caminho por API para ler ou
+escrever o código de nenhum dos dois scripts, mesmo o que está numa pasta com
+Editor. **Toda a Fase 4 (§6.3) é manual, sem exceção.**
 
 ---
 
