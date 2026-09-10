@@ -14,7 +14,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
   const id = Number(params.id);
   const user = findUserById(id);
-  if (!user) return NextResponse.json({ error: 'Usuário não encontrado.' }, { status: 404 });
+  if (!user) return NextResponse.json({ error: 'User not found.' }, { status: 404 });
 
   const body = await request.json().catch(() => null);
   const dds: string[] = Array.isArray(body?.dds)

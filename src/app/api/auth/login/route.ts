@@ -10,14 +10,14 @@ export async function POST(request: NextRequest) {
   const password = typeof body?.password === 'string' ? body.password : '';
 
   if (!email || !password) {
-    return NextResponse.json({ error: 'Email e senha são obrigatórios.' }, { status: 400 });
+    return NextResponse.json({ error: 'Email and password are required.' }, { status: 400 });
   }
 
   const user = findUserByEmail(email);
   // Same message for "no such user", "wrong password" and "Okta-only
   // account" — a 401 here shouldn't tell an attacker which case they hit.
   const invalid = () =>
-    NextResponse.json({ error: 'Email ou senha inválidos.' }, { status: 401 });
+    NextResponse.json({ error: 'Invalid email or password.' }, { status: 401 });
 
   if (!user || !user.is_active || user.auth_provider !== 'local' || !user.password_hash) {
     return invalid();

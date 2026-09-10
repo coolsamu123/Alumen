@@ -41,7 +41,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
   const id = Number(params.id);
   const user = findUserById(id);
-  if (!user) return NextResponse.json({ error: 'Usuário não encontrado.' }, { status: 404 });
+  if (!user) return NextResponse.json({ error: 'User not found.' }, { status: 404 });
 
   const body = await request.json().catch(() => ({}));
   const changes: PendingChange = {};
@@ -50,7 +50,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
   if (wouldRemoveLastAdmin(user, changes)) {
     return NextResponse.json(
-      { error: 'Não é possível remover o último administrador ativo.' },
+      { error: 'Cannot remove the last active administrator.' },
       { status: 400 }
     );
   }
@@ -63,12 +63,12 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   if (typeof body.password === 'string' && body.password) {
     if (user.auth_provider !== 'local') {
       return NextResponse.json(
-        { error: 'Conta Okta não usa senha local.' },
+        { error: 'Okta accounts do not use a local password.' },
         { status: 400 }
       );
     }
     if (body.password.length < 8) {
-      return NextResponse.json({ error: 'Senha deve ter ao menos 8 caracteres.' }, { status: 400 });
+      return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 });
     }
     resetPassword(id, body.password);
   }
@@ -84,11 +84,11 @@ export async function DELETE(_request: NextRequest, { params }: { params: { id: 
 
   const id = Number(params.id);
   const user = findUserById(id);
-  if (!user) return NextResponse.json({ error: 'Usuário não encontrado.' }, { status: 404 });
+  if (!user) return NextResponse.json({ error: 'User not found.' }, { status: 404 });
 
   if (wouldRemoveLastAdmin(user, { role: 'basic', isActive: false })) {
     return NextResponse.json(
-      { error: 'Não é possível remover o último administrador ativo.' },
+      { error: 'Cannot remove the last active administrator.' },
       { status: 400 }
     );
   }

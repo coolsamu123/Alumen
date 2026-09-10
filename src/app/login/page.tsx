@@ -21,11 +21,11 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Falha no login.');
+      if (!res.ok) throw new Error(data.error || 'Sign-in failed.');
       router.push('/');
       router.refresh();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Falha no login.');
+      setError(err instanceof Error ? err.message : 'Sign-in failed.');
     } finally {
       setLoading(false);
     }
@@ -41,7 +41,7 @@ export default function LoginPage() {
           <img src="/icon-192.png" alt="Alumen" className="w-9 h-9 rounded-lg" />
           <div>
             <div className="text-lg font-extrabold text-ink-1 leading-none">Alumen</div>
-            <div className="text-xs text-ink-muted mt-0.5">Entrar</div>
+            <div className="text-xs text-ink-muted mt-0.5">Sign in</div>
           </div>
         </div>
 
@@ -56,7 +56,7 @@ export default function LoginPage() {
           autoComplete="username"
         />
 
-        <label className="block text-xs font-medium text-ink-4 mb-1">Senha</label>
+        <label className="block text-xs font-medium text-ink-4 mb-1">Password</label>
         <input
           type="password"
           value={password}
@@ -73,7 +73,7 @@ export default function LoginPage() {
           disabled={loading}
           className="w-full py-2.5 rounded-lg bg-accent-hover text-white text-sm font-semibold hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? 'Entrando…' : 'Entrar'}
+          {loading ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
     </div>

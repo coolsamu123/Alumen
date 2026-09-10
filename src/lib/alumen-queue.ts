@@ -1,19 +1,19 @@
 /**
- * Fase 3 — a fila que o Alumen deixa para o Apps Script.
+ * Phase 3 — the queue Alumen leaves for Apps Script.
  *
- * A fronteira entre os dois mundos é um ARQUIVO no Drive, não uma célula de
- * planilha (PLAN §0.2): a Sheets API não pode ser habilitada no projeto GCP da
- * AL, e escrever via Drive API num arquivo que o próprio Alumen cria dispensa
- * o escopo amplo `auth/spreadsheets`.
+ * The boundary between the two worlds is a FILE on Drive, not a spreadsheet
+ * cell (PLAN §0.2): the Sheets API cannot be enabled on AL's GCP project, and
+ * writing through the Drive API to a file Alumen creates itself avoids the
+ * broad `auth/spreadsheets` scope.
  *
- * O contrato é lido por `alumenMergeQueue()` no Apps Script:
+ * The contract is read by `alumenMergeQueue()` on the Apps Script side:
  *
  *   { "version": 1,
  *     "queue": [ { "projectId", "requestedBy", "requestedAt" } ] }
  *
- * Quem tira item da fila é o ALUMEN, não o script — e só depois de ver o
- * projeto aparecer na planilha de controle. Assim uma execução perdida do
- * worker não perde pedido.
+ * It is ALUMEN, not the script, that removes an item — and only after seeing
+ * the project appear in the control sheet. That way a missed worker run never
+ * loses a request.
  */
 import fs from 'fs';
 import path from 'path';
@@ -26,8 +26,8 @@ export const QUEUE_SETTINGS = {
   folderId: 'alumen_queue_folder_id',
 } as const;
 
-// Pasta "Copy Utility" no Shared Drive Alumen — a mesma que guarda a planilha
-// de controle e o projeto Apps Script.
+// The "Copy Utility" folder on the Alumen Shared Drive — the same one holding
+// the control sheet and the Apps Script project.
 const DEFAULT_FOLDER_ID = '1eu-7Gz4WfEdzUzHu5feoR0N023xDI7bP';
 
 const QUEUE_FILE = '_alumen_queue.json';
@@ -52,7 +52,7 @@ function folderId(): string {
     const v = row?.value?.trim();
     if (v) return v;
   } catch {
-    /* app_settings pode não existir ainda — cai no default */
+    /* app_settings may not exist yet — fall through to the default */
   }
   return DEFAULT_FOLDER_ID;
 }
@@ -74,8 +74,8 @@ function driveClient(scope: 'read' | 'write') {
 
 type Drive = ReturnType<typeof driveClient>;
 
-/** Acha um arquivo pelo nome dentro da pasta. `supportsAllDrives` é
- *  obrigatório: sem ele o Shared Drive responde "File not found" (PLAN §0.5). */
+/** Finds a file by name inside the folder. `supportsAllDrives` is required:
+ *  without it a Shared Drive answers "File not found" (PLAN §0.5). */
 async function findByName(drive: Drive, name: string): Promise<string | null> {
   const res = await drive.files.list({
     q: `'${folderId()}' in parents and name = '${name}' and trashed = false`,
@@ -102,8 +102,8 @@ async function readJsonFile<T>(drive: Drive, name: string): Promise<T | null> {
   }
 }
 
-/** Lê a fila. Arquivo ausente ou ilegível conta como fila vazia — o Apps
- *  Script trata os dois casos do mesmo jeito. */
+/** Reads the queue. A missing or unreadable file counts as an empty queue —
+ *  Apps Script treats both the same way. */
 export async function readQueue(): Promise<QueueItem[]> {
   const drive = driveClient('read');
   const payload = await readJsonFile<{ version?: number; queue?: unknown }>(drive, QUEUE_FILE);
@@ -140,32 +140,33 @@ async function writeQueue(items: QueueItem[]): Promise<void> {
 }
 
 /**
- * Acrescenta um projeto à fila.
+ * Appends a project to the queue.
  *
- * Read-modify-write num arquivo do Drive NÃO é atômico: dois admins clicando no
- * mesmo segundo podem perder um pedido (PLAN §3.5). Aceitável aqui — o custo de
- * perder é reenfileirar, e o botão é de uso raro. Se um dia virar problema, o
- * caminho é um arquivo por pedido em vez de um arquivo com lista.
+ * Read-modify-write on a Drive file is NOT atomic: two admins clicking in the
+ * same second can lose a request (PLAN §3.5). Acceptable here — the cost of
+ * losing one is re-queueing, and the button is rarely used. If it ever becomes
+ * a problem, the answer is one file per request instead of one file holding a
+ * list.
  */
 export async function enqueue(
   projectId: string,
   requestedBy: string
 ): Promise<{ added: boolean; reason?: string; queue: QueueItem[] }> {
   const id = projectId.trim().toUpperCase();
-  if (!id) return { added: false, reason: 'ID vazio', queue: await readQueue() };
+  if (!id) return { added: false, reason: 'empty ID', queue: await readQueue() };
 
   const current = await readQueue();
   if (current.some(it => it.projectId.trim().toUpperCase() === id)) {
-    return { added: false, reason: 'já está na fila', queue: current };
+    return { added: false, reason: 'already queued', queue: current };
   }
 
-  // Já conhecido pelo upstream? Então a planilha já tem esse projeto e o script
-  // o ignoraria — enfileirar de novo só sujaria o arquivo.
+  // Already known upstream? Then the sheet has this project and the script
+  // would skip it — queueing again would only clutter the file.
   const known = getDb()
     .prepare('SELECT 1 FROM upstream_status WHERE project_id = ? LIMIT 1')
     .get(id);
   if (known) {
-    return { added: false, reason: 'já está na planilha de controle', queue: current };
+    return { added: false, reason: 'already in the control sheet', queue: current };
   }
 
   const next = [...current, { projectId: id, requestedBy, requestedAt: new Date().toISOString() }];
@@ -174,11 +175,11 @@ export async function enqueue(
 }
 
 /**
- * Tira da fila o que já apareceu na planilha de controle.
+ * Drops from the queue whatever already showed up in the control sheet.
  *
- * É a contrapartida do "o Apps Script não apaga o arquivo": o pedido só sai
- * depois de confirmado do outro lado. Chamado no mesmo tique em que o
- * upstream é lido.
+ * This is the counterpart to "Apps Script never deletes the file": a request
+ * only leaves once the other side has confirmed it. Called on the same tick
+ * that reads upstream.
  */
 export async function pruneQueue(): Promise<number> {
   const current = await readQueue();

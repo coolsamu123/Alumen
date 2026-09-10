@@ -57,7 +57,7 @@ export default function UserMenu() {
         onClick={() => setOpen(o => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        title={`${user.name || user.email} — ${user.role === 'admin' ? 'Administrador' : 'Básico'}`}
+        title={`${user.name || user.email} — ${user.role === 'admin' ? 'Administrator' : 'Basic'}`}
         className={`w-8 h-8 flex items-center justify-center rounded-full border text-[11px] font-bold transition-all
           ${open
             ? 'bg-accent-soft border-accent-border text-accent-text'
@@ -82,7 +82,7 @@ export default function UserMenu() {
                   : 'bg-surface-2 text-ink-4 border border-line'
               }`}
             >
-              {user.role === 'admin' ? 'Administrador' : 'Básico'}
+              {user.role === 'admin' ? 'Administrator' : 'Basic'}
             </span>
           </div>
 
@@ -92,7 +92,7 @@ export default function UserMenu() {
             disabled={signingOut}
             className="w-full text-left px-3.5 py-2.5 text-[13px] font-medium text-ink-2 hover:bg-surface-2 transition-colors disabled:opacity-50 disabled:cursor-wait"
           >
-            {signingOut ? 'Saindo…' : '↪ Sair'}
+            {signingOut ? 'Signing out…' : '↪ Sign out'}
           </button>
         </div>
       )}

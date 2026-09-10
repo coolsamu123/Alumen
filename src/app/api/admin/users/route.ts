@@ -45,16 +45,16 @@ export async function POST(request: NextRequest) {
   const role = body?.role === 'admin' ? 'admin' : 'basic';
 
   if (!email || !email.includes('@')) {
-    return NextResponse.json({ error: 'Email corporativo é obrigatório.' }, { status: 400 });
+    return NextResponse.json({ error: 'Work email is required.' }, { status: 400 });
   }
   if (!name) {
-    return NextResponse.json({ error: 'Nome é obrigatório.' }, { status: 400 });
+    return NextResponse.json({ error: 'Name is required.' }, { status: 400 });
   }
   if (!password || password.length < 8) {
     return NextResponse.json({ error: 'Senha deve ter ao menos 8 caracteres.' }, { status: 400 });
   }
   if (findUserByEmail(email)) {
-    return NextResponse.json({ error: 'Já existe um usuário com esse email.' }, { status: 409 });
+    return NextResponse.json({ error: 'A user with that email already exists.' }, { status: 409 });
   }
 
   const user = createLocalUser({ email, name, password, role });

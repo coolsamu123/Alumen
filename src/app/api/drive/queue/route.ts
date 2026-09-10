@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import { requireAdmin, isSessionError } from '@/lib/auth';
 import { readQueue, readHeartbeat, enqueue, pruneQueue } from '@/lib/alumen-queue';
 
-// Sob /api/drive de propósito: middleware.ts trata esse prefixo como admin-only,
-// e enfileirar cópia é ação, não leitura. A tela de Data Flow que o usuário
-// básico vê continua em /api/strom/dataflow-state, que é só leitura.
+// Under /api/drive on purpose: middleware.ts treats that prefix as admin-only,
+// and queueing a copy is an action, not a read. The Data Flow view a basic user
+// sees stays on /api/strom/dataflow-state, which is read-only.
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
@@ -13,11 +13,11 @@ export async function GET() {
     return NextResponse.json({ error: session.error }, { status: session.status });
   }
   try {
-    // Reconcilia antes de responder: o plano define que quem tira item da fila
-    // é o Alumen, ao ver o projeto aparecer na planilha de controle — não o
-    // Apps Script. Depender do botão manual deixaria a fila mentindo até
-    // alguém clicar. pruneQueue() só escreve quando há algo a remover, então o
-    // caso normal continua sendo leitura pura.
+    // Reconcile before answering: by design it is Alumen, not Apps Script, that
+    // removes an item — once the project shows up in the control sheet. Leaving
+    // that to the manual button would let the queue lie until someone clicks.
+    // pruneQueue() only writes when there is drift, so the normal case stays a
+    // pure read.
     await pruneQueue().catch(() => 0);
     const [queue, heartbeat] = await Promise.all([readQueue(), readHeartbeat()]);
     return NextResponse.json({ ok: true, queue, heartbeat });
@@ -40,18 +40,18 @@ export async function POST(request: Request) {
     const body = (await request.json()) as { projectId?: string };
     projectId = String(body.projectId ?? '').trim();
   } catch {
-    return NextResponse.json({ ok: false, error: 'JSON inválido' }, { status: 400 });
+    return NextResponse.json({ ok: false, error: 'Invalid JSON' }, { status: 400 });
   }
   if (!projectId) {
-    return NextResponse.json({ ok: false, error: 'projectId é obrigatório' }, { status: 400 });
+    return NextResponse.json({ ok: false, error: 'projectId is required' }, { status: 400 });
   }
 
   try {
     const result = await enqueue(projectId, session.email);
     return NextResponse.json({ ok: true, ...result });
   } catch (err: unknown) {
-    // O erro cru do Google importa: um 403 aqui nomeia a service account que
-    // precisa de acesso de escrita na pasta Copy Utility.
+    // The raw Google error matters: a 403 here names the service account that
+    // needs write access to the Copy Utility folder.
     return NextResponse.json(
       { ok: false, error: err instanceof Error ? err.message : String(err) },
       { status: 200 }
@@ -59,7 +59,7 @@ export async function POST(request: Request) {
   }
 }
 
-/** Limpa da fila o que já chegou na planilha de controle. */
+/** Drops from the queue whatever already reached the control sheet. */
 export async function DELETE() {
   const session = await requireAdmin();
   if (isSessionError(session)) {

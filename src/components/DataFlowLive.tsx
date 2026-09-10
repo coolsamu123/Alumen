@@ -34,10 +34,10 @@ interface QueueItem {
 }
 
 /**
- * A fila é admin-only (o endpoint vive sob /api/drive, que middleware.ts
- * fecha para basic). Em vez de plumbar o papel do usuário até aqui, deixamos o
- * próprio endpoint decidir: 403 significa "não é admin", e a aba nem aparece.
- * Uma autoridade só, do lado do servidor.
+ * The queue is admin-only (the endpoint lives under /api/drive, which
+ * middleware.ts closes to basic users). Rather than plumbing the user's role
+ * down to here, we let the endpoint decide: a 403 means "not an admin", and the
+ * tab is never rendered. One authority, on the server side.
  */
 function useQueue() {
   const [allowed, setAllowed] = useState<boolean | null>(null);
@@ -87,7 +87,7 @@ function useDataFlowState() {
           setError(null);
           setState(d);
         })
-        .catch(() => { if (!cancelled) setError('Falha ao carregar.'); });
+        .catch(() => { if (!cancelled) setError('Failed to load.'); });
     };
     load();
     // Matches upstream-sync.ts's own 15s cache freshness — no point polling
@@ -142,7 +142,7 @@ export default function DataFlowLive() {
                   : 'text-ink-4 hover:bg-surface-2 border border-transparent'
                 }`}
             >
-              {v === 'chain' ? '⬡ Cadeia' : v === 'projects' ? '📋 Projetos' : '➕ Fila'}
+              {v === 'chain' ? '⬡ Chain' : v === 'projects' ? '📋 Projects' : '➕ Queue'}
               {v === 'queue' && q.queue.length > 0 && (
                 <span className="ml-1.5 px-1.5 rounded-full bg-accent-soft text-accent-text text-[10px]">
                   {q.queue.length}
@@ -153,7 +153,7 @@ export default function DataFlowLive() {
         </div>
         <div className="flex items-center gap-2 text-[11px] text-ink-muted">
           <span className={`w-1.5 h-1.5 rounded-full ${state && !error ? 'bg-emerald-400' : 'bg-ink-faint'}`} />
-          {error ? 'erro ao atualizar' : state ? 'ao vivo' : 'carregando…'}
+          {error ? 'refresh failed' : state ? 'live' : 'loading…'}
         </div>
       </div>
 
@@ -190,32 +190,32 @@ function ChainView({ state }: { state: DataFlowState | null }) {
     <div className="p-8 flex flex-col gap-2 max-w-6xl mx-auto">
       {upstream?.error && (
         <div className="mb-4 px-4 py-2.5 rounded-lg bg-amber-950/40 border border-amber-800/50 text-amber-300 text-[12px]">
-          ⚠ Upstream (Apps Script) não pôde ser lido: {upstream.error} — mostrando o último dado bom.
+          ⚠ Upstream (Apps Script) could not be read: {upstream.error} — showing the last good data.
         </div>
       )}
 
       {/* ── Faixa 1: fora do Alumen ─────────────────────────────────────── */}
       <LaneLabel
-        text="Fora do Alumen · Apps Script"
-        hint={upstream ? `${upstream.stale ? 'cache' : 'ao vivo'}${upstream.readAt ? ' · ' + new Date(upstream.readAt).toLocaleTimeString() : ''}` : undefined}
+        text="Outside Alumen · Apps Script"
+        hint={upstream ? `${upstream.stale ? 'cached' : 'live'}${upstream.readAt ? ' · ' + new Date(upstream.readAt).toLocaleTimeString() : ''}` : undefined}
       />
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-0">
         <StageNode
           num={0} icon="📥" title="Copy" sub="syncProjectFiles"
-          metric={{ value: copyDone, label: 'copiados' }}
+          metric={{ value: copyDone, label: 'copied' }}
           errors={upstreamCount('copy', 'ERROR')}
           running={upstreamCount('copy', 'IN_PROGRESS') > 0}
         />
         <Conduit active={copyDone > 0} />
         <StageNode
           num={1} icon="🧹" title="Cleanup" sub="removeClassification"
-          metric={{ value: cleanDone, label: 'limpos' }}
+          metric={{ value: cleanDone, label: 'cleaned' }}
           errors={upstreamCount('cleanup', 'ERROR')}
           running={upstreamCount('cleanup', 'IN_PROGRESS') > 0}
         />
       </div>
 
-      {/* conduíte vertical entre os dois mundos */}
+      {/* vertical conduit between the two worlds */}
       <div className="flex justify-center py-1">
         <Conduit vertical active={cleanDone > 0} />
       </div>
@@ -224,25 +224,25 @@ function ChainView({ state }: { state: DataFlowState | null }) {
       <LaneLabel text="Alumen · Analysis Pipeline" accent />
       <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-0">
         <StageNode
-          num={2} icon="🔍" title="Discover" sub="pastas PRJ-XXXXX"
-          metric={{ value: total, label: 'projetos' }}
+          num={2} icon="🔍" title="Discover" sub="PRJ-XXXXX folders"
+          metric={{ value: total, label: 'projects' }}
         />
         <Conduit active={total > 0} />
         <StageNode
           num={3} icon="⬇️" title="Download" sub="DOCX · XLSX · PDF"
-          metric={{ value: counts?.withFiles ?? 0, of: total, label: 'com arquivos' }}
+          metric={{ value: counts?.withFiles ?? 0, of: total, label: 'with files' }}
           running={pipeline?.drive}
         />
         <Conduit active={(counts?.withFiles ?? 0) > 0} fast={pipeline?.goals} />
         <StageNode
           num={4} icon="🧠" title="Goals" sub="Tech · DDS · GIO" badge="Gemini"
-          metric={{ value: counts?.withGoals ?? 0, of: total, label: 'com goals' }}
+          metric={{ value: counts?.withGoals ?? 0, of: total, label: 'with goals' }}
           running={pipeline?.goals}
         />
         <Conduit active={(counts?.withGoals ?? 0) > 0} fast={pipeline?.impact} />
         <StageNode
-          num={5} icon="🔗" title="Impact" sub="cruzamentos · citações" badge="Gemini"
-          metric={{ value: counts?.withImpacts ?? 0, of: total, label: 'com impactos' }}
+          num={5} icon="🔗" title="Impact" sub="cross-project · citations" badge="Gemini"
+          metric={{ value: counts?.withImpacts ?? 0, of: total, label: 'with impacts' }}
           running={pipeline?.impact}
         />
       </div>
@@ -251,8 +251,8 @@ function ChainView({ state }: { state: DataFlowState | null }) {
         <Conduit vertical active={(counts?.withImpacts ?? 0) > 0} />
       </div>
 
-      {/* ── Saídas ──────────────────────────────────────────────────────── */}
-      <LaneLabel text="Saídas" />
+      {/* ── Outputs ─────────────────────────────────────────────────────── */}
+      <LaneLabel text="Outputs" />
       <div className="flex flex-wrap gap-2">
         {['Projects', 'Goals', 'Impact Graph', 'Matrix'].map(o => (
           <span key={o}
@@ -265,7 +265,7 @@ function ChainView({ state }: { state: DataFlowState | null }) {
       {anyRunning && (
         <p className="mt-4 text-[11px] text-accent-text flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-accent-text animate-pulse" />
-          pipeline em execução — os conduítes ativos correm mais rápido
+          pipeline running — active conduits move faster
         </p>
       )}
     </div>
@@ -285,14 +285,16 @@ function LaneLabel({ text, hint, accent }: { text: string; hint?: string; accent
 }
 
 /**
- * O conduíte entre duas etapas. As partículas são o dado em trânsito.
+ * The conduit between two stages. The particles are data in transit.
  *
- * `active` = já passou coisa por aqui (senão o trilho fica inerte, e a ausência
- * de movimento é informação: nada chegou nesta etapa ainda).
- * `fast`   = a etapa seguinte está processando agora.
+ * `active` = something has already flowed through here (otherwise the rail sits
+ * inert, and the absence of motion is information: nothing has reached this
+ * stage yet).
+ * `fast`   = the next stage is processing right now.
  *
- * A animação usa left/top em %, então funciona em qualquer largura sem medir
- * nada em JS. Em telas estreitas o conduíte vira vertical junto com o layout.
+ * The animation drives left/top in %, so it works at any width without
+ * measuring anything in JS, and survives the layout turning into a column on
+ * narrow screens.
  */
 function Conduit({ active, fast, vertical }: { active?: boolean; fast?: boolean; vertical?: boolean }) {
   const dur = fast ? '1.1s' : '2.8s';
@@ -383,11 +385,11 @@ function StageNode({
         <div className="mt-2.5 flex items-center gap-2">
           {running && (
             <span className="flex items-center gap-1 text-[10px] text-accent-text">
-              <span className="w-1.5 h-1.5 rounded-full bg-accent-text animate-pulse" /> rodando
+              <span className="w-1.5 h-1.5 rounded-full bg-accent-text animate-pulse" /> running
             </span>
           )}
           {(errors ?? 0) > 0 && (
-            <span className="text-[10px] text-red-300">{errors} com erro</span>
+            <span className="text-[10px] text-red-300">{errors} failed</span>
           )}
         </div>
       )}
@@ -418,7 +420,7 @@ function ProjectsTable() {
       fetch('/api/strom/dataflow-projects')
         .then(r => r.json())
         .then(d => { if (!cancelled && d.projects) setRows(d.projects); })
-        .catch(() => { if (!cancelled) setError('Falha ao carregar.'); });
+        .catch(() => { if (!cancelled) setError('Failed to load.'); });
     };
     load();
     // Light polling of its own — separate from the SSE tick (see route.ts),
@@ -454,9 +456,9 @@ function ProjectsTable() {
         />
         <label className="flex items-center gap-1.5 text-xs text-ink-3 cursor-pointer">
           <input type="checkbox" checked={onlyErrors} onChange={e => setOnlyErrors(e.target.checked)} />
-          Só com ERROR
+          Errors only
         </label>
-        <span className="text-xs text-ink-muted ml-auto">{filtered.length} de {rows.length} projetos</span>
+        <span className="text-xs text-ink-muted ml-auto">{filtered.length} of {rows.length} projects</span>
       </div>
 
       <div className="border border-line rounded-xl overflow-hidden">
@@ -493,11 +495,11 @@ function ProjectsTable() {
 // ─── Fila (admin) ───────────────────────────────────────────────────────────
 
 /**
- * Escreve `_alumen_queue.json` na pasta Copy Utility do Drive. O Apps Script
- * lê esse arquivo no heartbeat e acrescenta os IDs à planilha de controle
- * (PLAN §6.3, alumenMergeQueue). O arquivo NÃO é apagado pelo script: o item
- * sai daqui só depois de aparecer na planilha, para que um heartbeat perdido
- * não perca o pedido.
+ * Writes `_alumen_queue.json` into the Copy Utility folder on Drive. Apps Script
+ * reads that file on its heartbeat and appends the IDs to the control sheet
+ * (PLAN §6.3, alumenMergeQueue). The script never deletes the file: an item
+ * only leaves here once it shows up in the sheet, so a missed heartbeat never
+ * loses the request.
  */
 function QueuePanel({ q }: { q: ReturnType<typeof useQueue> }) {
   const [projectId, setProjectId] = useState('');
@@ -547,7 +549,7 @@ function QueuePanel({ q }: { q: ReturnType<typeof useQueue> }) {
 
   return (
     <div className="p-6 max-w-2xl space-y-5">
-      <Section label="Enfileirar projeto">
+      <Section label="Queue a project">
         <div className="flex gap-2">
           <input
             value={projectId}
@@ -565,7 +567,7 @@ function QueuePanel({ q }: { q: ReturnType<typeof useQueue> }) {
                        bg-accent-soft text-accent-text disabled:opacity-40 disabled:cursor-not-allowed
                        cursor-pointer transition-all"
           >
-            {busy ? '…' : 'Enfileirar'}
+            {busy ? '…' : 'Queue'}
           </button>
         </div>
         {msg && (
@@ -577,9 +579,9 @@ function QueuePanel({ q }: { q: ReturnType<typeof useQueue> }) {
           </p>
         )}
         <p className="mt-2 text-[11px] text-ink-muted leading-relaxed">
-          O pedido vai para um arquivo no Drive. O Apps Script o lê no próximo
-          heartbeat e acrescenta o projeto à planilha de controle — pode levar
-          alguns minutos até aparecer na Cadeia.
+          The request is written to a file on Drive. Apps Script picks it up on the
+          next heartbeat and appends the project to the control sheet — it can take a
+          few minutes to show up in the Chain.
         </p>
       </Section>
 
@@ -589,22 +591,22 @@ function QueuePanel({ q }: { q: ReturnType<typeof useQueue> }) {
             <span className={`w-1.5 h-1.5 rounded-full ${
               hbAge !== null && hbAge <= 30 ? 'bg-emerald-400' : 'bg-amber-400'}`} />
             <span className="text-ink-2">
-              {hbAge === null ? '—' : hbAge < 1 ? 'agora há pouco' : `há ${hbAge} min`}
+              {hbAge === null ? '—' : hbAge < 1 ? 'just now' : `${hbAge} min ago`}
             </span>
-            <span className="text-ink-muted">· {q.heartbeat.pending} pendente(s)</span>
+            <span className="text-ink-muted">· {q.heartbeat.pending} pending</span>
           </div>
         ) : (
           <p className="text-[12px] text-ink-muted">
-            Sem sinal. O gatilho ainda não foi instalado no Apps Script
+            No signal. The trigger has not been installed in Apps Script
             (<code className="text-ink-3">alumenInstalarHeartbeat()</code>), ou nunca rodou.
           </p>
         )}
       </Section>
 
-      <Section label={`Aguardando confirmação (${q.queue.length})`}>
+      <Section label={`Awaiting confirmation (${q.queue.length})`}>
         {q.error && <p className="text-[12px] text-rose-400 mb-2">{q.error}</p>}
         {q.queue.length === 0 ? (
-          <p className="text-[12px] text-ink-muted">Fila vazia.</p>
+          <p className="text-[12px] text-ink-muted">Queue is empty.</p>
         ) : (
           <>
             <ul className="space-y-1">
@@ -624,7 +626,7 @@ function QueuePanel({ q }: { q: ReturnType<typeof useQueue> }) {
               className="mt-3 px-3 py-1 rounded text-[11px] border border-line text-ink-3
                          hover:bg-surface-2 disabled:opacity-40 cursor-pointer transition-all"
             >
-              Limpar os que já chegaram na planilha
+              Clear the ones already in the sheet
             </button>
           </>
         )}

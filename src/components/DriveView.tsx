@@ -237,7 +237,7 @@ function Stat({ label, value, tone }: { label: string; value: number | undefined
 function SourcesSection({ state }: { state: DrivePanelState | null }) {
   return (
     <div className="space-y-3">
-      <CollapsibleCard title="Fontes do Drive" subtitle="As pastas que o ciclo automático revisita">
+      <CollapsibleCard title="Drive sources" subtitle="The folders the automatic cycle revisits">
         <WatchRoots />
       </CollapsibleCard>
 
@@ -283,10 +283,10 @@ function CollapsibleCard({ title, subtitle, defaultOpen = false, children }: {
 }
 
 // ─── Fontes do Drive (watch roots) ──────────────────────────────────────────
-// A API de roots (listar, ligar/desligar, remover) já existia inteira em
-// /api/auto-discovery, mas nenhuma tela a consumia — então uma pasta cadastrada
-// simplesmente sumia de vista, e não havia como saber o que o ciclo automático
-// revisitava, nem desligar uma fonte sem mexer no banco.
+// The roots API (list, enable/disable, remove) already existed in full under
+// /api/auto-discovery, but no screen consumed it — so a registered folder simply
+// vanished from view, and there was no way to know what the automatic cycle
+// revisited, nor to disable a source without touching the database.
 
 interface WatchRoot {
   id: number;
@@ -336,7 +336,7 @@ function WatchRoots() {
   };
 
   const remove = async (r: WatchRoot) => {
-    if (!confirm(`Remover a fonte "${r.label || r.url}"?\n\nOs projetos já descobertos continuam; só o ciclo automático deixa de revisitar esta pasta.`)) return;
+    if (!confirm(`Remove the source "${r.label || r.url}"?\n\nProjects already discovered stay; only the automatic cycle stops revisiting this folder.`)) return;
     setBusy(r.id);
     try {
       const res = await fetch(`/api/auto-discovery?id=${r.id}`, { method: 'DELETE' });
@@ -347,13 +347,13 @@ function WatchRoots() {
     } finally { setBusy(null); }
   };
 
-  if (roots === null) return <p className="text-[12px] text-ink-muted">carregando…</p>;
+  if (roots === null) return <p className="text-[12px] text-ink-muted">loading…</p>;
 
   if (roots.length === 0) {
     return (
       <p className="text-[12px] text-ink-muted">
-        Nenhuma fonte registrada. Use <span className="text-ink-3">Add a Drive source</span> abaixo —
-        a pasta passa a ser revisitada pelo ciclo automático.
+        No sources registered. Use <span className="text-ink-3">Add a Drive source</span> below —
+        the folder then gets revisited by the automatic cycle.
       </p>
     );
   }
@@ -374,10 +374,10 @@ function WatchRoots() {
                   r.kind === 'initiatives'
                     ? 'bg-purple-900/40 text-purple-300'
                     : 'bg-accent-soft text-accent-text'}`}>
-                  {r.kind === 'initiatives' ? 'INICIATIVAS' : 'PORTFÓLIO'}
+                  {r.kind === 'initiatives' ? 'INITIATIVES' : 'PORTFOLIO'}
                 </span>
                 {!r.enabled && (
-                  <span className="text-[10px] text-ink-faint uppercase tracking-wider">desligada</span>
+                  <span className="text-[10px] text-ink-faint uppercase tracking-wider">disabled</span>
                 )}
               </div>
 
@@ -389,15 +389,15 @@ function WatchRoots() {
               <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1.5 text-[10px] text-ink-faint">
                 <span>
                   {r.kind === 'initiatives'
-                    ? 'cada subpasta direta vira uma iniciativa'
-                    : 'varre recursivamente atrás de pastas PRJxxxxx'}
+                    ? 'each direct subfolder becomes one initiative'
+                    : 'recurses looking for PRJxxxxx folder names'}
                 </span>
-                <span>{r.addedCount} projeto(s) adicionado(s)</span>
+                <span>{r.addedCount} project(s) added</span>
                 <span>
                   {r.lastRunAt
-                    ? `última varredura ${new Date(r.lastRunAt + 'Z').toLocaleString()}`
-                    : 'nunca varrida'}
-                  {r.lastRunStatus === 'error' && <span className="text-rose-400"> · falhou</span>}
+                    ? `last scan ${new Date(r.lastRunAt + 'Z').toLocaleString()}`
+                    : 'never scanned'}
+                  {r.lastRunStatus === 'error' && <span className="text-rose-400"> · failed</span>}
                 </span>
               </div>
 
@@ -413,7 +413,7 @@ function WatchRoots() {
                 className="px-2.5 py-1 rounded text-[11px] border border-line text-ink-3
                            hover:bg-surface-2 disabled:opacity-40 cursor-pointer transition-all"
               >
-                {r.enabled ? 'Desligar' : 'Ligar'}
+                {r.enabled ? 'Disable' : 'Enable'}
               </button>
               <button
                 onClick={() => remove(r)}
@@ -421,7 +421,7 @@ function WatchRoots() {
                 className="px-2.5 py-1 rounded text-[11px] border border-line text-rose-400
                            hover:bg-surface-2 disabled:opacity-40 cursor-pointer transition-all"
               >
-                Remover
+                Remove
               </button>
             </div>
           </div>
@@ -516,8 +516,8 @@ function AddSource() {
     <div className="pt-3">
       <div className="flex gap-1 mb-3">
         {([
-          { value: 'projects'    as SourceMode, label: 'Projetos (PRJ)' },
-          { value: 'initiatives' as SourceMode, label: 'Iniciativas' },
+          { value: 'projects'    as SourceMode, label: 'Projects (PRJ)' },
+          { value: 'initiatives' as SourceMode, label: 'Initiatives' },
         ]).map(opt => (
           <button
             key={opt.value}
@@ -539,9 +539,9 @@ function AddSource() {
           </>
         ) : (
           <>
-            Cole a URL da pasta-mãe de iniciativas. Cada subpasta <strong>direta</strong> vira
-            uma iniciativa, com o nome que a equipe deu — não há convenção a seguir. A pasta
-            fica registrada, então subpastas e documentos adicionados depois entram sozinhos.
+            Paste the URL of the parent initiatives folder. Every <strong>direct</strong> subfolder
+            becomes one initiative, under whatever name the team gave it — there is no convention to
+            follow. The folder is registered, so subfolders and documents added later come in on their own.
           </>
         )}
       </p>
@@ -600,7 +600,7 @@ function AddSource() {
           )}
           {iniResult.missing.length > 0 && (
             <div className="text-yellow-400">
-              ⚠ {iniResult.missing.length} iniciativa(s) não estão mais no Drive — marcadas, não apagadas
+              ⚠ {iniResult.missing.length} initiative(s) no longer on Drive — flagged, not deleted
             </div>
           )}
         </div>

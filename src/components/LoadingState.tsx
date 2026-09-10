@@ -1,4 +1,4 @@
-export default function LoadingState({ label = 'Carregando…' }: { label?: string }) {
+export default function LoadingState({ label = 'Loading…' }: { label?: string }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3 text-ink-4 py-20">
       <div className="flex items-center gap-2">

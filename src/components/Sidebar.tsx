@@ -150,7 +150,7 @@ export default function Sidebar() {
                       : 'bg-blue-900/40 text-blue-300'
                   }`}
                   title={selectedProject.source === 'initiative'
-                    ? 'Pasta do Drive com documentos, sem projeto no CDIO'
+                    ? 'Drive folder with documents, no matching CDIO project'
                     : 'Pasta PRJ encontrada no Drive, sem linha na planilha CDIO'}
                 >
                   {selectedProject.source === 'initiative' ? 'INICIATIVA' : 'DRIVE'}

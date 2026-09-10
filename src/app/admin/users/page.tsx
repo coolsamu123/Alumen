@@ -64,7 +64,7 @@ export default function AdminUsersPage() {
   useEffect(() => {
     setLoading(true);
     Promise.all([loadUsers(), loadProjects()])
-      .catch(() => setError('Falha ao carregar dados.'))
+      .catch(() => setError('Could not load data.'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -84,7 +84,7 @@ export default function AdminUsersPage() {
         body: JSON.stringify({ email: newEmail, name: newName, password: newPassword, role: newRole }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Falha ao criar usuário.');
+      if (!res.ok) throw new Error(data.error || 'Could not create user.');
       setNewEmail('');
       setNewName('');
       setNewPassword('');
@@ -92,7 +92,7 @@ export default function AdminUsersPage() {
       setShowCreate(false);
       await loadUsers();
     } catch (err: unknown) {
-      setCreateError(err instanceof Error ? err.message : 'Falha ao criar usuário.');
+      setCreateError(err instanceof Error ? err.message : 'Could not create user.');
     } finally {
       setCreating(false);
     }
@@ -106,7 +106,7 @@ export default function AdminUsersPage() {
     });
     const data = await res.json();
     if (!res.ok) {
-      alert(data.error || 'Falha ao atualizar usuário.');
+      alert(data.error || 'Could not update user.');
       return false;
     }
     await loadUsers();
@@ -117,30 +117,30 @@ export default function AdminUsersPage() {
 
   const handleToggleRole = (u: UserRow) => {
     const nextRole: Role = u.role === 'admin' ? 'basic' : 'admin';
-    if (!confirm(`Tornar ${u.email} ${nextRole === 'admin' ? 'administrador' : 'básico'}?`)) return;
+    if (!confirm(`Make ${u.email} ${nextRole === 'admin' ? 'an administrator' : 'basic'}?`)) return;
     patchUser(u.id, { role: nextRole });
   };
 
   const handleResetPassword = (u: UserRow) => {
     if (u.auth_provider !== 'local') {
-      alert('Conta Okta não usa senha local.');
+      alert('Okta accounts do not use a local password.');
       return;
     }
-    const pw = prompt(`Nova senha para ${u.email} (mínimo 8 caracteres):`);
+    const pw = prompt(`New password for ${u.email} (minimum 8 characters):`);
     if (!pw) return;
     if (pw.length < 8) {
-      alert('Senha deve ter ao menos 8 caracteres.');
+      alert('Password must be at least 8 characters.');
       return;
     }
     patchUser(u.id, { password: pw });
   };
 
   const handleDelete = async (u: UserRow) => {
-    if (!confirm(`Remover ${u.email} permanentemente?`)) return;
+    if (!confirm(`Remove ${u.email} permanently?`)) return;
     const res = await fetch(`/api/admin/users/${u.id}`, { method: 'DELETE' });
     const data = await res.json();
     if (!res.ok) {
-      alert(data.error || 'Falha ao remover usuário.');
+      alert(data.error || 'Could not remove user.');
       return;
     }
     await loadUsers();
@@ -152,7 +152,7 @@ export default function AdminUsersPage() {
         <a href="/admin" className="flex items-center gap-2.5 text-ink-1 no-underline">
           <img src="/icon-192.png" alt="Alumen" className="w-8 h-8 rounded-lg" />
           <span className="font-bold">Alumen</span>
-          <span className="text-ink-muted text-sm font-normal">— Gestão de Usuários</span>
+          <span className="text-ink-muted text-sm font-normal">— User Management</span>
         </a>
         <div className="flex-1" />
         <a href="/admin" className="text-sm text-ink-4 hover:text-ink-1">← Admin</a>
@@ -161,12 +161,12 @@ export default function AdminUsersPage() {
 
       <div className="max-w-5xl mx-auto p-8 flex flex-col gap-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-lg font-bold text-ink-1">Usuários</h1>
+          <h1 className="text-lg font-bold text-ink-1">Users</h1>
           <button
             onClick={() => setShowCreate(v => !v)}
             className="px-4 py-2 rounded-lg bg-accent-hover text-white text-sm font-semibold hover:bg-accent transition-colors"
           >
-            {showCreate ? 'Cancelar' : '+ Novo usuário'}
+            {showCreate ? 'Cancel' : '+ New user'}
           </button>
         </div>
 
@@ -177,12 +177,12 @@ export default function AdminUsersPage() {
           >
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-ink-4 mb-1">Email corporativo</label>
+                <label className="block text-xs font-medium text-ink-4 mb-1">Work email</label>
                 <input
                   type="email"
                   value={newEmail}
                   onChange={e => setNewEmail(e.target.value)}
-                  placeholder="nome.sobrenome@airliquide.com"
+                  placeholder="first.last@airliquide.com"
                   className="w-full px-3 py-2 rounded-lg bg-surface-2 border border-line text-ink-1 text-sm"
                   required
                 />
@@ -198,12 +198,12 @@ export default function AdminUsersPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-ink-4 mb-1">Senha inicial</label>
+                <label className="block text-xs font-medium text-ink-4 mb-1">Initial password</label>
                 <input
                   type="text"
                   value={newPassword}
                   onChange={e => setNewPassword(e.target.value)}
-                  placeholder="mínimo 8 caracteres"
+                  placeholder="minimum 8 characters"
                   className="w-full px-3 py-2 rounded-lg bg-surface-2 border border-line text-ink-1 text-sm"
                   required
                 />
@@ -215,7 +215,7 @@ export default function AdminUsersPage() {
                   onChange={e => setNewRole(e.target.value as Role)}
                   className="w-full px-3 py-2 rounded-lg bg-surface-2 border border-line text-ink-1 text-sm"
                 >
-                  <option value="basic">Básico</option>
+                  <option value="basic">Basic</option>
                   <option value="admin">Admin</option>
                 </select>
               </div>
@@ -226,13 +226,13 @@ export default function AdminUsersPage() {
               disabled={creating}
               className="self-start px-4 py-2 rounded-lg bg-accent-hover text-white text-sm font-semibold hover:bg-accent transition-colors disabled:opacity-50"
             >
-              {creating ? 'Criando…' : 'Criar usuário'}
+              {creating ? 'Criando…' : 'Create user'}
             </button>
           </form>
         )}
 
         {loading ? (
-          <p className="text-ink-muted text-sm">Carregando…</p>
+          <p className="text-ink-muted text-sm">Loading…</p>
         ) : error ? (
           <p className="text-red-400 text-sm">{error}</p>
         ) : (
@@ -240,12 +240,12 @@ export default function AdminUsersPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line text-left text-ink-4 text-xs uppercase tracking-wide">
-                  <th className="px-4 py-3 font-medium">Usuário</th>
+                  <th className="px-4 py-3 font-medium">User</th>
                   <th className="px-4 py-3 font-medium">Perfil</th>
-                  <th className="px-4 py-3 font-medium">Vê</th>
+                  <th className="px-4 py-3 font-medium">Sees</th>
                   <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Último login</th>
-                  <th className="px-4 py-3 font-medium">Ações</th>
+                  <th className="px-4 py-3 font-medium">Last login</th>
+                  <th className="px-4 py-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -311,7 +311,7 @@ function UserRowView({
                 : 'bg-surface-2 text-ink-4 border border-line'
             }`}
           >
-            {user.role === 'admin' ? 'Admin' : 'Básico'}
+            {user.role === 'admin' ? 'Admin' : 'Basic'}
           </span>
         </td>
         <td className="px-4 py-3 text-ink-2">
@@ -332,14 +332,14 @@ function UserRowView({
                 onClick={onToggleExpand}
                 className="text-xs px-2 py-1 rounded border border-line text-ink-3 hover:bg-surface-2"
               >
-                {expanded ? 'Fechar escopo' : 'Escopo'}
+                {expanded ? 'Close scope' : 'Scope'}
               </button>
             )}
             <button
               onClick={onToggleRole}
               className="text-xs px-2 py-1 rounded border border-line text-ink-3 hover:bg-surface-2"
             >
-              {user.role === 'admin' ? 'Tornar básico' : 'Tornar admin'}
+              {user.role === 'admin' ? 'Make basic' : 'Make admin'}
             </button>
             <button
               onClick={onToggleActive}
@@ -351,13 +351,13 @@ function UserRowView({
               onClick={onResetPassword}
               className="text-xs px-2 py-1 rounded border border-line text-ink-3 hover:bg-surface-2"
             >
-              Resetar senha
+              Reset password
             </button>
             <button
               onClick={onDelete}
               className="text-xs px-2 py-1 rounded border border-red-800/60 text-red-300 hover:bg-red-900/30"
             >
-              Remover
+              Remove
             </button>
           </div>
         </td>
@@ -446,10 +446,10 @@ function ScopeEditor({
         body: JSON.stringify({ dds: Array.from(selectedDds), projects: Array.from(selectedProjects) }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Falha ao salvar escopo.');
+      if (!res.ok) throw new Error(data.error || 'Could not save scope.');
       onSaved();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Falha ao salvar escopo.');
+      alert(err instanceof Error ? err.message : 'Could not save scope.');
     } finally {
       setSaving(false);
     }
@@ -458,8 +458,8 @@ function ScopeEditor({
   return (
     <div className="flex flex-col gap-4">
       <div className="text-sm text-ink-2">
-        Sem nenhum grant, <strong>{user.name || user.email}</strong> vê o portfólio inteiro. Marcar algo
-        abaixo restringe a visão dele/dela apenas ao que for selecionado.
+        With no grant at all, <strong>{user.name || user.email}</strong> sees the entire portfolio.
+        Selecting anything below narrows their view to only what is checked.
       </div>
 
       <div>
@@ -512,7 +512,7 @@ function ScopeEditor({
           type="text"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Buscar projeto por ID ou nome…"
+          placeholder="Search project by ID or name…"
           className="w-full px-3 py-2 rounded-lg bg-surface-1 border border-line text-ink-1 text-sm"
         />
         {filteredProjects.length > 0 && (
@@ -539,10 +539,10 @@ function ScopeEditor({
           disabled={saving}
           className="px-4 py-2 rounded-lg bg-accent-hover text-white text-sm font-semibold hover:bg-accent transition-colors disabled:opacity-50"
         >
-          {saving ? 'Salvando…' : 'Salvar escopo'}
+          {saving ? 'Saving…' : 'Save scope'}
         </button>
         <span className="text-sm text-ink-muted">
-          Prévia: {previewCount === 'ALL' ? 'todo o portfólio' : `${previewCount} projetos visíveis`}
+          Preview: {previewCount === 'ALL' ? 'the entire portfolio' : `${previewCount} project(s) visible`}
         </span>
       </div>
     </div>

@@ -53,13 +53,13 @@ export default function Home() {
       <div className="min-h-screen flex flex-col bg-bg">
         <Header />
         <div className="flex-1 flex flex-col items-center justify-center gap-3 text-ink-4">
-          <LoadingState label={isLoading ? 'Carregando…' : 'Sem dados ainda'} />
+          <LoadingState label={isLoading ? 'Loading…' : 'No data yet'} />
           {!isLoading && isAdmin && (
             <button
               onClick={() => setView('drive')}
               className="text-xs text-accent-text2 hover:underline -mt-12"
             >
-              Ir para Drive Sync para popular o portfólio
+              Go to Drive Sync to populate the portfolio
             </button>
           )}
         </div>
