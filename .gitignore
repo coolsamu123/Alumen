@@ -41,6 +41,7 @@ next-env.d.ts
 # data (SQLite + uploaded files)
 /data/cioo.db
 /data/cioo.db.before-*
+/data/cioo.db.bak-*
 /data/cioo.db-wal
 /data/cioo.db-shm
 /data/database.sqlite
