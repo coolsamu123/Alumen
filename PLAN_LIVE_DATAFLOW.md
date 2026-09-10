@@ -27,8 +27,8 @@ Auditoria feita sobre os dois Apps Scripts (`syncProjectFiles` e
 | 0 — Verificações no ambiente AL (§6.1) | ✅ **done — rodada pelo service account**, ver §0.1 | 2026-09-09 |
 | 1 — Leitura: as duas planilhas viram estado no Alumen | ✅ **done — implantado**, via export XLSX (§0.2). Ver §0.3 | 2026-09-09 |
 | 2 — Data Flow ao vivo (só leitura) | ✅ **done — implantado**, ver §0.4 | 2026-09-09 |
-| 3 — Fila pela UI, via **arquivo de fila** no Drive (§0.2) | ⬜ | — |
-| 4 — Worker permanente no Apps Script | ⬜ | — |
+| 3 — Fila pela UI, via **arquivo de fila** no Drive (§0.2) | ✅ **done — implantado**, ver §0.6 | 2026-09-10 |
+| 4 — Worker permanente no Apps Script | 🟡 **código no ar; falta instalar o gatilho**, ver §0.6 | 2026-09-10 |
 | 5 — Acabamento: heartbeat, erros, retry | ⬜ | — |
 
 > **2026-09-10 — migração para o Shared Drive "Alumen".** As duas planilhas
@@ -581,6 +581,63 @@ estavam lá o tempo todo, apenas invisíveis para mim.
   (padrão `SyncStatus` e `Update Control File`)
 - `exportTabRows()` virou `exportWorkbook()` + `tabRows()`: sendo o mesmo
   arquivo, o XLSX é baixado **uma vez** por poll em vez de duas
+
+---
+
+## 0.6. Resultados das Fases 3 e 4 (2026-09-10)
+
+### Fase 3 — o lado do Alumen
+
+`src/lib/alumen-queue.ts` (novo) escreve `_alumen_queue.json` na pasta
+`Copy Utility` do Shared Drive, no formato que `alumenMergeQueue()` já espera:
+
+```json
+{ "version": 1,
+  "queue": [ { "projectId", "requestedBy", "requestedAt" } ] }
+```
+
+`src/app/api/drive/queue/route.ts` (novo) — GET lê fila + heartbeat, POST
+enfileira, DELETE poda. Fica **sob `/api/drive` de propósito**: middleware.ts já
+trata esse prefixo como admin-only, então enfileirar herda a proteção sem
+código novo. A tela que o usuário básico vê continua em
+`/api/strom/dataflow-state`, que é só leitura.
+
+`DataFlowLive.tsx` ganhou uma terceira aba, **➕ Fila**, com contador de
+pendentes, idade do heartbeat e a lista aguardando confirmação.
+
+**Como a UI descobre se pode:** ela não recebe o papel do usuário. Faz o GET e,
+se vier 403, a aba não é renderizada. Uma autoridade só — o servidor — em vez de
+duplicar a regra de permissão no cliente.
+
+**A poda é automática.** O plano define que quem tira item da fila é o Alumen,
+depois de ver o projeto na planilha — não o Apps Script (assim um heartbeat
+perdido não perde pedido). Deixar isso num botão manual faria a fila mentir até
+alguém clicar, então o GET reconcilia antes de responder. `pruneQueue()` só
+escreve quando há algo a remover; o caso normal segue sendo leitura pura.
+
+**Verificado ponta a ponta** contra o Drive real: enfileirar normaliza o ID
+(`prj0099901` → `PRJ0099901`), recusa duplicata na fila, recusa projeto que já
+está na planilha, e o arquivo gravado bate com o formato esperado. Usuário
+básico leva 403 no GET e no POST; 200 no `dataflow-state`.
+
+**Limite conhecido (§3.5):** read-modify-write num arquivo do Drive não é
+atômico. Dois admins clicando no mesmo segundo podem perder um pedido. Aceitável
+— o custo é reenfileirar, e o botão é de uso raro. Se virar problema, o caminho
+é um arquivo por pedido em vez de um arquivo com lista.
+
+### Fase 4 — o lado do Apps Script
+
+**Já está tudo no código**, escrito por API: `alumenReadQueue()`,
+`alumenMergeQueue()`, `alumenWriteHeartbeat_()`, `syncHeartbeat()` e o
+`syncProjectFiles()` lendo a fila da planilha em vez do array fixo.
+
+**Falta um passo, e é manual:** rodar **`alumenInstalarHeartbeat()`** uma vez no
+editor, para criar o gatilho de 10 em 10 minutos. Instalar gatilho não é
+conteúdo de código — não passa pela rota `files.update` da §0.2 — então é a
+única coisa da Fase 4 que a API não alcança.
+
+Enquanto o gatilho não existe, o painel mostra "Sem sinal" e a fila fica
+parada: o pedido é gravado, mas nada o lê.
 
 ---
 

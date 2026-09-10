@@ -17,7 +17,7 @@ import type { UpstreamSnapshot, UpstreamRow } from '@/lib/upstream-sync';
 // 'strom' tab is not admin-gated), so it needs a read surface that isn't
 // bundled with Drive Sync's write-capable one. See dataflow-state/route.ts.
 
-type SubView = 'chain' | 'projects';
+type SubView = 'chain' | 'projects' | 'queue';
 type StageStatus = 'DONE' | 'ERROR' | 'IN_PROGRESS' | 'PENDING' | 'NONE';
 
 interface DataFlowState {
@@ -25,6 +25,51 @@ interface DataFlowState {
   counts: { totalProjects: number; withFiles: number; withGoals: number; withImpacts: number };
   pipelineRunning: { drive: boolean; goals: boolean; impact: boolean };
   generatedAt: string;
+}
+
+interface QueueItem {
+  projectId: string;
+  requestedBy: string;
+  requestedAt: string;
+}
+
+/**
+ * A fila é admin-only (o endpoint vive sob /api/drive, que middleware.ts
+ * fecha para basic). Em vez de plumbar o papel do usuário até aqui, deixamos o
+ * próprio endpoint decidir: 403 significa "não é admin", e a aba nem aparece.
+ * Uma autoridade só, do lado do servidor.
+ */
+function useQueue() {
+  const [allowed, setAllowed] = useState<boolean | null>(null);
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [heartbeat, setHeartbeat] = useState<{ at: string; pending: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = async () => {
+    try {
+      const res = await fetch('/api/drive/queue');
+      if (res.status === 403 || res.status === 401) { setAllowed(false); return; }
+      const data = await res.json();
+      setAllowed(true);
+      if (data.ok) {
+        setQueue(data.queue ?? []);
+        setHeartbeat(data.heartbeat ?? null);
+        setError(null);
+      } else {
+        setError(data.error ?? 'falha ao ler a fila');
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  useEffect(() => {
+    load();
+    const id = setInterval(load, 15000);
+    return () => clearInterval(id);
+  }, []);
+
+  return { allowed, queue, heartbeat, error, reload: load };
 }
 
 function useDataFlowState() {
@@ -79,12 +124,15 @@ const STAGE_COLUMNS: Array<{ key: keyof ProjectStageRow['stages']; label: string
 export default function DataFlowLive() {
   const { state, error } = useDataFlowState();
   const [subView, setSubView] = useState<SubView>('chain');
+  const q = useQueue();
+
+  const views: SubView[] = q.allowed ? ['chain', 'projects', 'queue'] : ['chain', 'projects'];
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-bg">
       <div className="shrink-0 px-6 py-3 border-b border-line bg-surface-1 flex items-center justify-between">
         <div className="flex items-center gap-1">
-          {(['chain', 'projects'] as SubView[]).map(v => (
+          {views.map(v => (
             <button
               key={v}
               onClick={() => setSubView(v)}
@@ -94,7 +142,12 @@ export default function DataFlowLive() {
                   : 'text-ink-4 hover:bg-surface-2 border border-transparent'
                 }`}
             >
-              {v === 'chain' ? '⬡ Cadeia' : '📋 Projetos'}
+              {v === 'chain' ? '⬡ Cadeia' : v === 'projects' ? '📋 Projetos' : '➕ Fila'}
+              {v === 'queue' && q.queue.length > 0 && (
+                <span className="ml-1.5 px-1.5 rounded-full bg-accent-soft text-accent-text text-[10px]">
+                  {q.queue.length}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -107,8 +160,10 @@ export default function DataFlowLive() {
       <div className="flex-1 overflow-auto">
         {subView === 'chain' ? (
           <ChainView state={state} />
-        ) : (
+        ) : subView === 'projects' ? (
           <ProjectsTable />
+        ) : (
+          <QueuePanel q={q} />
         )}
       </div>
     </div>
@@ -364,6 +419,149 @@ function ProjectsTable() {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// ─── Fila (admin) ───────────────────────────────────────────────────────────
+
+/**
+ * Escreve `_alumen_queue.json` na pasta Copy Utility do Drive. O Apps Script
+ * lê esse arquivo no heartbeat e acrescenta os IDs à planilha de controle
+ * (PLAN §6.3, alumenMergeQueue). O arquivo NÃO é apagado pelo script: o item
+ * sai daqui só depois de aparecer na planilha, para que um heartbeat perdido
+ * não perca o pedido.
+ */
+function QueuePanel({ q }: { q: ReturnType<typeof useQueue> }) {
+  const [projectId, setProjectId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ tone: 'ok' | 'warn' | 'err'; text: string } | null>(null);
+
+  const submit = async () => {
+    const id = projectId.trim();
+    if (!id || busy) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch('/api/drive/queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: id }),
+      });
+      const data = await res.json();
+      if (!data.ok) setMsg({ tone: 'err', text: data.error ?? 'falhou' });
+      else if (data.added) { setMsg({ tone: 'ok', text: `${id.toUpperCase()} enfileirado` }); setProjectId(''); }
+      else setMsg({ tone: 'warn', text: `${id.toUpperCase()}: ${data.reason}` });
+      await q.reload();
+    } catch (err: unknown) {
+      setMsg({ tone: 'err', text: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const prune = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch('/api/drive/queue', { method: 'DELETE' });
+      const data = await res.json();
+      setMsg(data.ok
+        ? { tone: 'ok', text: data.removed ? `${data.removed} confirmado(s) removido(s)` : 'nada a remover' }
+        : { tone: 'err', text: data.error ?? 'falhou' });
+      await q.reload();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const hbAge = q.heartbeat
+    ? Math.round((Date.now() - new Date(q.heartbeat.at).getTime()) / 60000)
+    : null;
+
+  return (
+    <div className="p-6 max-w-2xl space-y-5">
+      <Section label="Enfileirar projeto">
+        <div className="flex gap-2">
+          <input
+            value={projectId}
+            onChange={e => setProjectId(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') submit(); }}
+            placeholder="PRJ0021863"
+            disabled={busy}
+            className="flex-1 px-3 py-1.5 rounded border border-line bg-surface-1 text-[13px]
+                       text-ink-1 placeholder:text-ink-faint focus:outline-none focus:border-accent-border"
+          />
+          <button
+            onClick={submit}
+            disabled={busy || !projectId.trim()}
+            className="px-4 py-1.5 rounded text-[12px] font-medium border border-accent-border
+                       bg-accent-soft text-accent-text disabled:opacity-40 disabled:cursor-not-allowed
+                       cursor-pointer transition-all"
+          >
+            {busy ? '…' : 'Enfileirar'}
+          </button>
+        </div>
+        {msg && (
+          <p className={`mt-2 text-[12px] ${
+            msg.tone === 'ok' ? 'text-emerald-400'
+            : msg.tone === 'warn' ? 'text-amber-400'
+            : 'text-rose-400'}`}>
+            {msg.text}
+          </p>
+        )}
+        <p className="mt-2 text-[11px] text-ink-muted leading-relaxed">
+          O pedido vai para um arquivo no Drive. O Apps Script o lê no próximo
+          heartbeat e acrescenta o projeto à planilha de controle — pode levar
+          alguns minutos até aparecer na Cadeia.
+        </p>
+      </Section>
+
+      <Section label="Worker (heartbeat)">
+        {q.heartbeat ? (
+          <div className="flex items-center gap-2 text-[12px]">
+            <span className={`w-1.5 h-1.5 rounded-full ${
+              hbAge !== null && hbAge <= 30 ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+            <span className="text-ink-2">
+              {hbAge === null ? '—' : hbAge < 1 ? 'agora há pouco' : `há ${hbAge} min`}
+            </span>
+            <span className="text-ink-muted">· {q.heartbeat.pending} pendente(s)</span>
+          </div>
+        ) : (
+          <p className="text-[12px] text-ink-muted">
+            Sem sinal. O gatilho ainda não foi instalado no Apps Script
+            (<code className="text-ink-3">alumenInstalarHeartbeat()</code>), ou nunca rodou.
+          </p>
+        )}
+      </Section>
+
+      <Section label={`Aguardando confirmação (${q.queue.length})`}>
+        {q.error && <p className="text-[12px] text-rose-400 mb-2">{q.error}</p>}
+        {q.queue.length === 0 ? (
+          <p className="text-[12px] text-ink-muted">Fila vazia.</p>
+        ) : (
+          <>
+            <ul className="space-y-1">
+              {q.queue.map(it => (
+                <li key={it.projectId}
+                    className="flex items-center justify-between text-[12px] py-1 border-b border-line last:border-0">
+                  <span className="font-mono text-ink-1">{it.projectId}</span>
+                  <span className="text-ink-muted">
+                    {it.requestedBy} · {new Date(it.requestedAt).toLocaleString()}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <button
+              onClick={prune}
+              disabled={busy}
+              className="mt-3 px-3 py-1 rounded text-[11px] border border-line text-ink-3
+                         hover:bg-surface-2 disabled:opacity-40 cursor-pointer transition-all"
+            >
+              Limpar os que já chegaram na planilha
+            </button>
+          </>
+        )}
+      </Section>
     </div>
   );
 }
