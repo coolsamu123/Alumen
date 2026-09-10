@@ -473,6 +473,68 @@ script merged é suspeita enquanto a unificação não for revisada inteira. O p
 seguro é endereçar aba por **nome**, nunca por gid, já que os nomes são únicos
 dentro de um arquivo e os gids não dizem nada sobre a intenção.
 
+### 🐞 A cópia duplicava a árvore — e a dedup da limpeza nunca ia pegar
+
+Sintoma reportado: `Files Copied = 14` contra `Files Processed = 10`.
+
+**Os dois números estavam certos.** Existem 10 arquivos; os 14 contam *itens*,
+pastas incluídas (10 arquivos + 4 pastas). Não faltava nada — perseguir essa
+diferença era perseguir um fantasma.
+
+O problema real só apareceu ao enumerar a árvore: 3 documentos distintos tinham
+virado 10 arquivos.
+
+| Documento | Cópias |
+|---|---|
+| `GATE 2 - Note - PRJ0021863…` | 4 |
+| `Q&A (Merge FSSC instance…)` | 4 |
+| `Digital Risk Management Toolkit v4.0` | 2 |
+
+E `Duplicates Deleted = 0` também estava certo: a dedup do Remove Class agrupa
+por nome **dentro da mesma pasta**, e aqui não havia nenhuma — as duplicatas
+estão espalhadas por pastas diferentes. A limpeza nunca ia resolver isso.
+
+**Três causas somadas, todas em `searchAndCopy()`:**
+
+1. **A base antiga virou fonte.** O guard `isInsideBaseFolderById()` protege só
+   a base *nova*. Quando o `BASE_FOLDER_ID` mudou para o Shared Drive,
+   `01 Igarape Source` (`1IathIq6kIDdjj-2Qa9KTexc-wz56yzOM`) deixou de ser
+   protegida — e ela continua cheia de cópias de execuções passadas. O script
+   passou a re-copiar as próprias cópias, e faria isso a cada execução.
+
+2. **Mãe e filha casam o filtro independentemente.** A fonte é
+   `PRJ0021863/CF - FSSC…/`; as duas pastas contêm o número do projeto no nome,
+   então o passo 2 copiou o mesmo conteúdo duas vezes — uma pela mãe, uma pela
+   filha. É daí que vem o `PRJ0021863/PRJ0021863/` aninhado, que eu havia
+   descrito no roteiro de teste como "comportamento normal, não se assuste".
+   **Não era normal.**
+
+3. **Passo 1 e passo 2 se sobrepõem.** O passo 1 copia todo *arquivo* cujo nome
+   contém o número, solto no destino; o passo 2 copia toda *pasta* que casa,
+   recursivamente. Um arquivo com o número no nome, morando numa pasta que
+   também casa, é copiado nas duas passagens. Confirma-se no dado: o
+   `DRMT v4.0` não tem o número no nome e aparece 2× (uma por árvore), enquanto
+   `GATE 2` e `Q&A` aparecem 4×.
+
+**Correção aplicada (script v21), por prevenção e não por exclusão:**
+
+- `EXCLUDED_ROOT_IDS` — raízes que nunca podem ser fonte; a base antiga entra aí
+- `_hasAncestorMatching()` — se uma pasta ancestral também casa o número, o item
+  já virá por ela: "a pasta mais externa vence"
+- os dois guards aplicados tanto ao passo 1 quanto ao passo 2
+- `_ancCache` zerado por projeto, para não pagar `Drive.Files.get` por ancestral
+  repetidas vezes
+
+Apagar duplicatas depois seria pior: sem `md5` (arquivos nativos do Google não
+têm), "mesmo nome em pastas diferentes" não prova mesmo conteúdo — `GATE 2 - Note`
+de um Gate 1 e de um Gate 2 são legitimamente diferentes.
+
+**Limite do que consigo verificar:** a service account só enxerga o que lhe é
+compartilhado; os originais corporativos não. As únicas fontes visíveis daqui
+eram as cópias velhas. Se o próprio Apps Script (que roda como o usuário) também
+só enxergasse essas, excluir a base antiga faria a cópia trazer zero. A
+re-execução é o teste.
+
 ### Mudanças no `src/lib/upstream-sync.ts`
 
 - `controlSheetId` e `cleanupSheetId` → ambos a planilha unificada
