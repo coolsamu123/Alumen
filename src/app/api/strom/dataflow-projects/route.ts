@@ -14,6 +14,14 @@ import { getDb } from '@/lib/db';
 // method (middleware.ts PROTECTED_PREFIXES), which would have wrongly locked
 // this out for basic users.
 
+// Reads mutable state (SQLite), so it must not be prerendered at build time.
+// Without this the production build bakes one response into .next and serves it
+// forever: the table showed the portfolio exactly as it stood at build time, and
+// projects copied afterwards came back with copy/cleanup = NONE even though the
+// mirror had them as DONE. Same trap already documented in
+// api/drive/projects/route.ts — this route was the one that missed the fix.
+export const dynamic = 'force-dynamic';
+
 type StageStatus = 'DONE' | 'ERROR' | 'IN_PROGRESS' | 'PENDING' | 'NONE';
 
 interface ProjectRow {
