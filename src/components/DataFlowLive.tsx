@@ -214,7 +214,7 @@ function ChainView({ state }: { state: DataFlowState | null }) {
           queued={upstreamCount('copy', 'QUEUED')}
           running={upstreamCount('copy', 'IN_PROGRESS') > 0}
         />
-        <Conduit active={copyDone > 0} />
+        <Conduit active={copyDone > 0} fast={upstreamCount('cleanup', 'IN_PROGRESS') > 0} />
         <StageNode
           num={1} icon="🧹" title="Cleanup" sub="removeClassification"
           metric={{ value: cleanDone, label: 'cleaned' }}
@@ -230,7 +230,7 @@ function ChainView({ state }: { state: DataFlowState | null }) {
           folder was not registered as a Drive source. The conduit only carries
           what actually crossed. */}
       <div className="flex flex-col items-center py-1 gap-1">
-        <Conduit vertical active={bridged > 0} />
+        <Conduit vertical active={bridged > 0} fast={pipeline?.drive} />
         {upstreamTotal > 0 && (
           <span className={`text-[10px] ${bridged === upstreamTotal ? 'text-ink-faint' : 'text-amber-400'}`}>
             {bridged === upstreamTotal
@@ -247,7 +247,7 @@ function ChainView({ state }: { state: DataFlowState | null }) {
           num={2} icon="🔍" title="Discover" sub="PRJ-XXXXX folders"
           metric={{ value: total, label: 'projects' }}
         />
-        <Conduit active={total > 0} />
+        <Conduit active={total > 0} fast={pipeline?.drive} />
         <StageNode
           num={3} icon="⬇️" title="Download" sub="DOCX · XLSX · PDF"
           metric={{ value: counts?.withFiles ?? 0, of: total, label: 'with files' }}
@@ -317,29 +317,39 @@ function LaneLabel({ text, hint, accent }: { text: string; hint?: string; accent
  * narrow screens.
  */
 function Conduit({ active, fast, vertical }: { active?: boolean; fast?: boolean; vertical?: boolean }) {
-  const dur = fast ? '1.1s' : '2.8s';
-  const dots = [0, 1, 2];
+  // Duas velocidades bem separadas, não duas parecidas: 0.8s contra 3.4s. A
+  // versão anterior usava 1.1s contra 2.8s e as duas líamos como "algo se
+  // movendo". Cor reforça o mesmo sinal — verde só quando a etapa seguinte
+  // está trabalhando de verdade.
+  const dur = fast ? '0.8s' : '3.4s';
+  const dots = fast ? [0, 1, 2, 3, 4] : [0, 1, 2];
+  const gap = fast ? 0.16 : 1.1;
+  const cor = fast ? 'bg-emerald-400' : 'bg-accent-text';
+  const tamanho = fast ? 'w-1.5 h-1.5' : 'w-1 h-1';
 
   if (vertical) {
+    const trilho = fast ? 'alumen-track-run-y' : active ? 'alumen-track-live-y' : 'bg-line';
     return (
       <div className="relative w-px h-8" aria-hidden>
-        <div className={`absolute inset-0 w-px ${active ? 'alumen-track-live-y' : 'bg-line'}`} />
-        {active && dots.map(i => (
+        <div className={`absolute inset-0 w-px ${trilho}`} />
+        {(active || fast) && dots.map(i => (
           <span key={i}
-            className="alumen-particle alumen-particle-y w-1 h-1 bg-accent-text"
-            style={{ ['--flow-dur' as string]: dur, animationDelay: `${i * 0.9}s` }} />
+            className={`alumen-particle alumen-particle-y ${tamanho} ${cor}`}
+            style={{ ['--flow-dur' as string]: dur, animationDelay: `${i * gap}s` }} />
         ))}
       </div>
     );
   }
 
+  const trilho = fast ? 'alumen-track-run' : active ? 'alumen-track-live' : 'bg-line';
   return (
     <div className="relative flex-1 min-w-[28px] h-px sm:h-px my-4 sm:my-0 mx-0 sm:mx-1" aria-hidden>
-      <div className={`absolute inset-0 h-px ${active ? 'alumen-track-live' : 'bg-line'}`} />
-      {active && dots.map(i => (
+      <div className={`absolute inset-0 h-px ${trilho}`} />
+      {(active || fast) && dots.map(i => (
         <span key={i}
-          className="alumen-particle alumen-particle-x w-1 h-1 bg-accent-text"
-          style={{ ['--flow-dur' as string]: dur, animationDelay: `${i * 0.9}s` }} />
+          className={`alumen-particle alumen-particle-x ${tamanho} ${cor}
+                      ${fast ? 'shadow-[0_0_6px_rgba(16,185,129,0.9)]' : ''}`}
+          style={{ ['--flow-dur' as string]: dur, animationDelay: `${i * gap}s` }} />
       ))}
     </div>
   );

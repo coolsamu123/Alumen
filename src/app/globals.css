@@ -318,6 +318,24 @@ body {
 .alumen-particle-x { top: 50%; margin-top: -2px; animation: alumen-flow-x var(--flow-dur, 3s) linear infinite; }
 .alumen-particle-y { left: 50%; margin-left: -2px; animation: alumen-flow-y var(--flow-dur, 3s) linear infinite; }
 
+/* Trilho VERDE: o conduite que alimenta uma etapa em execucao. Verde e rapido
+ * contra azul e lento — a diferenca precisa ser obvia de relance, sem ler
+ * numero nenhum. */
+.alumen-track-run {
+  background-image: linear-gradient(90deg,
+    var(--border) 0%, rgb(16 185 129) 25%, var(--border) 50%,
+    var(--border) 100%);
+  background-size: 200% 100%;
+  animation: alumen-track 1.1s linear infinite;
+}
+.alumen-track-run-y {
+  background-image: linear-gradient(180deg,
+    var(--border) 0%, rgb(16 185 129) 25%, var(--border) 50%,
+    var(--border) 100%);
+  background-size: 100% 200%;
+  animation: alumen-track 1.1s linear infinite;
+}
+
 .alumen-track-live {
   background-image: linear-gradient(90deg,
     var(--border) 0%, var(--accent-border) 25%, var(--border) 50%,
@@ -338,6 +356,8 @@ body {
   .alumen-particle,
   .alumen-track-live,
   .alumen-track-live-y,
+  .alumen-track-run,
+  .alumen-track-run-y,
   .alumen-particle { opacity: .55; }
 }
 
