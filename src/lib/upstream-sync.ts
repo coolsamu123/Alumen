@@ -171,7 +171,14 @@ function normalizeStatus(value: unknown): UpstreamStatus {
   if (!raw) return 'UNKNOWN';
   if (raw.includes('ERROR') || raw.includes('FAIL')) return 'ERROR';
   if (raw.includes('DONE') || raw.includes('COMPLETE')) return 'DONE';
-  if (raw.includes('PROGRESS') || raw.includes('RUNNING')) return 'IN_PROGRESS';
+  // PROCESS matters as much as PROGRESS: the Apps Script writes the literal
+  // "Processing..." while it works a project, and "PROCESSING" does not contain
+  // "PROGRESS" — PRO-CESS-ING vs PRO-GRESS. That single miss made every
+  // in-flight upstream row fall through to UNKNOWN, so Copy and Cleanup could
+  // never show as running, no matter how long they ran.
+  if (raw.includes('PROGRESS') || raw.includes('PROCESS') || raw.includes('RUNNING')) {
+    return 'IN_PROGRESS';
+  }
   if (raw.includes('QUEUE') || raw.includes('PENDING')) return 'QUEUED';
   return 'UNKNOWN';
 }

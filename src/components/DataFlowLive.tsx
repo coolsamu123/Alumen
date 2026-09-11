@@ -211,6 +211,7 @@ function ChainView({ state }: { state: DataFlowState | null }) {
           num={0} icon="📥" title="Copy" sub="syncProjectFiles"
           metric={{ value: copyDone, label: 'copied' }}
           errors={upstreamCount('copy', 'ERROR')}
+          queued={upstreamCount('copy', 'QUEUED')}
           running={upstreamCount('copy', 'IN_PROGRESS') > 0}
         />
         <Conduit active={copyDone > 0} />
@@ -218,6 +219,7 @@ function ChainView({ state }: { state: DataFlowState | null }) {
           num={1} icon="🧹" title="Cleanup" sub="removeClassification"
           metric={{ value: cleanDone, label: 'cleaned' }}
           errors={upstreamCount('cleanup', 'ERROR')}
+          queued={upstreamCount('cleanup', 'QUEUED')}
           running={upstreamCount('cleanup', 'IN_PROGRESS') > 0}
         />
       </div>
@@ -344,7 +346,7 @@ function Conduit({ active, fast, vertical }: { active?: boolean; fast?: boolean;
 }
 
 function StageNode({
-  num, icon, title, sub, badge, running, metric, errors,
+  num, icon, title, sub, badge, running, metric, errors, queued,
 }: {
   num: number;
   icon: string;
@@ -353,6 +355,11 @@ function StageNode({
   badge?: string;
   running?: boolean;
   errors?: number;
+  /** Work accepted but not finished. Without this the stage reports only what
+   *  is DONE, and "0 cleaned" reads as "nothing ever happened" while a queue
+   *  sits behind it — which is exactly what the cleanup rebuild produces, since
+   *  it resets every row to Pending each time it runs. */
+  queued?: number;
   metric: { value: number; of?: number; label: string };
 }) {
   const pct = metric.of && metric.of > 0
@@ -408,12 +415,15 @@ function StageNode({
         </div>
       )}
 
-      {(running || (errors ?? 0) > 0) && (
-        <div className="mt-2.5 flex items-center gap-2">
+      {(running || (errors ?? 0) > 0 || (queued ?? 0) > 0) && (
+        <div className="mt-2.5 flex items-center gap-2.5 flex-wrap">
           {running && (
             <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> running
             </span>
+          )}
+          {(queued ?? 0) > 0 && (
+            <span className="text-[10px] text-amber-400">{queued} queued</span>
           )}
           {(errors ?? 0) > 0 && (
             <span className="text-[10px] text-red-300">{errors} failed</span>
