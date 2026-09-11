@@ -313,11 +313,6 @@ body {
   0%   { background-position: 0% 0; }
   100% { background-position: 200% 0; }
 }
-/* Halo de etapa ativa */
-@keyframes alumen-halo {
-  0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); }
-  50%      { box-shadow: 0 0 0 6px transparent; }
-}
 
 .alumen-particle { position: absolute; border-radius: 9999px; }
 .alumen-particle-x { top: 50%; margin-top: -2px; animation: alumen-flow-x var(--flow-dur, 3s) linear infinite; }
@@ -337,26 +332,32 @@ body {
   background-size: 100% 200%;
   animation: alumen-track 3s linear infinite;
 }
-.alumen-halo { animation: alumen-halo 2.4s ease-in-out infinite; }
 
 /* Movimento é decoração: quem pede menos movimento recebe o mesmo dado, parado. */
 @media (prefers-reduced-motion: reduce) {
   .alumen-particle,
   .alumen-track-live,
   .alumen-track-live-y,
-  .alumen-halo { animation: none !important; }
   .alumen-particle { opacity: .55; }
 }
 
-/* Stage box "arrival": a brief brightening timed to the conduit cycle, so the
- * information visibly LANDS in each stage instead of only travelling between
- * them. Per-stage delay makes the pulse march down the chain in order. */
-@keyframes alumen-arrive {
-  0%, 46%, 100% { box-shadow: 0 0 0 0 transparent; border-color: var(--border); }
-  60%           { box-shadow: 0 0 18px -4px var(--accent-border); border-color: var(--accent-border); }
+/* A etapa EM EXECUCAO — e so ela — fica iluminada em verde.
+ *
+ * Havia aqui um pulso que percorria as caixas em loop, para dar a sensacao de
+ * "o dado chegou nesta etapa". Estava errado: acendia tudo o tempo todo, entao
+ * a tela sugeria atividade onde nao havia, e o unico estado que importa de
+ * verdade — alguem processando agora — ficava indistinguivel do resto.
+ * Movimento continuo pertence aos conduites; as caixas so acendem com trabalho
+ * real acontecendo. */
+@keyframes alumen-running {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.45); }
+  50%      { box-shadow: 0 0 0 7px rgba(16, 185, 129, 0); }
 }
-.alumen-arrive { animation: alumen-arrive var(--arrive-dur, 2.8s) ease-in-out infinite; }
+.alumen-running {
+  animation: alumen-running 1.8s ease-out infinite;
+  border-color: rgb(16 185 129) !important;
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .alumen-arrive { animation: none !important; }
+  .alumen-running { animation: none !important; }
 }

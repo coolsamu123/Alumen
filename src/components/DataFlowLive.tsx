@@ -209,7 +209,6 @@ function ChainView({ state }: { state: DataFlowState | null }) {
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-0">
         <StageNode
           num={0} icon="📥" title="Copy" sub="syncProjectFiles"
-          flowing={copyDone > 0}
           metric={{ value: copyDone, label: 'copied' }}
           errors={upstreamCount('copy', 'ERROR')}
           running={upstreamCount('copy', 'IN_PROGRESS') > 0}
@@ -217,7 +216,6 @@ function ChainView({ state }: { state: DataFlowState | null }) {
         <Conduit active={copyDone > 0} />
         <StageNode
           num={1} icon="🧹" title="Cleanup" sub="removeClassification"
-          flowing={cleanDone > 0}
           metric={{ value: cleanDone, label: 'cleaned' }}
           errors={upstreamCount('cleanup', 'ERROR')}
           running={upstreamCount('cleanup', 'IN_PROGRESS') > 0}
@@ -245,27 +243,23 @@ function ChainView({ state }: { state: DataFlowState | null }) {
       <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-0">
         <StageNode
           num={2} icon="🔍" title="Discover" sub="PRJ-XXXXX folders"
-          flowing={total > 0}
           metric={{ value: total, label: 'projects' }}
         />
         <Conduit active={total > 0} />
         <StageNode
           num={3} icon="⬇️" title="Download" sub="DOCX · XLSX · PDF"
-          flowing={(counts?.withFiles ?? 0) > 0}
           metric={{ value: counts?.withFiles ?? 0, of: total, label: 'with files' }}
           running={pipeline?.drive}
         />
         <Conduit active={(counts?.withFiles ?? 0) > 0} fast={pipeline?.goals} />
         <StageNode
           num={4} icon="🧠" title="Goals" sub="Tech · DDS · GIO" badge="Gemini"
-          flowing={(counts?.withGoals ?? 0) > 0}
           metric={{ value: counts?.withGoals ?? 0, of: total, label: 'with goals' }}
           running={pipeline?.goals}
         />
         <Conduit active={(counts?.withGoals ?? 0) > 0} fast={pipeline?.impact} />
         <StageNode
           num={5} icon="🔗" title="Impact" sub="cross-project · citations" badge="Gemini"
-          flowing={(counts?.withImpacts ?? 0) > 0}
           metric={{ value: counts?.withImpacts ?? 0, of: total, label: 'with impacts' }}
           running={pipeline?.impact}
         />
@@ -287,9 +281,9 @@ function ChainView({ state }: { state: DataFlowState | null }) {
       </div>
 
       {anyRunning && (
-        <p className="mt-4 text-[11px] text-accent-text flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-accent-text animate-pulse" />
-          pipeline running — active conduits move faster
+        <p className="mt-4 text-[11px] text-emerald-400 flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          pipeline running
         </p>
       )}
     </div>
@@ -350,7 +344,7 @@ function Conduit({ active, fast, vertical }: { active?: boolean; fast?: boolean;
 }
 
 function StageNode({
-  num, icon, title, sub, badge, running, metric, errors, flowing,
+  num, icon, title, sub, badge, running, metric, errors,
 }: {
   num: number;
   icon: string;
@@ -359,8 +353,6 @@ function StageNode({
   badge?: string;
   running?: boolean;
   errors?: number;
-  /** Data has reached this stage — drives the arrival pulse. */
-  flowing?: boolean;
   metric: { value: number; of?: number; label: string };
 }) {
   const pct = metric.of && metric.of > 0
@@ -369,16 +361,14 @@ function StageNode({
 
   return (
     <div
-      // The pulse is delayed by the stage's position, so the brightening marches
-      // down the chain in the same order the particles travel. A running stage
-      // keeps its halo instead: "processing now" outranks "data passed here".
-      style={!running && flowing ? { animationDelay: `${num * 0.35}s` } : undefined}
+      // Only a stage that is actually working lights up. An earlier version
+      // pulsed every stage that had ever seen data, marching down the chain in
+      // a loop — it read as constant activity and buried the one state that
+      // matters. Continuous motion belongs to the conduits, not to the boxes.
       className={`relative flex-1 min-w-0 rounded-2xl border p-4 transition-all
         ${running
-          ? 'border-accent-border bg-surface-2 alumen-halo'
-          : flowing
-            ? 'border-line bg-surface-1 alumen-arrive'
-            : 'border-line bg-surface-1 hover:border-line-strong'}`}
+          ? 'bg-emerald-500/5 alumen-running'
+          : 'border-line bg-surface-1 hover:border-line-strong'}`}
     >
       <div className="flex items-center gap-2 mb-1.5">
         <span className="w-5 h-5 shrink-0 rounded-full bg-surface-2 border border-line
@@ -421,8 +411,8 @@ function StageNode({
       {(running || (errors ?? 0) > 0) && (
         <div className="mt-2.5 flex items-center gap-2">
           {running && (
-            <span className="flex items-center gap-1 text-[10px] text-accent-text">
-              <span className="w-1.5 h-1.5 rounded-full bg-accent-text animate-pulse" /> running
+            <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> running
             </span>
           )}
           {(errors ?? 0) > 0 && (
