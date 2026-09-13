@@ -519,9 +519,17 @@ export async function runDriveDownloadSingle(projectId: string): Promise<void> {
 // ─── Discover project from GDrive Link ─────────────────────────────────────
 
 // Accepts: PRJ12345, PRJ-12345, PRJ_12345, PRJ 12345, PRJ12345TR, etc.
-// The optional separator between PRJ and the digits handles the common
+// The optional separator between the prefix and the digits handles the common
 // Air-Liquide naming where folders are titled like "PRJ-0018641 Foo Bar".
-const PRJ_FOLDER_REGEX = /PRJ[\s\-_]*([0-9]+)([A-Z]{0,4})/i;
+//
+// PGM and INI belong here as much as PRJ. This matched PRJ only, so a copied
+// PGM folder was never linked to its project: link_folder stayed empty, the
+// Download stage had nowhere to fetch from, and Goals never ran — PGM0001209
+// sat in the Shared Drive with 8 copied files while the UI showed its Download
+// and Goals stages dark. Exactly the bug the comment in
+// countLocalFilesByProject() records ("reported 0 files for PGM programmes"),
+// fixed there and missed here; goals-scanner.ts already accepts all three.
+const PRJ_FOLDER_REGEX = /(PRJ|PGM|INI)[\s\-_]*([0-9]+)([A-Z]{0,4})/i;
 
 // Normalize a raw PRJ-ish string from a folder name into the canonical key
 // (uppercase, no separators). Returns the original digits as captured, plus a
@@ -530,11 +538,17 @@ const PRJ_FOLDER_REGEX = /PRJ[\s\-_]*([0-9]+)([A-Z]{0,4})/i;
 function normalizePrjMatch(raw: string): { canonical: string; digitsKey: string } {
   const m = raw.match(PRJ_FOLDER_REGEX);
   if (!m) return { canonical: '', digitsKey: '' };
-  const digits = m[1];
-  const suffix = (m[2] || '').toUpperCase();
+  const prefix = m[1].toUpperCase();
+  const digits = m[2];
+  const suffix = (m[3] || '').toUpperCase();
   return {
-    canonical: `PRJ${digits}${suffix}`,
-    digitsKey: `${String(parseInt(digits, 10))}${suffix}`, // "0018641" → "18641"
+    // The prefix comes from the folder, not hardcoded: a PGM folder must not
+    // canonicalise into a PRJ id, or it would match the wrong project — or no
+    // project at all.
+    canonical: `${prefix}${digits}${suffix}`,
+    // Prefix included so the zero-padding fallback cannot cross prefixes:
+    // PGM0001209 and PRJ0001209 are different projects.
+    digitsKey: `${prefix}${String(parseInt(digits, 10))}${suffix}`, // "PRJ0018641" → "PRJ18641"
   };
 }
 
@@ -606,7 +620,9 @@ export async function discoverAndAddProjectFromDrive(
   const unmatched: { folderName: string; extracted: string }[] = [];
 
   // Build a digit-key index of existing projects so we can match folders whose
-  // PRJ id differs only by zero-padding (e.g. folder "PRJ-18641" → DB "PRJ0018641").
+  // id differs only by zero-padding (e.g. folder "PRJ-18641" → DB "PRJ0018641").
+  // Keyed WITH the prefix, matching normalizePrjMatch(): PGM0001209 and
+  // PRJ0001209 are different projects and must never fall back into each other.
   const existingRows = db.prepare(
     'SELECT project_id, name, link_folder FROM projects'
   ).all() as Array<{ project_id: string; name: string | null; link_folder: string | null }>;
@@ -614,9 +630,9 @@ export async function discoverAndAddProjectFromDrive(
   const byDigits    = new Map<string, { project_id: string; name: string | null; link_folder: string | null }>();
   for (const row of existingRows) {
     byCanonical.set(row.project_id.toUpperCase(), row);
-    const dm = row.project_id.match(/^PRJ([0-9]+)([A-Z]*)$/i);
+    const dm = row.project_id.match(/^(PRJ|PGM|INI)([0-9]+)([A-Z]*)$/i);
     if (dm) {
-      const key = `${String(parseInt(dm[1], 10))}${(dm[2] || '').toUpperCase()}`;
+      const key = `${dm[1].toUpperCase()}${String(parseInt(dm[2], 10))}${(dm[3] || '').toUpperCase()}`;
       byDigits.set(key, row);
     }
   }
