@@ -129,10 +129,23 @@ function updateRootRunResult(
  * around the clock, and the day a goal did get produced it would drag the full
  * Impact recomparison along with it.
  *
- * Three shapes of pending work, all of them things the upstream chain creates:
- *   1. upstream finished a project Alumen has never seen   → needs Discover
+ * Four shapes of pending work, all of them ACTIONABLE — that last word is the
+ * whole design. The first version asked "linked but no goals", which sounds
+ * right and spins forever: 32 projects carry a link_folder pointing at a Drive
+ * folder the service account cannot read, each with a single documents_cache
+ * row reading "No files found or not accessible". They can never produce goals,
+ * so they would have kept the scheduler firing a full cycle every 15 minutes,
+ * indefinitely, achieving nothing but Drive API traffic.
+ *
+ *   1. upstream finished a project Alumen has never seen    → needs Discover
  *   2. upstream finished one Alumen knows but hasn't linked → needs Discover
- *   3. a linked project with no successful goals            → needs Download/Goals
+ *   3. a linked project never attempted at all              → needs Download
+ *   4. a project WITH a fetched document but no goals       → needs Goals
+ *
+ * A project whose download was already attempted and yielded only errors is
+ * deliberately not pending: retrying it on a timer is how you build a loop. A
+ * manual run still retries it, which is the right place for that decision —
+ * something has to change on the Drive side first anyway.
  *
  * Impact is not listed: runAutoDiscoveryCycle only spends Impact budget when
  * goalsAdded > 0, so it can never fire on its own.
@@ -167,15 +180,25 @@ export function pendingWork(): { total: number; reasons: string[] } {
   `);
   if (semLink) { total += semLink; reasons.push(`${semLink} cleaned project(s) with no Drive link`); }
 
-  const semGoals = count(`
+  const naoBaixados = count(`
     SELECT COUNT(*) c FROM projects p
     WHERE TRIM(COALESCE(p.link_folder, '')) <> ''
+      AND NOT EXISTS (SELECT 1 FROM documents_cache d WHERE d.project_id = p.project_id)
+  `);
+  if (naoBaixados) { total += naoBaixados; reasons.push(`${naoBaixados} linked project(s) never downloaded`); }
+
+  const semGoals = count(`
+    SELECT COUNT(*) c FROM projects p
+    WHERE EXISTS (
+        SELECT 1 FROM documents_cache d
+        WHERE d.project_id = p.project_id AND d.fetch_status = 'success'
+      )
       AND NOT EXISTS (
         SELECT 1 FROM project_goals g
         WHERE g.project_id = p.project_id AND g.status = 'success'
       )
   `);
-  if (semGoals) { total += semGoals; reasons.push(`${semGoals} linked project(s) without goals`); }
+  if (semGoals) { total += semGoals; reasons.push(`${semGoals} downloaded project(s) without goals`); }
 
   return { total, reasons };
 }
