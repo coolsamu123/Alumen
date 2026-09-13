@@ -58,7 +58,9 @@ export default function MobilePage() {
           <img src="/icon-192.png" alt="" className="w-7 h-7 rounded-lg" />
           <span className="text-base font-extrabold">Alumen</span>
         </div>
-        <a href="/" className="text-[11px] text-ink-muted underline">desktop</a>
+        {/* Sets the cookie the middleware reads, otherwise the redirect would
+            bring the phone straight back here. */}
+        <a href="/?desktop=1" className="text-[11px] text-ink-muted underline">desktop</a>
       </header>
 
       <main className="flex-1 pb-20">

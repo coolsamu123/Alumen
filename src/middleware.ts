@@ -91,6 +91,31 @@ function forbiddenPage(): NextResponse {
   });
 }
 
+/**
+ * Phones get the mobile route without having to know it exists.
+ *
+ * Shipping /m and expecting someone to type the path is not shipping it: the
+ * first thing that happened was the desktop app opening on a phone — a 288px
+ * sidebar and 300-row tables on a 390px screen.
+ *
+ * Deliberately narrow: only the root path, only GET, and only for a
+ * phone-shaped UA. Tablets are left alone (the desktop layout is usable at that
+ * width), and every other path stays where it is, so a link straight to
+ * /admin/users still works from a phone.
+ *
+ * `?desktop=1` sets a cookie that turns the redirect off for good — the escape
+ * hatch for someone who wants the full app on a phone anyway. Without it the
+ * "desktop" link on /m would bounce straight back here.
+ */
+const MOBILE_UA = /Android.+Mobile|iPhone|iPod|Windows Phone|BlackBerry|Opera Mini|IEMobile/i;
+
+function wantsMobileHome(request: NextRequest): boolean {
+  if (request.method !== 'GET') return false;
+  if (request.nextUrl.pathname !== '/') return false;
+  if (request.cookies.get('alumen-desktop')?.value === '1') return false;
+  return MOBILE_UA.test(request.headers.get('user-agent') ?? '');
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const method = request.method;
@@ -112,6 +137,24 @@ export async function middleware(request: NextRequest) {
 
   if (isProtected(pathname, method) && session.role !== 'admin') {
     return isApi ? forbiddenJson() : forbiddenPage();
+  }
+
+  // ?desktop=1 is the opt-out arriving: remember it, so the redirect below
+  // never fires again for this browser.
+  if (pathname === '/' && request.nextUrl.searchParams.get('desktop') === '1') {
+    const res = NextResponse.next();
+    res.cookies.set('alumen-desktop', '1', {
+      path: '/',
+      maxAge: 60 * 60 * 24 * 365,
+      sameSite: 'lax',
+    });
+    return res;
+  }
+
+  // Checked after the session so a phone lands on /m already authenticated,
+  // instead of bouncing login -> / -> /m.
+  if (wantsMobileHome(request)) {
+    return NextResponse.redirect(new URL('/m', request.url));
   }
 
   return NextResponse.next();
