@@ -120,6 +120,66 @@ function updateRootRunResult(
 
 // ─── Main cycle ─────────────────────────────────────────────────────────────
 
+/**
+ * Is there anything for a cycle to actually do?
+ *
+ * Answered from SQLite alone — no Drive call, no LLM — so the scheduler can ask
+ * every few minutes and cost nothing when the portfolio is idle. That is the
+ * whole point: a cycle that runs on a timer regardless would hit the Drive API
+ * around the clock, and the day a goal did get produced it would drag the full
+ * Impact recomparison along with it.
+ *
+ * Three shapes of pending work, all of them things the upstream chain creates:
+ *   1. upstream finished a project Alumen has never seen   → needs Discover
+ *   2. upstream finished one Alumen knows but hasn't linked → needs Discover
+ *   3. a linked project with no successful goals            → needs Download/Goals
+ *
+ * Impact is not listed: runAutoDiscoveryCycle only spends Impact budget when
+ * goalsAdded > 0, so it can never fire on its own.
+ */
+export function pendingWork(): { total: number; reasons: string[] } {
+  const db = getDb();
+  const reasons: string[] = [];
+  let total = 0;
+
+  const count = (sql: string): number => {
+    try {
+      return (db.prepare(sql).get() as { c: number } | undefined)?.c ?? 0;
+    } catch {
+      return 0; // a table may not exist yet on a fresh install
+    }
+  };
+
+  const desconhecidos = count(`
+    SELECT COUNT(DISTINCT u.project_id) c
+    FROM upstream_status u
+    LEFT JOIN projects p ON p.project_id = u.project_id
+    WHERE u.stage = 'cleanup' AND u.status = 'DONE' AND p.project_id IS NULL
+  `);
+  if (desconhecidos) { total += desconhecidos; reasons.push(`${desconhecidos} upstream project(s) not in Alumen`); }
+
+  const semLink = count(`
+    SELECT COUNT(DISTINCT u.project_id) c
+    FROM upstream_status u
+    JOIN projects p ON p.project_id = u.project_id
+    WHERE u.stage = 'cleanup' AND u.status = 'DONE'
+      AND (p.link_folder IS NULL OR TRIM(p.link_folder) = '')
+  `);
+  if (semLink) { total += semLink; reasons.push(`${semLink} cleaned project(s) with no Drive link`); }
+
+  const semGoals = count(`
+    SELECT COUNT(*) c FROM projects p
+    WHERE TRIM(COALESCE(p.link_folder, '')) <> ''
+      AND NOT EXISTS (
+        SELECT 1 FROM project_goals g
+        WHERE g.project_id = p.project_id AND g.status = 'success'
+      )
+  `);
+  if (semGoals) { total += semGoals; reasons.push(`${semGoals} linked project(s) without goals`); }
+
+  return { total, reasons };
+}
+
 export async function runAutoDiscoveryCycle(
   trigger: CycleTrigger = 'manual',
   mode: CycleMode = 'full',
