@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, useMemo, useEffect, type ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
 import type { ProjectSummary, SimilarityLink, FilterState, ViewType, AnalysisResult, ProjectImpact } from '@/lib/types';
 
 export interface SessionUser {
@@ -112,6 +113,8 @@ export function ProjectProvider({
   const [analysisResults, setAnalysisResults] = useState<Map<string, AnalysisResult>>(new Map());
   const [goalsProjectIds, setGoalsProjectIds] = useState<Set<string>>(new Set());
 
+  const pathname = usePathname();
+
   // Theme is set pre-hydration by the inline script in layout.tsx, so we read
   // it from <html data-theme> on mount instead of guessing and risking a flash.
   const [theme, setThemeState] = useState<'light' | 'dark'>('dark');
@@ -129,7 +132,13 @@ export function ProjectProvider({
   }, [theme, setTheme]);
 
   // Initial fetch of impacts + which projects have successful goals.
+  //
+  // Skipped on /m: these two responses are ~1 MB together (368 KB of impacts,
+  // 658 KB of goals) and feed desktop views the phone does not render. The
+  // mobile route fetches its own, far smaller endpoints — leaving this in would
+  // have cost a megabyte of mobile data on every screen just to discard it.
   useEffect(() => {
+    if (pathname?.startsWith('/m')) return;
     fetch('/api/impact').then(r => r.json()).then(d => d.impacts && setImpacts(d.impacts)).catch(() => {});
     fetch('/api/goals').then(r => r.json()).then(d => {
       if (!Array.isArray(d?.goals)) return;
@@ -139,7 +148,7 @@ export function ProjectProvider({
       }
       setGoalsProjectIds(ids);
     }).catch(() => {});
-  }, []);
+  }, [pathname]);
 
   const signalProjectIds = useMemo(() => new Set(goalsProjectIds), [goalsProjectIds]);
 
