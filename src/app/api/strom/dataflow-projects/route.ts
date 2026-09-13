@@ -83,12 +83,15 @@ export async function GET() {
     goalsMap.set(g.project_id, mapGoalsStatus(g.status));
   }
 
+  // Only source_project_id. The Impact stage means "this project was analysed",
+  // and the analysis is stored from the analysed project outward. Including
+  // target_project_id lit the stage for any project merely NAMED by someone
+  // else's analysis — so PGM0001209, which has no Drive folder, no documents
+  // and no goals, showed Impact as done because two other projects pointed at
+  // it. Being cited is not the same as having been analysed. The targets also
+  // include things that are not projects at all (DDS_IMPACTS, GIO_SERVICES).
   const impactRows = db
-    .prepare(
-      `SELECT source_project_id AS pid FROM projects_impact
-       UNION
-       SELECT target_project_id AS pid FROM projects_impact`
-    )
+    .prepare('SELECT DISTINCT source_project_id AS pid FROM projects_impact')
     .all() as Array<{ pid: string }>;
   const impactSet = new Set(impactRows.map(r => r.pid));
 

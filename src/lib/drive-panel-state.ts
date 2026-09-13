@@ -116,13 +116,14 @@ export function buildDrivePanelState(): DrivePanelState {
     upstreamInAlumen = r.dentro ?? 0;
   } catch { /* upstream tables may not exist yet */ }
 
-  const impactRow = db.prepare(`
-    SELECT COUNT(*) c FROM (
-      SELECT source_project_id AS pid FROM projects_impact
-      UNION
-      SELECT target_project_id AS pid FROM projects_impact
-    )
-  `).get() as { c: number };
+  // Projects ANALYSED for impact, not projects mentioned by an analysis. The
+  // union of source and target inflated this from 62 to 91, and 23 of those
+  // targets are not projects at all (DDS_IMPACTS, GIO_SERVICES, codes outside
+  // the portfolio). "with impacts" sits next to "with goals" and "with files",
+  // which both count work done ON the project — this has to mean the same.
+  const impactRow = db.prepare(
+    'SELECT COUNT(DISTINCT source_project_id) c FROM projects_impact'
+  ).get() as { c: number };
   const withImpacts = impactRow?.c || 0;
 
   const { stage, rootLabel } = getAutoCycleStage();
