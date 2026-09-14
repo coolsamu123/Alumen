@@ -18,7 +18,10 @@ import { normalizeProjectId, sameProject } from './project-id';
 // Bumped to 4 in Onda 3: prompt now also asks for atomic `impact_claims`
 // (with target_kind/target/role/severity/impact_type/evidence) and structured
 // `timeline_struct`. All rows with version<4 get re-analyzed on next run.
-export const GOALS_PROMPT_VERSION = 4;
+// Importado E reexportado: o `export ... from` sozinho repassa o símbolo sem
+// trazê-lo ao escopo deste módulo, e as quatro referências abaixo precisam dele.
+import { GOALS_PROMPT_VERSION } from './prompt-version';
+export { GOALS_PROMPT_VERSION };
 
 /**
  * How many projects to extract at once.

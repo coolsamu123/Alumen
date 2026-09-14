@@ -65,3 +65,9 @@ next-env.d.ts
 
 # logs
 /logs/
+
+# Gold standard for the prompt reference set (PLAN_PROMPTS_CATALOG_REVIEW.md
+# Fase B). Held back on purpose, not by oversight: it lists Air Liquide project
+# names and the expected entity mapping for each, and this repository is public.
+# Track it once the content owner has decided that is acceptable.
+/data/reference-set.json

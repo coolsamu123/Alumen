@@ -44,7 +44,7 @@ Nada foi alterado no código.
 |---|---|
 | Revisão, decisões e atlas | ✅ feito (14/09/2026) |
 | A: corrigir sem chamar o LLM | ✅ em produção (14/09/2026); falta só uma verificação |
-| B: conjunto de referência | ⬜ não iniciada |
+| B: conjunto de referência | 🟡 **ferramenta pronta; falta a revisão do gabarito** *(negócio)*, ver §0.2 |
 | C: reescrever o catálogo | ✅ **feita** (14/09/2026), ver §0.1 |
 | D: prompt de Goals v5 | ⬜ não iniciada |
 | E: prompt de Impact v2 | ⬜ não iniciada |
@@ -70,10 +70,10 @@ Nada foi alterado no código.
 **Fase A: verificação pendente**
 - [ ] Na próxima rodada de Impact, confirmar a linha `dropped N citation(s)` no log e zero citações novas com link inexistente
 
-**Fase B: conjunto de referência**
-- [ ] Escolher 10 projetos variados, incluindo PGM0001209 e PRJ0019818 *(negócio)*
-- [ ] Registrar alvos, papéis e severidades esperados para cada um *(negócio)*
-- [ ] Script que compara a extração com o gabarito e com as métricas do §5
+**Fase B: conjunto de referência** — ferramenta pronta, ver §0.2
+- [x] Escolher 10 projetos variados, incluindo PGM0001209 e PRJ0019818 — proposta por dado em `scripts/reference-set.cjs propose`
+- [ ] **Revisar** alvos, papéis e severidades de cada um *(negócio)* — `data/reference-set.json` já vem pré-preenchido
+- [x] Script que compara a extração com o gabarito
 
 **Fase C: reescrever o catálogo** — ✅ feita, detalhe no §0.1
 - [x] Campos novos no catálogo e na tela `/admin/catalog`: `scope`, `signals`, `notThis`, `parent`, `aliases`, `notes`
@@ -86,7 +86,7 @@ Nada foi alterado no código.
 - [ ] Confirmar o pai de Enterprise Apps e de CDIO Office *(negócio)* — registrado em `notes`
 
 **Fase D: prompt de Goals v5**
-- [ ] Antes de começar, decidir o comportamento do `data/prompts.json`, que a partir do primeiro salvamento pela tela substitui os prompts do código
+- [x] Comportamento do `data/prompts.json` resolvido — override versionado, ver §0.3
 - [ ] Cartões do catálogo injetados no prompt (§2.3)
 - [ ] Rubrica de severidade (§2.2)
 - [ ] Listas "touched" derivadas dos claims (§2.7)
@@ -177,6 +177,72 @@ fica como está — é dono válido de 28 projetos, só não é alvo de impacto.
 Valor desconhecido é **preservado**, não descartado: a planilha pode nomear uma
 entidade que o catálogo ainda não aprendeu, e apagar em silêncio perderia o dado
 que a importação existe para trazer.
+
+---
+
+## 0.2. Fase B: a ferramenta (2026-09-14)
+
+`scripts/reference-set.cjs`, com três comandos.
+
+**`propose`** escolhe os 10 por dado, não por intuição, e diz o porquê de cada
+um: os dois nomeados no plano, 2 de alto volume GIO, 2 de alto volume DDS, 2 com
+documentação pobre (1 documento — onde o modelo tem menos base e mais tendência
+a inventar) e um por região ainda não representada.
+
+Seleção atual: `PGM0001209`, `PRJ0019818`, `PRJ0010712`, `PRJ0017466`,
+`PRJ0020030`, `PRJ0020276`, `PRJ001395`, `PRJ0019049`, `PRJ0020429`,
+`PRJ0019856` — cobrindo Americas, Europe e APAC. **AMEI não tem projeto com
+goals**, então não entra; vale saber que essa fronteira fica sem teste.
+
+**`template`** gera `data/reference-set.json` **pré-preenchido com o que a v4
+extrai hoje**: 10 projetos, 38 entradas. A tarefa de negócio passa a ser
+*revisar e corrigir*, que é onde o julgamento agrega — transcrever 10 gabaritos
+em branco não é.
+
+**`compare`** confronta extração e gabarito e imprime precisão de alvo,
+cobertura, papel e severidade.
+
+**O `compare` recusa rodar sobre projeto não revisado.** Cada entrada nasce com
+`reviewed: false`, e comparar a v4 contra o que a própria v4 produziu daria 100%
+de precisão sem significado nenhum — o número mais perigoso possível, porque
+parece aprovação.
+
+O arquivo fica **fora do Git de propósito**: lista nomes de projetos da Air
+Liquide e o mapeamento esperado de cada um, e o repositório é público. Registrado
+no `.gitignore` com essa razão, para não parecer esquecimento.
+
+---
+
+## 0.3. O `data/prompts.json` (2026-09-14)
+
+A Fase D exigia decidir isto antes de começar, e a investigação mostrou um risco
+maior do que "o arquivo ganha do código".
+
+`GOALS_PROMPT_VERSION` decide se um projeto é **reanalisado**; `getPrompts()`
+decide **com que texto**. Os dois eram desconectados, e o arquivo, uma vez
+salvo pela tela, vencia para sempre — sem versão e sem aviso.
+
+Subir a versão com um override antigo no lugar daria o pior dos dois mundos:
+
+- os 69 projetos reprocessados (~50 min de Gemini);
+- o prompt **antigo** usado mesmo assim;
+- cada linha carimbada `prompt_version = 5`, com o banco afirmando uma
+  procedência que não aconteceu.
+
+**Decisão:** o override é versionado. `savePrompts()` grava
+`basedOnGoalsVersion`; `getPromptsState()` só honra o arquivo enquanto o código
+não passou dele. Quando passa, o código vence e o estado devolve
+`supersededFrom`, para a tela dizer que a edição foi superada — descartar em
+silêncio seria trocar um bug por outro.
+
+Arquivo sem marcador conta como baseado na versão anterior, então qualquer
+aumento futuro o supera. `DELETE /api/prompts` volta ao prompt do código.
+
+Efeito colateral resolvido no caminho: `prompts.ts` passou a importar a
+constante de `goals-analyzer.ts`, fechando um ciclo entre os dois módulos. A
+constante mudou para `prompt-version.ts`, sozinha. Um ciclo aqui não quebraria o
+build — devolveria `undefined` na inicialização conforme a ordem de carga, e
+todo override apareceria como superado, ou nenhum.
 
 ---
 

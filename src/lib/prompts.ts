@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { GOALS_PROMPT_VERSION } from './prompt-version';
 
 const PROMPTS_FILE = path.join(process.cwd(), 'data', 'prompts.json');
 
@@ -257,21 +258,94 @@ export interface PromptsConfig {
   impactPrompt: string;
 }
 
-export function getPrompts(): PromptsConfig {
-  try {
-    if (fs.existsSync(PROMPTS_FILE)) {
-      const data = fs.readFileSync(PROMPTS_FILE, 'utf-8');
-      return JSON.parse(data) as PromptsConfig;
-    }
-  } catch (error) {
-    console.error('Failed to read prompts file', error);
-  }
-  return {
+interface PromptsFile extends PromptsConfig {
+  /** GOALS_PROMPT_VERSION at the moment this override was saved. */
+  basedOnGoalsVersion?: number;
+  savedAt?: string;
+}
+
+export interface PromptsState extends PromptsConfig {
+  /** Where the text actually came from. */
+  source: 'code' | 'file';
+  /** Set when a saved override was ignored because the code prompt moved on.
+   *  The UI shows this; silently discarding someone's edit would be worse than
+   *  the bug it prevents. */
+  supersededFrom?: number;
+  savedAt?: string;
+  codeGoalsVersion: number;
+}
+
+/**
+ * Read the effective prompts.
+ *
+ * WHY THE VERSION CHECK: `data/prompts.json`, once written by the admin screen,
+ * used to win outright and forever. That silently decoupled two things that
+ * have to move together — GOALS_PROMPT_VERSION decides whether a project is
+ * REANALYSED, while this function decides WITH WHAT TEXT.
+ *
+ * Bumping the version in code with a stale override in place was therefore the
+ * worst of both: all 69 projects reprocessed (~50 min of LLM time), the old
+ * prompt used anyway, and every row stamped with the new version number — the
+ * database asserting a provenance that never happened.
+ *
+ * So a saved override holds only while the code prompt has not moved past it.
+ * When it does, code wins and `supersededFrom` says so out loud.
+ */
+export function getPromptsState(): PromptsState {
+  const fallback: PromptsState = {
     goalsPrompt: DEFAULT_GOALS_PROMPT,
     impactPrompt: DEFAULT_IMPACT_PROMPT,
+    source: 'code',
+    codeGoalsVersion: GOALS_PROMPT_VERSION,
   };
+
+  try {
+    if (!fs.existsSync(PROMPTS_FILE)) return fallback;
+    const file = JSON.parse(fs.readFileSync(PROMPTS_FILE, 'utf-8')) as PromptsFile;
+    if (typeof file.goalsPrompt !== 'string' || typeof file.impactPrompt !== 'string') {
+      return fallback;
+    }
+
+    // No marker means the override predates this check — treat it as based on
+    // the version before the current one, so any future bump supersedes it.
+    const basedOn = typeof file.basedOnGoalsVersion === 'number'
+      ? file.basedOnGoalsVersion
+      : GOALS_PROMPT_VERSION - 1;
+
+    if (basedOn < GOALS_PROMPT_VERSION) {
+      return { ...fallback, supersededFrom: basedOn, savedAt: file.savedAt };
+    }
+
+    return {
+      goalsPrompt: file.goalsPrompt,
+      impactPrompt: file.impactPrompt,
+      source: 'file',
+      savedAt: file.savedAt,
+      codeGoalsVersion: GOALS_PROMPT_VERSION,
+    };
+  } catch (error) {
+    console.error('Failed to read prompts file', error);
+    return fallback;
+  }
+}
+
+/** Effective prompt text. Kept for callers that only need the two strings. */
+export function getPrompts(): PromptsConfig {
+  const { goalsPrompt, impactPrompt } = getPromptsState();
+  return { goalsPrompt, impactPrompt };
 }
 
 export function savePrompts(prompts: PromptsConfig) {
-  fs.writeFileSync(PROMPTS_FILE, JSON.stringify(prompts, null, 2));
+  const payload: PromptsFile = {
+    goalsPrompt: prompts.goalsPrompt,
+    impactPrompt: prompts.impactPrompt,
+    basedOnGoalsVersion: GOALS_PROMPT_VERSION,
+    savedAt: new Date().toISOString(),
+  };
+  fs.writeFileSync(PROMPTS_FILE, JSON.stringify(payload, null, 2));
+}
+
+/** Drop the override and go back to the prompts in code. */
+export function resetPrompts(): void {
+  if (fs.existsSync(PROMPTS_FILE)) fs.unlinkSync(PROMPTS_FILE);
 }
