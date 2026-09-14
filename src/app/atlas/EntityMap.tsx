@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import type { Entity } from './types';
 
 /**
@@ -18,8 +18,6 @@ import type { Entity } from './types';
  * learn where things are.
  */
 
-type Metric = 'claims' | 'owners';
-
 const ZONES: { key: string; label: string; tone: string }[] = [
   { key: 'GIO', label: 'GIO · INFRASTRUCTURE', tone: '#22d3ee' },
   { key: 'GDS', label: 'GDS · DELIVERY', tone: '#a78bfa' },
@@ -31,7 +29,7 @@ const ZONES: { key: string; label: string; tone: string }[] = [
 // Fixed geometry: every coordinate below derives from these numbers, so
 // adjusting the drawing means editing here, not fifty scattered offsets.
 const NODE_W = 190;
-const NODE_H = 46;
+const NODE_H = 38;
 const NODE_GAP = 12;
 const ZONE_PAD = 16;
 const ZONE_HEAD = 30;
@@ -54,8 +52,6 @@ export default function EntityMap({
   selected: string | null;
   onSelect: (name: string | null) => void;
 }) {
-  const [metric, setMetric] = useState<Metric>('claims');
-
   // Group heads: a `parent` that names something which is NOT an entity —
   // "GIO", "GDS". They are groupings, never impact targets, so they have no
   // catalog card; without a node for them the five service lines would point at
@@ -128,7 +124,6 @@ export default function EntityMap({
     return out;
   }, [placed, byName]);
 
-  const max = Math.max(1, ...all.map(e => e.usage[metric]));
   const sel = selected ? byName.get(selected) : null;
 
   // An entity is highlighted when it is selected or shares an edge with it.
@@ -164,23 +159,6 @@ export default function EntityMap({
     <div className="mb-6">
       {/* ── controls and legend ── */}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-3">
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] text-ink-faint">Intensity</span>
-          <div className="flex rounded-lg border border-line overflow-hidden">
-            {(['claims', 'owners'] as Metric[]).map(m => (
-              <button
-                key={m}
-                onClick={() => setMetric(m)}
-                className={`px-3 py-1 text-[12px] transition-colors ${
-                  metric === m ? 'bg-accent-soft text-accent-text' : 'text-ink-4 hover:bg-surface-2'
-                }`}
-              >
-                {m === 'claims' ? 'Claims' : 'Owned projects'}
-              </button>
-            ))}
-          </div>
-        </div>
-
         <Legend />
 
         {sel && (
@@ -250,29 +228,39 @@ export default function EntityMap({
           })}
 
           {placed.map(p => {
-            const v = p.e.usage[metric];
             const isSel = p.e.name === selected;
             const dim = linked && !linked.has(p.e.name);
             const zone = ZONES.find(z => z.key === p.zone)!;
-            // Fill scales with usage: what the portfolio touches most has to
-            // stand out before anyone reads a single label.
-            const fill = v / max;
+            // The atlas answers "what is this entity and where does it stop".
+            // How much the portfolio uses it is a different question, answered
+            // in Data Flow and Impact — a count on every box competed with the
+            // name for attention and pulled this page toward being a dashboard.
+            //
+            // One exception below: an entity the portfolio has NEVER touched is
+            // a fact about the model in use, not a metric. Reading the atlas
+            // without it, "Digital Factory" looks as established as
+            // "Security & Compliance".
+            const unused = p.e.usage.claims === 0
+              && p.e.usage.owners === 0
+              && p.e.usage.touched === 0;
             return (
               <g key={p.e.name} onClick={() => onSelect(isSel ? null : p.e.name)}
                 style={{ cursor: 'pointer' }} opacity={dim ? 0.25 : 1}>
                 <title>{p.e.scope || p.e.description}</title>
                 <rect x={p.x} y={p.y} width={NODE_W} height={NODE_H} rx={8}
-                  fill={zone.tone} fillOpacity={0.06 + fill * 0.22}
+                  fill={zone.tone} fillOpacity={unused ? 0.03 : 0.12}
                   stroke={isSel ? 'var(--accent-border)' : zone.tone}
-                  strokeOpacity={isSel ? 1 : 0.5}
-                  strokeWidth={isSel ? 2 : 1} />
-                <text x={p.x + 12} y={p.y + 19} fontSize={12} fontWeight={600} fill="var(--ink-1)">
-                  {p.e.name.length > 24 ? p.e.name.slice(0, 23) + '…' : p.e.name}
+                  strokeOpacity={isSel ? 1 : unused ? 0.3 : 0.55}
+                  strokeWidth={isSel ? 2 : 1}
+                  strokeDasharray={unused ? '4 3' : undefined} />
+                <text x={p.x + 12} y={p.y + NODE_H / 2 + 4} fontSize={12.5} fontWeight={600}
+                  fill={unused ? 'var(--ink-4)' : 'var(--ink-1)'}>
+                  {p.e.name.length > 22 ? p.e.name.slice(0, 21) + '…' : p.e.name}
                 </text>
-                <text x={p.x + 12} y={p.y + 34} fontSize={10} fill="var(--ink-muted)"
-                  fontFamily="ui-monospace, monospace">
-                  {v} {metric === 'claims' ? 'claims' : 'owned'}
-                </text>
+                {unused && (
+                  <text x={p.x + NODE_W - 12} y={p.y + NODE_H / 2 + 4} fontSize={9}
+                    textAnchor="end" fill="var(--ink-faint)">not yet used</text>
+                )}
               </g>
             );
           })}
@@ -283,8 +271,8 @@ export default function EntityMap({
         <SelectionNote sel={sel.e} all={all} />
       ) : (
         <p className="text-[11px] text-ink-faint mt-2">
-          Box fill shows how much the portfolio uses each entity. Click one to
-          isolate its hierarchy and its boundaries.
+          Click an entity to isolate its hierarchy and its boundaries. A dashed
+          box is an entity no project has touched yet.
         </p>
       )}
     </div>

@@ -76,9 +76,9 @@ export default function AtlasPage() {
       <div className="max-w-5xl mx-auto px-6 py-8">
         <h1 className="text-xl font-extrabold mb-1">Entity atlas</h1>
         <p className="text-[13px] text-ink-muted leading-relaxed mb-5">
-          What each GIO service line and DDS entity covers, where it stops, which
-          old names still resolve to it, and how much Alumen actually uses it.
-          Generated from the catalog and the live database — edit an entity in{' '}
+          What each GIO service line and DDS entity covers, where it stops, and
+          which old names still resolve to it. Generated from the catalog — edit
+          an entity in{' '}
           <a href="/admin/catalog" className="text-accent-text underline">Catalog</a>{' '}
           and this page follows.
         </p>
@@ -128,6 +128,9 @@ export default function AtlasPage() {
 }
 
 function Card({ e }: { e: Entity }) {
+  // Counts stay out of the atlas: this page says what an entity IS, not how
+  // much it is used. Only the never-touched state survives, because that is a
+  // fact about the model rather than a metric.
   const { owners, claims, touched } = e.usage;
   return (
     <div className="rounded-xl border border-line bg-surface-1 p-4">
@@ -138,9 +141,9 @@ function Card({ e }: { e: Entity }) {
             part of {e.parent}
           </span>
         )}
-        <span className="ml-auto text-[11px] text-ink-faint font-mono">
-          {owners} owned · {claims} claims · {touched} touched
-        </span>
+        {owners + claims + touched === 0 && (
+          <span className="ml-auto text-[10px] text-ink-faint">not yet used</span>
+        )}
       </div>
 
       <p className="text-[13px] text-ink-2 leading-relaxed mb-2">
