@@ -38,6 +38,8 @@ const ZONE_HEAD = 30;
 const COL_GAP = 68;
 const TOP = 16;
 const HEAD_H = 34;
+// Left gutter so same-column boundary edges have somewhere to run.
+const GUTTER = 52;
 
 interface Placed {
   e: Entity;
@@ -72,7 +74,7 @@ export default function EntityMap({
     const placed: Placed[] = [];
     const headPos = new Map<string, { x: number; y: number }>();
     const zoneBoxes: { key: string; label: string; tone: string; x: number; y: number; w: number; h: number }[] = [];
-    let x = ZONE_PAD;
+    let x = ZONE_PAD + GUTTER;
 
     for (const z of ZONES) {
       const items = all.filter(e => (e.group ?? 'Business') === z.key);
@@ -144,12 +146,15 @@ export default function EntityMap({
 
   const path = (a: Placed, b: Placed) => {
     const A = center(a), B = center(b);
-    // Curve across columns, bow out within one: a horizontal bezier crossing
-    // its own zone would run straight through the other boxes.
     const sameColumn = Math.abs(A.cx - B.cx) < 1;
     if (sameColumn) {
-      const off = 40 + Math.abs(A.cy - B.cy) / 6;
-      return `M ${A.cx - NODE_W / 2} ${A.cy} C ${A.cx - off} ${A.cy}, ${B.cx - off} ${B.cy}, ${B.cx - NODE_W / 2} ${B.cy}`;
+      // Route through the left gutter, clear of the zone. The first version
+      // bowed by only 40px — still inside the zone — so every boundary line
+      // ran straight across the boxes between its two ends.
+      const gutter = a.x - GUTTER * 0.6;
+      const top = Math.min(A.cy, B.cy), bot = Math.max(A.cy, B.cy);
+      return `M ${a.x} ${A.cy} C ${gutter} ${A.cy}, ${gutter} ${top}, ${gutter} ${(top + bot) / 2}`
+           + ` C ${gutter} ${bot}, ${gutter} ${B.cy}, ${b.x} ${B.cy}`;
     }
     const dx = (B.cx - A.cx) / 2;
     return `M ${A.cx} ${A.cy} C ${A.cx + dx} ${A.cy}, ${B.cx - dx} ${B.cy}, ${B.cx} ${B.cy}`;
@@ -318,20 +323,33 @@ function Legend() {
 
 function SelectionNote({ sel, all }: { sel: Entity; all: Entity[] }) {
   const children = all.filter(e => e.parent === sel.name).map(e => e.name);
-  const boundaries = all
-    .filter(e => e.name !== sel.name && (sel.notThis ?? []).some(n => n.includes(e.name)))
-    .map(e => e.name);
 
   return (
-    <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[11px]">
-      {sel.parent && <span className="text-ink-3">part of <strong>{sel.parent}</strong></span>}
-      {children.length > 0 && <span className="text-ink-3">contains {children.join(', ')}</span>}
-      {boundaries.length > 0 && (
-        <span className="text-amber-400">confused with {boundaries.join(', ')}</span>
+    <div className="mt-3 space-y-2">
+      <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px]">
+        {sel.parent && <span className="text-ink-3">part of <strong>{sel.parent}</strong></span>}
+        {children.length > 0 && <span className="text-ink-3">contains {children.join(', ')}</span>}
+        {sel.aliases?.length ? (
+          <span className="text-ink-muted font-mono">also written as {sel.aliases.join(', ')}</span>
+        ) : null}
+      </div>
+
+      {/* The rule, not just the neighbour's name. "confused with User Workplace"
+          told nobody anything — the value is the sentence that says where the
+          line falls, which is exactly what someone classifying a document needs
+          and what the model gets wrong. */}
+      {(sel.notThis ?? []).length > 0 && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+          <div className="text-[10px] uppercase tracking-wider text-amber-400 mb-1.5">
+            Where {sel.name} stops
+          </div>
+          {(sel.notThis ?? []).map((n, i) => (
+            <p key={i} className="text-[12px] text-ink-2 leading-relaxed mb-1 last:mb-0">
+              {n}
+            </p>
+          ))}
+        </div>
       )}
-      {sel.aliases?.length ? (
-        <span className="text-ink-muted font-mono">old names: {sel.aliases.join(', ')}</span>
-      ) : null}
     </div>
   );
 }
