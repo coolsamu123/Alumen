@@ -791,6 +791,87 @@ export async function dryRunGoals(projectId: string): Promise<{
   };
 }
 
+export interface ConsensusClaim {
+  target_kind: string;
+  target: string;
+  /** How many runs this target appeared in. */
+  runs: number;
+  /** Role and severity when the runs agree; null when they disagree —
+   *  disagreement is information, and silently picking one would erase it. */
+  role: string | null;
+  severity: string | null;
+  roleVariants?: string[];
+  severityVariants?: string[];
+  evidence_quote: string;
+  evidence_file: string;
+}
+
+/**
+ * Runs the extraction N times and returns what repeated.
+ *
+ * WHY: measured on 2026-09-14, the same prompt version at temperature 0.1
+ * returns different targets between runs — only 58.6% repeat across three
+ * (PLAN_PROMPTS_CATALOG_REVIEW.md §0.5). A claim from a single pass may simply
+ * not exist on the next one.
+ *
+ * This writes nothing and does not replace the normal analysis. It is for the
+ * moment someone is about to look closely at a project: `runs` says how many
+ * times each target came back, and what shows up 3 of 3 is what holds.
+ *
+ * It deliberately does NOT filter the unstable ones out: "appeared 1 of 3" says
+ * more than omitting it, and the reader decides.
+ */
+export async function consensusGoals(
+  projectId: string,
+  runs = 3,
+): Promise<{ projectId: string; runs: number; claims: ConsensusClaim[]; error?: string }> {
+  const total = Math.max(2, Math.min(5, runs));
+  const porChave = new Map<string, {
+    base: ImpactClaim;
+    vezes: number;
+    papeis: Set<string>;
+    severidades: Set<string>;
+  }>();
+
+  for (let i = 0; i < total; i++) {
+    const r = await dryRunGoals(projectId);
+    if (r.error) return { projectId, runs: total, claims: [], error: r.error };
+    for (const c of r.claims) {
+      const k = `${c.target_kind}::${c.target}`;
+      const e = porChave.get(k);
+      if (e) {
+        e.vezes++;
+        e.papeis.add(c.role);
+        e.severidades.add(c.severity);
+      } else {
+        porChave.set(k, {
+          base: c,
+          vezes: 1,
+          papeis: new Set([c.role]),
+          severidades: new Set([c.severity]),
+        });
+      }
+    }
+  }
+
+  const claims: ConsensusClaim[] = [...porChave.values()]
+    .map(e => ({
+      target_kind: e.base.target_kind,
+      target: e.base.target,
+      runs: e.vezes,
+      role: e.papeis.size === 1 ? [...e.papeis][0] : null,
+      severity: e.severidades.size === 1 ? [...e.severidades][0] : null,
+      roleVariants: e.papeis.size > 1 ? [...e.papeis] : undefined,
+      severityVariants: e.severidades.size > 1 ? [...e.severidades] : undefined,
+      evidence_quote: e.base.evidence_quote,
+      evidence_file: e.base.evidence_file,
+    }))
+    // Most stable first: that is the order someone wants to read.
+    .sort((a, b) => b.runs - a.runs || a.target.localeCompare(b.target));
+
+  return { projectId, runs: total, claims };
+}
+
 export async function runSingleGoalAnalysis(projectId: string): Promise<void> {
   if (runStatus.isRunning) {
     throw new Error('Goals analysis is already running');
