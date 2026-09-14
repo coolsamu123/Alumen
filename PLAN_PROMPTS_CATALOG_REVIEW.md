@@ -46,7 +46,7 @@ Nada foi alterado no código.
 | A: corrigir sem chamar o LLM | ✅ em produção (14/09/2026); falta só uma verificação |
 | B: conjunto de referência | ✅ **feita** (14/09/2026) — 5 projetos revisados, linha de base da v4 medida, ver §0.2 |
 | C: reescrever o catálogo | ✅ **feita** (14/09/2026), ver §0.1 |
-| D: prompt de Goals v5 | 🔴 **escrita e MEDIDA — regressão; versão NÃO subida**, ver §0.4 |
+| D: prompt de Goals v5 | ⛔ **bloqueada: a medição não tem resolução**, ver §0.4 e §0.5 |
 | E: prompt de Impact v2 | ⬜ não iniciada |
 
 #### ✅ Feito
@@ -303,9 +303,15 @@ regras novas — e o custo seria 50 minutos de Gemini reprocessando 69 projetos
 para piorar o portfólio, com o estrago só aparecendo semanas depois, se
 aparecesse.
 
-### O que deu errado
+> ⚠️ **CORREÇÃO (§0.5):** a leitura abaixo foi escrita antes de medir a
+> variância, e **não se sustenta**. A oscilação natural da mesma versão é de
+> 41,4 pontos; a "queda de 17 pontos" está inteiramente dentro do ruído. O que
+> segue descreve o que foi observado numa execução, não uma conclusão sobre a
+> v5.
 
-**Injetar o catálogo inteiro aumentou a invenção de alvos.** 8 alvos a mais em
+### O que foi observado numa execução
+
+**Injetar o catálogo inteiro pareceu aumentar a invenção de alvos.** 8 alvos a mais em
 5 projetos; o `PGM0001209` saltou de 4 para 8 claims. Com `scope` e `signals`
 preenchidos para as 23 entidades, o modelo passa a achar correspondência em toda
 parte — os cartões viraram um cardápio em vez de uma fronteira.
@@ -348,6 +354,68 @@ sozinha. Sem isso, qualquer diferença menor que a oscilação é fantasia.
   reescrita com um exemplo do erro em vez de uma proibição abstrata.
 
 **Não subir a versão é a decisão, não um adiamento.**
+
+---
+
+## 0.5. O instrumento não tem resolução (2026-09-14)
+
+Medida a variância da MESMA versão: 3 execuções × 5 projetos revisados,
+temperatura 0,1.
+
+```
+alvos estáveis nas 3 execuções: 17/29  (58,6%)
+oscilação: 41,4 pontos percentuais
+```
+
+**Menos de 60% dos alvos se repetem quando nada muda.**
+
+| Projeto | claims por execução |
+|---|---|
+| PGM0001209 | 4, 7, 6 |
+| PRJ0019818 | 3, 3, 2 |
+| PRJ0010712 | 5, 5, 4 |
+| PRJ0017466 | 4, 4, 5 |
+| PRJ0020030 | 6, 5, 6 |
+
+E não é só a presença do alvo. Para alvos que aparecem nas três execuções, o
+**papel** e a **severidade** também oscilam: em `PRJ0019818`, o mesmo `HHC`
+saiu ora `primary_provider/high`, ora `downstream_consumer/low`.
+
+### O que isto invalida
+
+**A conclusão do §0.4 sobre a v5.** Eu afirmei "regressão em todos os eixos"
+com base numa queda de 17 pontos. O ruído é de 41. **A afirmação não era
+sustentável, e retiro-a** — a v5 pode ser melhor, pior ou igual; a medição
+feita não distingue.
+
+O erro não foi medir, foi concluir a partir de uma medição de uma execução só
+sem saber a dispersão. Um número que parece nítido não é o mesmo que um número
+confiável.
+
+### O que isto muda no plano
+
+Comparar versões de prompt em 5 projetos × 1 execução **não decide nada**. Para
+a Fase D ser decidível, uma das saídas:
+
+1. **Mais projetos.** Com ~40 entradas em vez de 19, o ruído por entrada cai na
+   média. Custa revisão humana, que é o recurso escasso.
+2. **N execuções por versão, comparando médias.** Multiplica o custo de cada
+   ciclo por N e continua exigindo N grande para 41 pontos de dispersão.
+3. **Consenso em produção.** Rodar a extração 3 vezes e manter só os claims que
+   aparecem nas 3. Triplica o custo da análise, mas ataca a causa em vez da
+   medição: hoje **41% dos claims gravados são instáveis**, e isso vale para os
+   dados em produção, não só para o experimento.
+
+A terceira é a que muda o produto. As outras duas só melhoram o termômetro.
+
+### O achado que vale além da Fase D
+
+Esta variância **já existia na v4** e não era conhecida. Os 506 impactos e 69
+análises em produção carregam esse ruído: uma fração dos claims gravados teria
+sido diferente se a análise tivesse rodado em outro minuto.
+
+Isso não invalida o portfólio — mas recalibra o que se pode afirmar a partir
+dele. Um claim isolado é fraco; o que se repete é o que sustenta decisão.
 
 ---
 

@@ -282,12 +282,90 @@ async function cmdDryRun() {
   console.log(`  severidade certa : ${pct(sevOk, sevTot)}  (${sevOk}/${sevTot})`);
 }
 
+/**
+ * Roda a MESMA versao varias vezes e mede quanto ela oscila sozinha.
+ *
+ * POR QUE: comparando v4 e v5 o PRJ0019818 devolveu 3 claims numa execucao e 2
+ * na outra, com severidades diferentes, a temperatura 0,1. Sem saber o tamanho
+ * dessa oscilacao nao da para ler nenhuma comparacao: uma diferenca menor que o
+ * ruido e indistinguivel de acaso, e foi medindo assim que a v5 "caiu 17
+ * pontos" sem que se possa afirmar quanto disso foi ela.
+ *
+ * Este comando nao compara versoes. Ele mede o instrumento.
+ */
+async function cmdVariance() {
+  const repeticoes = parseInt(process.argv[3], 10) || 3;
+  if (!fs.existsSync(OUT_PATH)) { console.error('sem gabarito.'); process.exit(1); }
+  const doc = JSON.parse(fs.readFileSync(OUT_PATH, 'utf-8'));
+  const revisados = doc.projetos.filter(p => p.reviewed);
+  if (!revisados.length) { console.error('nenhum projeto revisado.'); process.exit(1); }
+
+  const base = process.env.ALUMEN_URL || 'http://127.0.0.1:3333';
+  const cookie = process.env.ALUMEN_COOKIE;
+  if (!cookie) { console.error('defina ALUMEN_COOKIE.'); process.exit(1); }
+
+  const chave = (c) => `${c.target_kind}::${c.target}`;
+  const pct = (a, b) => (b ? (100 * a / b) : 0);
+
+  // rodadas[i][projectId] = Set de chaves + mapa de papel/severidade
+  const rodadas = [];
+  for (let r = 0; r < repeticoes; r++) {
+    console.log(`\n── execucao ${r + 1} de ${repeticoes} ──`);
+    const desta = {};
+    for (const p of revisados) {
+      const res = await fetch(`${base}/api/admin/goals-dry-run?projectId=${p.projectId}`, {
+        method: 'POST', headers: { cookie },
+      });
+      const d = await res.json();
+      const claims = d.error ? [] : (d.claims || []);
+      desta[p.projectId] = new Map(claims.map(c => [chave(c), c]));
+      console.log(`  ${p.projectId}: ${claims.length} claim(s)` + (d.error ? `  ERRO ${d.error}` : ''));
+    }
+    rodadas.push(desta);
+  }
+
+  console.log('\n════ estabilidade entre execucoes ════');
+  let totalUniao = 0, totalIntersecao = 0;
+  for (const p of revisados) {
+    const conjuntos = rodadas.map(r => new Set(r[p.projectId].keys()));
+    const uniao = new Set(conjuntos.flatMap(c => [...c]));
+    const intersecao = [...uniao].filter(k => conjuntos.every(c => c.has(k)));
+    const instaveis = [...uniao].filter(k => !conjuntos.every(c => c.has(k)));
+    totalUniao += uniao.size; totalIntersecao += intersecao.length;
+
+    const tamanhos = rodadas.map(r => r[p.projectId].size).join(', ');
+    console.log(`  ${p.projectId}: claims por execucao = [${tamanhos}]`);
+    console.log(`      estaveis ${intersecao.length}/${uniao.size}`);
+    for (const k of instaveis) {
+      const presenca = conjuntos.map(c => (c.has(k) ? 'x' : '·')).join('');
+      console.log(`      instavel: ${k}  [${presenca}]`);
+    }
+    // papel/severidade divergindo entre execucoes para o MESMO alvo
+    for (const k of intersecao) {
+      const papeis = new Set(rodadas.map(r => r[p.projectId].get(k).role));
+      const sevs = new Set(rodadas.map(r => r[p.projectId].get(k).severity));
+      if (papeis.size > 1) console.log(`      papel oscila em ${k}: ${[...papeis].join(' / ')}`);
+      if (sevs.size > 1)  console.log(`      severidade oscila em ${k}: ${[...sevs].join(' / ')}`);
+    }
+  }
+
+  console.log('\n════ piso de ruido ════');
+  console.log(`  alvos estaveis nas ${repeticoes} execucoes: ${totalIntersecao}/${totalUniao}` +
+              `  (${pct(totalIntersecao, totalUniao).toFixed(1)}%)`);
+  const instavelPct = 100 - pct(totalIntersecao, totalUniao);
+  console.log(`  oscilacao: ${instavelPct.toFixed(1)} pontos percentuais`);
+  console.log('');
+  console.log('  Uma diferenca entre versoes MENOR que esta oscilacao nao');
+  console.log('  significa nada. Use isto como limiar minimo de decisao.');
+}
+
 const cmd = process.argv[2];
 if (cmd === 'propose') cmdPropose();
 else if (cmd === 'template') cmdTemplate();
 else if (cmd === 'compare') cmdCompare();
 else if (cmd === 'dry-run') cmdDryRun();
+else if (cmd === 'variance') cmdVariance();
 else {
-  console.log('uso: node scripts/reference-set.cjs <propose|template|compare|dry-run>');
+  console.log('uso: node scripts/reference-set.cjs <propose|template|compare|dry-run|variance [n]>');
   process.exit(1);
 }
