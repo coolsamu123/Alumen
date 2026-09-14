@@ -142,6 +142,10 @@ GATE: ${project.gate}
 MONTHS REVIEWED: ${project.monthFolders.join(', ')}`;
 
   let prompt = goalsPrompt.replace('{{PROJECT_INFO}}', projectInfo);
+  // Generated from the catalog, never typed into the prompt: the hand-written
+  // copies drifted, and `E&C` stayed canonical in the prompt long after the
+  // business merged it into InnoTech (§2.9).
+  prompt = prompt.replace('{{CATALOG_CARDS}}', renderCatalogBlock());
   prompt = prompt.replace('{{DOCUMENT_TEXT}}', documentText);
   return prompt;
 }
@@ -256,6 +260,7 @@ function sanitizeOutOfScope(raw: unknown): OutOfScope[] {
 //   - role outside the controlled enum
 //   - evidence_quote shorter than 10 chars (forces real grounding)
 import { isCanonicalTarget, type TargetKind } from './target-catalog';
+import { renderCatalogBlock } from './catalog-prompt';
 
 const CLAIM_ROLES = new Set([
   'primary_provider', 'downstream_consumer', 'regional_executor', 'risk_owner', 'blocked_by',
@@ -538,6 +543,11 @@ async function analyzeProject(project: ScannedProject): Promise<void> {
     model: 'pro',
     context: 'goals',
     outputLanguage: lang,
+    // §2.8. JSON mode removes the markdown-fence stripping guesswork from the
+    // parser, and a low temperature matters more here than usual: the same
+    // document analysed twice should not yield a different set of claims.
+    json: true,
+    temperature: 0.1,
   });
   const parsedOrNull = parseGoalsResponse(responseText);
 
@@ -565,8 +575,29 @@ async function analyzeProject(project: ScannedProject): Promise<void> {
 
   // Sanitise canonical array fields against catalogs — drops anything the LLM
   // invented outside the allowed lists.
-  const ddsEntitiesArr = filterToDdsEntities(parsed.dds_entities_touched);
-  const gioServicesArr = filterToGioServices(parsed.gio_services_touched);
+  // Derived from the claims, not asked of the model (§2.7).
+  //
+  // The two lists used to be a separate question, so a project could be marked
+  // as touching an entity with no claim to back it — an assertion with no
+  // evidence behind it, which is exactly what the claims exist to prevent. Now
+  // "touched" means "has at least one anchored claim", by construction.
+  //
+  // A model still answering the old way is tolerated as a fallback, so a stale
+  // prompt override does not silently empty both columns.
+  const claimsForTouched = Array.isArray(parsed.impact_claims) ? parsed.impact_claims : [];
+  const ddsFromClaims = claimsForTouched
+    .filter((c: { target_kind?: string }) => c?.target_kind === 'dds')
+    .map((c: { target?: string }) => c?.target);
+  const gioFromClaims = claimsForTouched
+    .filter((c: { target_kind?: string }) => c?.target_kind === 'gio')
+    .map((c: { target?: string }) => c?.target);
+
+  const ddsEntitiesArr = ddsFromClaims.length
+    ? filterToDdsEntities(ddsFromClaims)
+    : filterToDdsEntities(parsed.dds_entities_touched);
+  const gioServicesArr = gioFromClaims.length
+    ? filterToGioServices(gioFromClaims)
+    : filterToGioServices(parsed.gio_services_touched);
   const techTagsArr    = filterToCatalog(parsed.tech_tags, 'tech');
   const vendorsArr     = filterToCatalog(parsed.vendors, 'vendor');
   const dataClassArr   = filterToCatalog(parsed.data_classifications, 'data');
@@ -596,6 +627,25 @@ async function analyzeProject(project: ScannedProject): Promise<void> {
   const impactClaims     = sanitizeImpactClaims(parsed.impact_claims);
   const timelineStruct   = sanitizeTimeline(parsed.timeline_struct);
 
+  // Fase D §2.7. Um enum fechado: valor fora da lista vira '' em vez de virar
+  // uma sexta categoria que nada consegue contar.
+  const IA_STATUS = ['embedded', 'planned', 'none', 'unclear'];
+  const iaStatusRaw = String(parsed.ia_embedded_status ?? '').trim().toLowerCase();
+  const iaEmbeddedStatus = IA_STATUS.includes(iaStatusRaw) ? iaStatusRaw : '';
+
+  // Termos que o catálogo não absorveu. É por aqui que ele aprende o que falta,
+  // então guardamos a evidência junto — um termo sem a frase que o trouxe não
+  // dá para julgar depois.
+  const unmappedTerms = (Array.isArray(parsed.unmapped_terms) ? parsed.unmapped_terms : [])
+    .filter((t: unknown): t is Record<string, unknown> => !!t && typeof t === 'object')
+    .map((t: Record<string, unknown>) => ({
+      term: String(t.term ?? '').trim().slice(0, 120),
+      evidence_file: String(t.evidence_file ?? '').trim().slice(0, 200),
+      evidence_quote: String(t.evidence_quote ?? '').trim().slice(0, 300),
+    }))
+    .filter((t: { term: string }) => t.term !== '')
+    .slice(0, 10);
+
   const freeFormFields = [
     'digital_technologies', 'change_management', 'security_impacts',
     'regional_impacts', 'ia_embedded', 'gio_sl_dds_impacts',
@@ -618,11 +668,12 @@ async function analyzeProject(project: ScannedProject): Promise<void> {
       tech_tags, vendors, data_classifications, mentioned_projects,
       project_relations, out_of_scope,
       impact_claims, timeline_struct,
+      ia_embedded_status, unmapped_terms,
       prompt_version,
       raw_gemini_response, source_files, source_signature, status,
       output_language,
       error_message
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '')
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '')
     ON CONFLICT(project_id, output_language) DO UPDATE SET
       project_name=excluded.project_name, region=excluded.region, gate=excluded.gate,
       month_folder=excluded.month_folder,
@@ -645,6 +696,8 @@ async function analyzeProject(project: ScannedProject): Promise<void> {
       out_of_scope=excluded.out_of_scope,
       impact_claims=excluded.impact_claims,
       timeline_struct=excluded.timeline_struct,
+      ia_embedded_status=excluded.ia_embedded_status,
+      unmapped_terms=excluded.unmapped_terms,
       prompt_version=excluded.prompt_version,
       raw_gemini_response=excluded.raw_gemini_response,
       source_files=excluded.source_files,
@@ -676,6 +729,8 @@ async function analyzeProject(project: ScannedProject): Promise<void> {
     JSON.stringify(outOfScope),
     JSON.stringify(impactClaims),
     JSON.stringify(timelineStruct),
+    iaEmbeddedStatus,
+    JSON.stringify(unmappedTerms),
     GOALS_PROMPT_VERSION,
     responseText,
     filesJson,
@@ -688,6 +743,53 @@ async function analyzeProject(project: ScannedProject): Promise<void> {
 }
 
 
+
+/**
+ * Roda a extração de um projeto SEM gravar nada.
+ *
+ * Existe para o critério de pronto da Fase D: validar o prompt no conjunto de
+ * referência antes de subir GOALS_PROMPT_VERSION, porque subir a versão
+ * reprocessa o portfólio inteiro (~50 min de LLM) e é irreversível sem outra
+ * rodada igual. Medir cinco projetos primeiro custa cinco chamadas.
+ *
+ * Não dá para reaproveitar runSingleGoalAnalysis(): ela grava, e — pior para
+ * este fim — pula o projeto quando a assinatura dos arquivos não mudou, que é
+ * exatamente o caso aqui.
+ */
+export async function dryRunGoals(projectId: string): Promise<{
+  projectId: string;
+  claims: ImpactClaim[];
+  iaEmbeddedStatus: string;
+  unmappedTerms: unknown[];
+  error?: string;
+}> {
+  const project = scanProjects().find(p => p.projectId === projectId);
+  if (!project) return { projectId, claims: [], iaEmbeddedStatus: '', unmappedTerms: [], error: 'projeto sem arquivos locais' };
+
+  const documentText = await extractAllTexts(project.files);
+  if (!documentText.trim()) {
+    return { projectId, claims: [], iaEmbeddedStatus: '', unmappedTerms: [], error: 'sem texto extraível' };
+  }
+
+  const { text } = await generateContent({
+    prompt: buildGoalsPrompt(project, documentText),
+    model: 'pro',
+    context: 'goals-dry-run',
+    outputLanguage: getActiveOutputLanguage(),
+    json: true,
+    temperature: 0.1,
+  });
+
+  const parsed = parseGoalsResponse(text);
+  if (!parsed) return { projectId, claims: [], iaEmbeddedStatus: '', unmappedTerms: [], error: 'resposta ilegível' };
+
+  return {
+    projectId,
+    claims: sanitizeImpactClaims(parsed.impact_claims),
+    iaEmbeddedStatus: String(parsed.ia_embedded_status ?? ''),
+    unmappedTerms: Array.isArray(parsed.unmapped_terms) ? parsed.unmapped_terms : [],
+  };
+}
 
 export async function runSingleGoalAnalysis(projectId: string): Promise<void> {
   if (runStatus.isRunning) {

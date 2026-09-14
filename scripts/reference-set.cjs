@@ -222,11 +222,72 @@ function cmdCompare() {
   console.log(`  severidade certa : ${pct(sevOk, sevTotal)}  (${sevOk}/${sevTotal})`);
 }
 
+/**
+ * Roda o prompt ATUAL (sem gravar) nos projetos revisados e compara com o
+ * gabarito. E o criterio de pronto da Fase D: subir GOALS_PROMPT_VERSION
+ * reprocessa o portfolio inteiro, entao a medida vem antes.
+ */
+async function cmdDryRun() {
+  if (!fs.existsSync(OUT_PATH)) { console.error('sem gabarito.'); process.exit(1); }
+  const doc = JSON.parse(fs.readFileSync(OUT_PATH, 'utf-8'));
+  const revisados = doc.projetos.filter(p => p.reviewed);
+  if (!revisados.length) { console.error('nenhum projeto revisado.'); process.exit(1); }
+
+  const base = process.env.ALUMEN_URL || 'http://127.0.0.1:3333';
+  const cookie = process.env.ALUMEN_COOKIE;
+  if (!cookie) {
+    console.error('defina ALUMEN_COOKIE com o cookie de sessao de um admin.');
+    process.exit(1);
+  }
+
+  const chave = (c) => `${c.target_kind}::${c.target}`;
+  let alvoOk = 0, alvoFalta = 0, alvoSobra = 0, papelOk = 0, papelTot = 0, sevOk = 0, sevTot = 0;
+
+  for (const p of revisados) {
+    process.stdout.write(`  ${p.projectId} … `);
+    const res = await fetch(`${base}/api/admin/goals-dry-run?projectId=${p.projectId}`, {
+      method: 'POST', headers: { cookie },
+    });
+    const d = await res.json();
+    if (d.error) { console.log('ERRO: ' + d.error); continue; }
+
+    const esp = new Map(p.esperado.map(c => [chave(c), c]));
+    const obt = new Map((d.claims || []).map(c => [chave(c), c]));
+    const faltando = [...esp.keys()].filter(k => !obt.has(k));
+    const aMais = [...obt.keys()].filter(k => !esp.has(k));
+    const comuns = [...esp.keys()].filter(k => obt.has(k));
+
+    alvoOk += comuns.length; alvoFalta += faltando.length; alvoSobra += aMais.length;
+    for (const k of comuns) {
+      papelTot++; if (esp.get(k).role === obt.get(k).role) papelOk++;
+      sevTot++; if (esp.get(k).severity === obt.get(k).severity) sevOk++;
+    }
+    console.log(`esperado=${esp.size} obtido=${obt.size} faltando=${faltando.length} a_mais=${aMais.length}` +
+                (d.iaEmbeddedStatus ? `  ia=${d.iaEmbeddedStatus}` : '') +
+                ((d.unmappedTerms || []).length ? `  nao_mapeados=${d.unmappedTerms.length}` : ''));
+    for (const k of faltando) console.log(`        faltou : ${k}`);
+    for (const k of aMais)    console.log(`        a mais : ${k}`);
+    for (const k of comuns) {
+      const e = esp.get(k), o = obt.get(k);
+      if (e.role !== o.role)         console.log(`        papel  : ${k}  esperado ${e.role} / obtido ${o.role}`);
+      if (e.severity !== o.severity) console.log(`        sever. : ${k}  esperado ${e.severity} / obtido ${o.severity}`);
+    }
+  }
+
+  const pct = (a, b) => (b ? (100 * a / b).toFixed(1) : '—') + '%';
+  console.log('\n=== prompt atual sobre o gabarito ===');
+  console.log(`  precisao de alvo : ${pct(alvoOk, alvoOk + alvoSobra)}`);
+  console.log(`  cobertura        : ${pct(alvoOk, alvoOk + alvoFalta)}`);
+  console.log(`  papel correto    : ${pct(papelOk, papelTot)}  (${papelOk}/${papelTot})`);
+  console.log(`  severidade certa : ${pct(sevOk, sevTot)}  (${sevOk}/${sevTot})`);
+}
+
 const cmd = process.argv[2];
 if (cmd === 'propose') cmdPropose();
 else if (cmd === 'template') cmdTemplate();
 else if (cmd === 'compare') cmdCompare();
+else if (cmd === 'dry-run') cmdDryRun();
 else {
-  console.log('uso: node scripts/reference-set.cjs <propose|template|compare>');
+  console.log('uso: node scripts/reference-set.cjs <propose|template|compare|dry-run>');
   process.exit(1);
 }

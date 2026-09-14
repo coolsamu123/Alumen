@@ -46,7 +46,7 @@ Nada foi alterado no código.
 | A: corrigir sem chamar o LLM | ✅ em produção (14/09/2026); falta só uma verificação |
 | B: conjunto de referência | ✅ **feita** (14/09/2026) — 5 projetos revisados, linha de base da v4 medida, ver §0.2 |
 | C: reescrever o catálogo | ✅ **feita** (14/09/2026), ver §0.1 |
-| D: prompt de Goals v5 | ⬜ não iniciada |
+| D: prompt de Goals v5 | 🔴 **escrita e MEDIDA — regressão; versão NÃO subida**, ver §0.4 |
 | E: prompt de Impact v2 | ⬜ não iniciada |
 
 #### ✅ Feito
@@ -282,6 +282,72 @@ constante de `goals-analyzer.ts`, fechando um ciclo entre os dois módulos. A
 constante mudou para `prompt-version.ts`, sozinha. Um ciclo aqui não quebraria o
 build — devolveria `undefined` na inicialização conforme a ordem de carga, e
 todo override apareceria como superado, ou nenhum.
+
+---
+
+## 0.4. Fase D: a v5 foi medida e reprovada (2026-09-14)
+
+O prompt v5 está escrito e no código; `GOALS_PROMPT_VERSION` **continua em 4**.
+O dry-run sobre os 5 projetos revisados reprovou em todos os eixos.
+
+| Métrica | v4 | v5 |
+|---|---:|---:|
+| Precisão de alvo | 85,7% | **68,0%** |
+| Cobertura | 94,7% | 89,5% |
+| Papel correto | 100,0% | **70,6%** |
+| Severidade correta | 83,3% | **70,6%** |
+
+**Foi para isto que a Fase B existiu.** Sem o conjunto de referência, a v5 teria
+sido publicada por parecer obviamente melhor — cartões ricos, rubrica explícita,
+regras novas — e o custo seria 50 minutos de Gemini reprocessando 69 projetos
+para piorar o portfólio, com o estrago só aparecendo semanas depois, se
+aparecesse.
+
+### O que deu errado
+
+**Injetar o catálogo inteiro aumentou a invenção de alvos.** 8 alvos a mais em
+5 projetos; o `PGM0001209` saltou de 4 para 8 claims. Com `scope` e `signals`
+preenchidos para as 23 entidades, o modelo passa a achar correspondência em toda
+parte — os cartões viraram um cardápio em vez de uma fronteira.
+
+Os extras mais reveladores:
+
+- `Site Infrastructure` apareceu em **2** projetos que não o citam. É a entidade
+  com a lista de `signals` mais genérica (LAN, WAN, Wi-Fi, switch, router, edge),
+  e palavras assim aparecem em qualquer documento de infraestrutura.
+- `Alizent` reapareceu no `PRJ0017466` — **exatamente o claim falso que a
+  revisão removeu**, e que a regra nova ("a citação precisa nomear o alvo")
+  deveria ter impedido. A regra, como escrita, não pegou.
+
+**O papel caiu de 100% para 70,6%**, com os desvios quase todos na direção
+`primary_provider → downstream_consumer`. A suspeita é que os cartões, ao
+descrever o que cada entidade *faz*, empurram o modelo a lê-la como quem recebe.
+
+**A severidade caiu**, apesar da rubrica. Mas repare que ela errou nos **dois**
+sentidos (`low→high` e `high→low`), o que é consistente com o §2.2: o problema é
+ausência de critério, e uma rubrica sozinha não resolveu.
+
+### 🐞 Variância entre execuções, com temperatura 0,1
+
+O `PRJ0019818` foi rodado duas vezes com o mesmo prompt e deu **3 claims numa e
+2 na outra**, com severidades diferentes para o mesmo alvo.
+
+Isso contamina a medição inteira: parte dos 17 pontos de queda é ruído, e não dá
+para saber quanto. **Antes de comparar a próxima versão é preciso medir a
+variância** — rodar a mesma versão duas ou três vezes e ver quanto ela oscila
+sozinha. Sem isso, qualquer diferença menor que a oscilação é fantasia.
+
+### O que fica
+
+- o prompt v5 permanece no código, **inerte**, porque `getPromptsState()` só o
+  usa quando a versão sobe;
+- a ferramenta de dry-run (`/api/admin/goals-dry-run` + `reference-set.cjs
+  dry-run`) é o que torna o próximo ciclo barato: 5 chamadas em vez de 69;
+- as três hipóteses a testar, uma de cada vez: cartões só das entidades
+  plausíveis em vez de todas; `signals` genéricos podados; e a regra da citação
+  reescrita com um exemplo do erro em vez de uma proibição abstrata.
+
+**Não subir a versão é a decisão, não um adiamento.**
 
 ---
 

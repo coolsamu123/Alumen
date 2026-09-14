@@ -556,6 +556,11 @@ function initSchema(db: Database.Database) {
   addGoalCol('data_classifications',  "TEXT DEFAULT '[]'");
   addGoalCol('mentioned_projects',    "TEXT DEFAULT '[]'");
   addGoalCol('prompt_version',        'INTEGER DEFAULT 0');
+  // Fase D (PLAN_PROMPTS_CATALOG_REVIEW.md §2.7): the countable half of the
+  // free-text `ia_embedded`, and the terms the catalog could not absorb — which
+  // is how the catalog learns what it is missing.
+  addGoalCol('ia_embedded_status',    "TEXT DEFAULT ''");
+  addGoalCol('unmapped_terms',        "TEXT DEFAULT '[]'");
   // Onda 2 of the Goals→Impact refactor: structured project-to-project
   // relationships and explicit out-of-scope statements, replacing the
   // free-text-only inference path the Impact engine was forced to use.

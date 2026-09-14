@@ -22,17 +22,22 @@ FREE-FORM TEXT FIELDS:
 8. **dds_gio_workload**: Expected DDS / GIO SL workload — effort estimation, FTE required, resource allocation, support needs
 9. **business_apps_cis**: Impacts with Business Applications and Configuration Items (CIs) — which applications/systems are affected, integrations, decommissions, new CIs
 
+THE TARGET CATALOG
+
+Every GIO service line and DDS entity you may name, with what each one owns,
+the words that point to it, and the neighbour it is confused with. Read the
+"NOT this" lines before choosing between two close targets.
+
+{{CATALOG_CARDS}}
+
+Do NOT emit a target outside this catalog. If a document names something with no
+clear match, put the raw term in **unmapped_terms** instead of forcing it onto
+the nearest entity — a wrong target is worse than a missing one, because it
+looks correct downstream.
+
 CANONICAL ARRAY FIELDS (emit ONLY exact strings from the catalog, lowercase where shown):
 
-10. **dds_entities_touched**: DDS entities affected by this project. Canonical values:
-    Geographic zones: "Americas", "Europe", "APAC", "AMEI"
-    Business divisions / SBUs: "CF", "GM&T", "E&C", "HC D&IT", "Alizent", "GDO", "SEPPIC", "Airgas", "HHC"
-    App / functional groups: "Industrial Apps", "Enterprise Apps", "Data & AI Apps", "Digital Factory", "InnoTech", "CDIO Office", "IDD"
-
-11. **gio_services_touched**: GIO service lines the project depends on. Canonical values (use these EXACT strings):
-    "Security & Compliance", "Command Center", "User Workplace", "Site Infrastructure", "Cloud Services"
-
-12. **tech_tags**: Technology stack identifiers. Use ONLY entries from this canonical catalog (lowercase, hyphenated):
+10. **tech_tags**: Technology stack identifiers. Use ONLY entries from this canonical catalog (lowercase, hyphenated):
     Cloud: aws, azure, gcp, oracle-cloud, alibaba-cloud, ovh
     ERP/Suites: sap-s4, sap-ecc, sap-bw, sap-hana, oracle-ebs, workday, servicenow, salesforce
     Data: snowflake, databricks, bigquery, redshift, synapse, palantir
@@ -52,12 +57,12 @@ CANONICAL ARRAY FIELDS (emit ONLY exact strings from the catalog, lowercase wher
     Frontend: react, angular, vue, nextjs
     Industrial: iot, edge-computing, azure-iot, osisoft-pi, aveva, siemens-tia, rockwell
 
-13. **vendors**: External vendors / suppliers / SI partners involved. Use ONLY entries from this catalog:
+11. **vendors**: External vendors / suppliers / SI partners involved. Use ONLY entries from this catalog:
     microsoft, aws, google, sap, oracle, ibm, salesforce, servicenow, snowflake, databricks, workday, mongodb, elastic,
     accenture, capgemini, deloitte, tcs, infosys, wipro, atos, sopra-steria, pwc, kpmg, cgi, hcl,
     palantir, mulesoft, okta, crowdstrike, cisco, fortinet, aveva, osisoft, siemens, rockwell, schneider-electric
 
-14. **data_classifications**: Sensitive data / regulatory scopes the project touches. Use ONLY entries from this catalog:
+12. **data_classifications**: Sensitive data / regulatory scopes the project touches. Use ONLY entries from this catalog:
     pii, customer-pii, employee-pii, hr-sensitive,
     phi, pci-dss,
     financial-data, erp-finance,
@@ -67,13 +72,13 @@ CANONICAL ARRAY FIELDS (emit ONLY exact strings from the catalog, lowercase wher
 
 STRUCTURED CROSS-PROJECT SIGNAL (Onda 2 refactor):
 
-15. **project_relations**: Other Air Liquide PROJECTS this project depends on, blocks, replaces, or shares infrastructure with — extracted from the documents. ONE object per relationship. Schema:
+13. **project_relations**: Other Air Liquide PROJECTS this project depends on, blocks, replaces, or shares infrastructure with — extracted from the documents. ONE object per relationship. Schema:
     {
       "project_id": "PRJxxxxxx",            // canonical PRJ id as it appears in the document (no padding required)
       "kind": "predecessor" | "successor" | "parallel" | "blocked_by" | "blocking" | "replaces" | "extends" | "shares_platform" | "shares_vendor",
       "relation": "one-line label, ≤80 chars, e.g. 'replaces legacy Ivanti VPN' or 'shares Okta identity layer'",
       "source_file": "filename without the [doc_url=...] header — same string as appears in the Documents block",
-      "evidence_quote": "verbatim span from the source file, ≤200 chars, FIRST SENTENCE of the supporting paragraph",
+      "evidence_quote": "verbatim span from the source file, ≤200 chars — THE SENTENCE THAT STATES THIS RELATION, not the first sentence of its paragraph",
       "confidence": "stated" | "inferred"  // 'stated' = directly written; 'inferred' = you deduced it from context
     }
     Rules:
@@ -82,7 +87,7 @@ STRUCTURED CROSS-PROJECT SIGNAL (Onda 2 refactor):
     - Do NOT invent PRJ ids — only ids that physically appear in the document text.
     - Emit [] if the document does not reference other projects.
 
-16. **out_of_scope**: Topics, regions, or systems the project EXPLICITLY excludes — useful negative signal so downstream analysis doesn't infer false connections. Schema:
+14. **out_of_scope**: Topics, regions, or systems the project EXPLICITLY excludes — useful negative signal so downstream analysis doesn't infer false connections. Schema:
     {
       "topic": "short noun phrase, ≤60 chars, e.g. 'OT / industrial systems' or 'China rollout phase 1'",
       "evidence_quote": "verbatim span asserting the exclusion, ≤200 chars",
@@ -92,19 +97,31 @@ STRUCTURED CROSS-PROJECT SIGNAL (Onda 2 refactor):
     - Only items where the document literally says something is out-of-scope / not-in-scope / excluded / will-not-cover. Do not over-extract.
     - Emit [] when no explicit exclusion is documented.
 
-17. **mentioned_projects**: Bare list of distinct PRJ ids mentioned anywhere in the documents (superset of project_relations.project_id). Same canonical form. [] if none.
+15. **mentioned_projects**: Bare list of distinct PRJ ids mentioned anywhere in the documents (superset of project_relations.project_id). Same canonical form. [] if none.
 
-18. **impact_claims**: Atomic, evidence-anchored statements of how this project touches GIO Service Lines and DDS entities. REPLACES the free-text gio_sl_dds_impacts as the authoritative source for impact edges. ONE object per (target, role) touch. Schema:
+16. **impact_claims**: Atomic, evidence-anchored statements of how this project touches GIO Service Lines and DDS entities. REPLACES the free-text gio_sl_dds_impacts as the authoritative source for impact edges. ONE object per (target, role) touch. Schema:
     {
       "target_kind": "gio" | "dds",
-      "target": "Security & Compliance",                  // MUST be a canonical name from the lists in #10 / #11
+      "target": "Security & Compliance",                  // MUST be a canonical name from THE TARGET CATALOG above
       "role": "primary_provider" | "downstream_consumer" | "regional_executor" | "risk_owner" | "blocked_by",
       "severity": "high" | "low",
       "impact_type": "infrastructure_shared" | "platform_shared" | "technology_dependency" | "vendor_shared" | "security_dependency" | "organizational" | "regional_rollout" | "integration_required" | "timeline_blocking" | "resource_contention",
       "evidence_file": "filename (same string as in the Documents block)",
-      "evidence_quote": "verbatim span from that file, ≤200 chars, first sentence of supporting paragraph",
+      "evidence_quote": "verbatim span from that file, ≤200 chars — THE SENTENCE THAT STATES THIS CLAIM, not the first sentence of its paragraph",
       "confidence": "stated" | "inferred"
     }
+    SEVERITY — decide from the quoted evidence, never from how important the project feels:
+    - "high" when the quote shows AT LEAST ONE of:
+        · the target must deliver, change, approve or fund something specific for this project;
+        · the target's decision or capacity can block a gate, go-live or decommission date;
+        · a security or compliance exception, a major reservation, or an unresolved risk is stated;
+        · committed effort from the target is quantified (FTE, man-days, budget, cost).
+    - "low" otherwise: the target is merely mentioned, aligned with, involved in
+      the past, or described without an obligation attached.
+    - The test runs BOTH ways. A quote naming money or FTE is "high" even if the
+      sentence sounds routine; a quote about strategic alignment with no
+      deliverable and no date is "low" even if the project is critical.
+
     Role guidance — the role always describes what the TARGET does for this project, never the other way round:
     - 'primary_provider' = the TARGET provides the capability, infrastructure or governance that this project consumes or builds upon
     - 'downstream_consumer' = the TARGET consumes something this project produces (a service, platform, data feed or tool delivered by the project)
@@ -114,9 +131,29 @@ STRUCTURED CROSS-PROJECT SIGNAL (Onda 2 refactor):
     Rules:
     - target MUST exactly match one of the canonical names. If the document mentions something close (e.g. "Cyber Sec"), map it to the canonical "Security & Compliance"; if no clear mapping exists, do not invent.
     - Every claim MUST have a verbatim evidence_quote (no paraphrase). If you cannot back the claim with a quote, leave it out.
+    - The quote must NAME the target or one of its aliases, or state something
+      the target's scope plainly covers. Reusing one quote for a second target
+      it never mentions is the most common error to avoid.
+    - A QUESTION is not a claim. "How was the workload of team X evaluated?"
+      asks something; it does not assert that X does anything. Skip it.
     - One project usually has 2-8 claims. Avoid hundreds; pick the load-bearing ones.
     - Multiple claims on the same target are allowed when they reflect different roles or impact_types.
     - Emit [] if the document is too thin to ground any claim.
+
+17. **ia_embedded_status**: One of "embedded" | "planned" | "none" | "unclear".
+    - "embedded"  = AI/ML is part of what the project delivers, now
+    - "planned"   = named as a later phase or an intention, not in this scope
+    - "none"      = the documents discuss the project without any AI component
+    - "unclear"   = AI words appear but nothing says whether they are in scope
+    The free-text #6 stays as the explanation; this is the part that can be
+    counted. "unclear" is a real answer — prefer it to guessing.
+
+18. **unmapped_terms**: Organisational names the documents treat as significant
+    that are NOT in the catalog above. Verbatim, deduplicated, ≤10 entries.
+    Schema: { "term": "...", "evidence_file": "...", "evidence_quote": "..." }
+    This is how the catalog learns: a term showing up here repeatedly is a
+    missing entity or a missing alias. Emit [] when everything mapped cleanly.
+    Do NOT put a term here if it maps to a catalog entity — use the entity.
 
 19. **timeline_struct**: Structured timeline + dependencies (replaces prose hints about ordering). Single object (not array). Schema:
     {
@@ -146,8 +183,6 @@ Respond ONLY with a JSON object (no markdown fences, no explanation) with these 
   "gio_sl_dds_impacts": "...",
   "dds_gio_workload": "...",
   "business_apps_cis": "...",
-  "dds_entities_touched": [],
-  "gio_services_touched": [],
   "tech_tags": [],
   "vendors": [],
   "data_classifications": [],
@@ -155,6 +190,8 @@ Respond ONLY with a JSON object (no markdown fences, no explanation) with these 
   "out_of_scope": [],
   "mentioned_projects": [],
   "impact_claims": [],
+  "ia_embedded_status": "...",
+  "unmapped_terms": [],
   "timeline_struct": {}
 }
 
