@@ -92,8 +92,8 @@ export const IMPACT_DIRECTIONS = [
  *
  *   scope    — what this entity owns, in one sentence
  *   signals  — words in a document that genuinely point here
- *   notThis  — the neighbour it gets confused with, and why (HHC vs HC D&IT,
- *              Site Infrastructure vs Security & Compliance)
+ *   notThis  — where this entity stops and a neighbouring one begins
+ *              (HHC vs HC D&IT, Site Infrastructure vs Security & Compliance)
  *   parent   — aggregation only. A claim on Airgas must NOT also produce a
  *              claim on Americas; the sum happens in code, not in the model.
  *   aliases  — the FIT renaming wave (BIS → DDS, new trigrams) means old

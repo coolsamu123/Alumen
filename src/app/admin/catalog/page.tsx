@@ -572,7 +572,7 @@ export default function CatalogAdminPage() {
 
         <Field
           label="NOT THIS"
-          hint="— one per line. The neighbour it gets confused with, and why."
+          hint="— one per line. Where this entity stops and a neighbouring one begins."
           value={draft.notThis}
           onChange={v => updateDraft(kind, entry.name, { notThis: v })}
           rows={3}

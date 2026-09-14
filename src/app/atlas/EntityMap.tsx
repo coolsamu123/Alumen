@@ -284,7 +284,7 @@ export default function EntityMap({
       ) : (
         <p className="text-[11px] text-ink-faint mt-2">
           Box fill shows how much the portfolio uses each entity. Click one to
-          isolate its hierarchy and the entities it gets confused with.
+          isolate its hierarchy and its boundaries.
         </p>
       )}
     </div>
@@ -334,7 +334,7 @@ function SelectionNote({ sel, all }: { sel: Entity; all: Entity[] }) {
         ) : null}
       </div>
 
-      {/* The rule, not just the neighbour's name. "confused with User Workplace"
+      {/* The rule, not just the neighbour's name. Naming the neighbour alone
           told nobody anything — the value is the sentence that says where the
           line falls, which is exactly what someone classifying a document needs
           and what the model gets wrong. */}

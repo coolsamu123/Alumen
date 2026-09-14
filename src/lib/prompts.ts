@@ -25,8 +25,9 @@ FREE-FORM TEXT FIELDS:
 THE TARGET CATALOG
 
 Every GIO service line and DDS entity you may name, with what each one owns,
-the words that point to it, and the neighbour it is confused with. Read the
-"NOT this" lines before choosing between two close targets.
+the words that point to it, and where it stops. Read the "NOT this" lines
+before choosing between two close targets — they exist because these pairs are
+genuinely hard to tell apart, not as a formality.
 
 {{CATALOG_CARDS}}
 
