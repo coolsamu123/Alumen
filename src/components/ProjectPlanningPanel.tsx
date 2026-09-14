@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { getGateColor, getDecisionColor, ADMIN_ONLY_TITLE } from '@/lib/constants';
+import { getGateColor, getDecisionColor, ADMIN_ONLY_TITLE, categoryText } from '@/lib/constants';
 import { useProjectContext } from '@/context/ProjectContext';
 import type { ProjectSummary } from '@/lib/types';
 
@@ -159,14 +159,14 @@ export default function ProjectPlanningPanel({ project, onClose }: { project: Pr
             <div className="text-sm font-bold text-ink-1 leading-snug truncate">{project.name}</div>
             <div className="flex gap-1.5 mt-2 flex-wrap">
               {project.currentGate && (
-                <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border"
-                  style={{ background: `${gateColor}18`, color: `color-mix(in srgb, ${gateColor} 70%, var(--ink-1))`, borderColor: `${gateColor}40` }}>
+                <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold border"
+                  style={{ background: `${gateColor}18`, color: categoryText(gateColor), borderColor: `${gateColor}40` }}>
                   Gate {project.currentGate}
                 </span>
               )}
               {project.latestDecision && (
-                <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-semibold"
-                  style={{ background: `${decisionColor}22`, color: `color-mix(in srgb, ${decisionColor} 70%, var(--ink-1))` }}>
+                <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold"
+                  style={{ background: `${decisionColor}22`, color: categoryText(decisionColor) }}>
                   {project.latestDecision}
                 </span>
               )}
@@ -228,12 +228,12 @@ export default function ProjectPlanningPanel({ project, onClose }: { project: Pr
                       <span className="text-base">🗓️</span>
                       <span>Generate plan</span>
                     </span>
-                    <span className="text-[10px] uppercase tracking-wider text-white/85 font-bold">
+                    <span className="text-[11px] uppercase tracking-wider text-white/85 font-bold">
                       {generating ? `${elapsed}s …` : (data.hasDocuments ? 'from project documents' : 'syncs Drive, then generates')}
                     </span>
                   </button>
                   {!generating && (
-                    <div className="text-[10px] text-ink-muted px-1 pt-1.5">
+                    <div className="text-[11px] text-ink-muted px-1 pt-1.5">
                       {data.hasDocuments
                         ? 'Typical: 15–40s · calls the LLM once, then cached.'
                         : 'First run syncs the Drive folder, then calls the LLM — can take longer than usual. Cached after that.'}
@@ -244,7 +244,7 @@ export default function ProjectPlanningPanel({ project, onClose }: { project: Pr
 
               {/* Regenerate affordance — shown once something has been generated */}
               {data.hasDocuments && data.generatedAt && (
-                <div className="flex items-center justify-between text-[10px] text-ink-muted">
+                <div className="flex items-center justify-between text-[11px] text-ink-muted">
                   <span>
                     Generated {data.generatedAt.slice(0, 10)} · {data.llmProvider}/{data.llmModel}
                     {data.durationMs ? ` · ${(data.durationMs / 1000).toFixed(1)}s` : ''}
@@ -292,14 +292,14 @@ export default function ProjectPlanningPanel({ project, onClose }: { project: Pr
                           <div className="flex items-center justify-between gap-2 flex-wrap">
                             <div className="flex items-center gap-2">
                               <span className="text-[11px] font-bold" style={{ color: gc }}>Gate {g.gate}</span>
-                              {g.forum && <span className="text-[9px] px-1.5 py-0.5 rounded bg-surface-2 text-ink-4 font-semibold uppercase tracking-wider">{g.forum}</span>}
-                              {!g.deterministic && <span className="text-[9px] px-1.5 py-0.5 rounded bg-accent-soft text-accent-text font-semibold" title="From project documents, not the CDIO sheet">doc</span>}
+                              {g.forum && <span className="text-[11px] px-1.5 py-0.5 rounded bg-surface-2 text-ink-4 font-semibold uppercase tracking-wider">{g.forum}</span>}
+                              {!g.deterministic && <span className="text-[11px] px-1.5 py-0.5 rounded bg-accent-soft text-accent-text font-semibold" title="From project documents, not the CDIO sheet">doc</span>}
                             </div>
                             <div className="flex items-center gap-2">
-                              <span className="text-[10px] font-mono text-ink-muted">{g.date || 'unknown date'}</span>
+                              <span className="text-[11px] font-mono text-ink-muted">{g.date || 'unknown date'}</span>
                               {g.decision && (
-                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                                  style={{ background: `${dc}22`, color: `color-mix(in srgb, ${dc} 70%, var(--ink-1))` }}>
+                                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                                  style={{ background: `${dc}22`, color: categoryText(dc) }}>
                                   {g.decision}
                                 </span>
                               )}
@@ -326,7 +326,7 @@ export default function ProjectPlanningPanel({ project, onClose }: { project: Pr
                           {a.title}
                         </span>
                         {a.owner && (
-                          <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded bg-surface-2 text-ink-4 font-semibold">{a.owner}</span>
+                          <span className="shrink-0 text-[11px] px-1.5 py-0.5 rounded bg-surface-2 text-ink-4 font-semibold">{a.owner}</span>
                         )}
                       </div>
                     ))}
@@ -380,7 +380,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function StatTile({ label, value, accent, wide }: { label: string; value: string; accent?: boolean; wide?: boolean }) {
   return (
     <div className={`bg-surface-2 rounded-lg p-2.5 ${wide ? 'col-span-3' : ''}`}>
-      <div className="text-[9px] text-ink-muted uppercase tracking-wider leading-tight">{label}</div>
+      <div className="text-[11px] text-ink-muted uppercase tracking-wider leading-tight">{label}</div>
       <div className={`text-sm font-bold mt-0.5 ${accent ? 'text-accent-text' : 'text-ink-2'}`}>{value}</div>
     </div>
   );

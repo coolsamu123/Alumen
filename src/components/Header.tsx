@@ -3,16 +3,19 @@
 import { useProjectContext } from '@/context/ProjectContext';
 import { ADMIN_ONLY_TITLE } from '@/lib/constants';
 import UserMenu from './UserMenu';
+import ThemeMenu from './ThemeMenu';
 import type { ViewType } from '@/lib/types';
 
+// Plain labels. The unicode glyphs that used to prefix them (→ ⬡ ⟶ ≡ ✦ ☁) read
+// as noise at 13px, and Goals Extractor and Alumen shared the same ✦.
 const NAV_ITEMS: { key: ViewType; label: string }[] = [
-  { key: 'impact', label: '→ Impact' },
-  { key: 'graph', label: '⬡ Graph' },
-  { key: 'timeline', label: '⟶ Timeline' },
-  { key: 'detail', label: '≡ Details' },
-  { key: 'goals', label: '✦ Goals Extractor' },
-  { key: 'drive', label: '☁ Drive Sync' },
-  { key: 'strom', label: '✦ Alumen' },
+  { key: 'impact', label: 'Impact' },
+  { key: 'graph', label: 'Graph' },
+  { key: 'timeline', label: 'Timeline' },
+  { key: 'detail', label: 'Details' },
+  { key: 'goals', label: 'Goals Extractor' },
+  { key: 'drive', label: 'Drive Sync' },
+  { key: 'strom', label: 'Alumen' },
 ];
 
 // Views that don't fetch anything protected. Anonymous external visitors can
@@ -29,8 +32,7 @@ const NAV_ITEMS: { key: ViewType; label: string }[] = [
 const ADMIN_ONLY_VIEWS = new Set<ViewType>(['drive']);
 
 export default function Header() {
-  const { view, setView, isAdmin, theme, toggleTheme } = useProjectContext();
-  const navItems = NAV_ITEMS;
+  const { view, setView, isAdmin } = useProjectContext();
 
   return (
     <div className="px-6 py-3 border-b border-line flex items-center gap-4 bg-surface">
@@ -47,40 +49,37 @@ export default function Header() {
 
       <div className="flex-1" />
 
-      {navItems.map(({ key, label }) => {
-        const locked = ADMIN_ONLY_VIEWS.has(key) && !isAdmin;
-        return (
-          <button
-            key={key}
-            onClick={() => !locked && setView(key)}
-            disabled={locked}
-            title={locked ? ADMIN_ONLY_TITLE : undefined}
-            className={`px-4 py-1.5 rounded-md border text-[13px] font-medium transition-all
-              ${locked ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}
-              ${view === key
-                ? 'bg-accent-soft border-accent-border text-accent-text'
-                : 'bg-transparent border-transparent text-ink-4 hover:bg-surface-2'
-              }`}
-          >
-            {locked ? `🔒 ${label}` : label}
-          </button>
-        );
-      })}
+      <nav className="flex items-center gap-1">
+        {NAV_ITEMS.map(({ key, label }) => {
+          const locked = ADMIN_ONLY_VIEWS.has(key) && !isAdmin;
+          const active = view === key;
+          return (
+            <button
+              key={key}
+              onClick={() => !locked && setView(key)}
+              disabled={locked}
+              title={locked ? ADMIN_ONLY_TITLE : undefined}
+              aria-current={active ? 'page' : undefined}
+              className={`px-3.5 py-1.5 rounded-md text-[13px] font-medium transition-colors
+                ${locked ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}
+                ${active
+                  ? 'bg-accent-soft text-accent-text'
+                  : 'text-ink-4 hover:bg-surface-2 hover:text-ink-2'
+                }`}
+            >
+              {locked ? `🔒 ${label}` : label}
+            </button>
+          );
+        })}
+      </nav>
 
-      <button
-        onClick={toggleTheme}
-        aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-        title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-        className="w-8 h-8 flex items-center justify-center rounded-md border border-line-strong text-ink-3 hover:bg-surface-2 hover:text-ink-1 transition-all"
-      >
-        <span className="text-base leading-none">{theme === 'dark' ? '☀' : '☾'}</span>
-      </button>
+      <ThemeMenu />
 
-      <div className="w-px h-6 bg-surface-3" />
+      <div className="w-px h-6 bg-line-strong" />
       <a
         href="/admin"
         title={isAdmin ? 'Admin' : ADMIN_ONLY_TITLE}
-        className="px-4 py-1.5 rounded-md border border-line-strong text-[13px] font-medium text-ink-4 hover:bg-surface-2 hover:text-ink-2 transition-all"
+        className="px-4 py-1.5 rounded-md border border-line-strong text-[13px] font-medium text-ink-4 hover:bg-surface-2 hover:text-ink-2 transition-colors"
       >
         {isAdmin ? 'Admin' : '🔒 Admin'}
       </a>

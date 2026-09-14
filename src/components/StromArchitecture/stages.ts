@@ -151,7 +151,7 @@ export const STAGES: StageDef[] = [
       howItWorks: [
         '`isCanonicalTarget(kind, target)` rejects LLM output that names a target outside the list',
         '`getTargetDefinition(kind, target)` returns the description, injected into Deep Dive prompts',
-        '`getTargetEntry(kind, target)` returns the full entry including bias hints, used in Goals prompt to disambiguate borderline cases',
+        '`getTargetEntry(kind, target)` returns the full entry including bias hints — not wired into any prompt yet (the Goals prompt only sees target names)',
         'TypeScript-only — no DB, no runtime config. Changes require a code deploy',
       ],
       failureModes: [
@@ -406,7 +406,7 @@ export const STAGES: StageDef[] = [
     row: 5, col: 1,
     icon: '🤖',
     name: 'Goals Extraction',
-    subtitle: 'Gemini 2.0 Flash',
+    subtitle: 'Gemini',
     source: 'src/lib/goals-analyzer.ts:158',
     promptKey: 'goals',
     trigger: {
@@ -423,7 +423,7 @@ export const STAGES: StageDef[] = [
       howItWorks: [
         'For each project: concat the text of all `success`-status docs (capped at ~30K)',
         'Substitute `{{PROJECT_INFO}}` and `{{DOCUMENT_TEXT}}` in the prompt template (`DEFAULT_GOALS_PROMPT` v4)',
-        'Call `generateContent` (Gemini 2.0 Flash) with `context=goals`',
+        'Call `generateContent` (Gemini, model set in config.json) with `context=goals`',
         'Parse the JSON response; pass to Sanitize stage',
         'Skip-condition: if `source_files` unchanged AND `prompt_version >= 4` → no LLM call (cached row stays)',
       ],
@@ -512,7 +512,7 @@ export const STAGES: StageDef[] = [
     row: 8, col: 1,
     icon: '🕸️',
     name: 'Impact Analysis',
-    subtitle: 'Gemini 2.0 Flash (batched 22/round)',
+    subtitle: 'Gemini (batched 22/round)',
     source: 'src/lib/impact-engine.ts:589 (runFullImpactAnalysis)',
     promptKey: 'impact',
     trigger: {

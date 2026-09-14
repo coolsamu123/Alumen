@@ -193,12 +193,12 @@ export default function EvidencePanel({ projectId, highlight = null, compact = f
           </div>
           {goals.sourceFiles.length > 0 && (
             <div className="mt-3 pt-3 border-t border-line">
-              <div className="text-[10px] uppercase tracking-wider text-ink-muted mb-1.5">
+              <div className="text-[11px] uppercase tracking-wider text-ink-muted mb-1.5">
                 Source files used by Goals analysis ({goals.sourceFiles.length})
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {goals.sourceFiles.map(f => (
-                  <span key={f} className="text-[10px] font-mono bg-surface-2/60 text-ink-4 px-1.5 py-0.5 rounded border border-line-strong/60">
+                  <span key={f} className="text-[11px] font-mono bg-surface-2/60 text-ink-4 px-1.5 py-0.5 rounded border border-line-strong/60">
                     {f}
                   </span>
                 ))}
@@ -229,7 +229,7 @@ export default function EvidencePanel({ projectId, highlight = null, compact = f
                   >
                     <span className="text-ink-4">{opened ? '▾' : '▸'}</span>
                     <span className="font-mono text-ink-3 truncate flex-1" title={doc.url}>{filename}</span>
-                    <span className="text-[10px] text-ink-muted shrink-0">
+                    <span className="text-[11px] text-ink-muted shrink-0">
                       {doc.fetchStatus === 'success' ? `${doc.fullLength} chars` : doc.fetchStatus}
                     </span>
                   </button>
@@ -372,9 +372,11 @@ export function DeepDiveButton({ projectId, kind, target, compact, hasCachedResu
   // motion so the LLM call feels intentional, not buried.
   const triggerBg =
     state === 'idle'    ? 'bg-gradient-to-r from-purple-700 via-fuchsia-600 to-cyan-600 hover:from-purple-600 hover:via-fuchsia-500 hover:to-cyan-500' :
-    state === 'loading' ? 'bg-gradient-to-r from-purple-800 via-fuchsia-700 to-cyan-700 animate-pulse' :
-    state === 'done'    ? 'bg-gradient-to-r from-emerald-700/60 to-emerald-800/60 hover:from-emerald-600/60 hover:to-emerald-700/60' :
-                          'bg-gradient-to-r from-red-800/70 to-red-900/70 hover:from-red-700/70 hover:to-red-800/70';
+    // Only 500–700 stops here: they carry white text, and the light theme
+    // mirrors 800+ into pale tints (tailwind.config.ts).
+    state === 'loading' ? 'bg-gradient-to-r from-purple-700 via-fuchsia-700 to-cyan-700 animate-pulse' :
+    state === 'done'    ? 'bg-gradient-to-r from-emerald-700 to-emerald-600 hover:from-emerald-600 hover:to-emerald-500' :
+                          'bg-gradient-to-r from-red-700 to-red-600 hover:from-red-600 hover:to-red-500';
   const triggerGlow =
     state === 'idle'    ? 'shadow-[0_0_18px_rgba(168,85,247,0.45)] hover:shadow-[0_0_24px_rgba(168,85,247,0.7)]' :
     state === 'loading' ? 'shadow-[0_0_18px_rgba(168,85,247,0.45)]' :
@@ -397,13 +399,13 @@ export function DeepDiveButton({ projectId, kind, target, compact, hasCachedResu
         <span className="flex items-center gap-2 min-w-0">
           <span className="text-base shrink-0 inline-block group-hover:scale-110 transition-transform">🔬</span>
           <span
-            className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase shrink-0 tracking-wider bg-black/30 text-white/95 border border-white/20"
+            className="px-1.5 py-0.5 rounded text-[11px] font-bold uppercase shrink-0 tracking-wider bg-black/30 text-white/95 border border-white/20"
           >
             {kindLabel}
           </span>
           <span className="truncate text-white/95 font-bold" title={target}>{target}</span>
         </span>
-        <span className="shrink-0 text-[10px] uppercase tracking-wider text-white/85 font-bold">
+        <span className="shrink-0 text-[11px] uppercase tracking-wider text-white/85 font-bold">
           {state === 'idle' && 'Deep dive →'}
           {state === 'loading' && `${elapsed}s …`}
           {state === 'done' && (response?.cached ? '✓ Cached · toggle' : '✓ Done · toggle')}
@@ -426,7 +428,7 @@ export function DeepDiveButton({ projectId, kind, target, compact, hasCachedResu
                 ? 'Regenerate will be enabled once a deep dive has been generated and cached.'
                 : 'Force a fresh LLM run and overwrite the cached result.'
           }
-          className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${
+          className={`text-[11px] font-bold uppercase tracking-wider transition-colors ${
             !isAdmin || !cacheExists || state === 'loading'
               ? 'text-ink-muted/60 cursor-not-allowed'
               : 'text-fuchsia-300 hover:text-fuchsia-200 cursor-pointer'
@@ -449,7 +451,7 @@ export function DeepDiveButton({ projectId, kind, target, compact, hasCachedResu
           {state === 'done' && response && (
             <>
               <DeepDiveBody response={response} compact={compact} />
-              <div className="text-[10px] text-ink-muted mt-3 pt-2 border-t border-line font-mono">
+              <div className="text-[11px] text-ink-muted mt-3 pt-2 border-t border-line font-mono">
                 {response.llmProvider}/{response.llmModel} · {response.durationMs ? `${(response.durationMs / 1000).toFixed(1)}s` : '—'} · generated {response.generatedAt.slice(0, 10)}
               </div>
             </>
@@ -584,7 +586,7 @@ function Field({ label, value, color, truncate }: { label: string; value: string
 function Para({ label, body, bodyCls }: { label: string; body: string; bodyCls: string }) {
   return (
     <div className="mb-2 last:mb-0">
-      <div className="text-[10px] uppercase tracking-wider text-ink-muted mb-0.5">{label}</div>
+      <div className="text-[11px] uppercase tracking-wider text-ink-muted mb-0.5">{label}</div>
       <div className={`${bodyCls} text-ink-3 leading-relaxed whitespace-pre-wrap`}>{body}</div>
     </div>
   );
@@ -614,7 +616,7 @@ function ExtLink({ href, label }: { href: string; label: string }) {
       target="_blank"
       rel="noopener noreferrer"
       onClick={e => e.stopPropagation()}
-      className="text-[10px] px-2 py-0.5 rounded bg-accent-soft text-accent-text border border-accent-border/50 hover:bg-accent-soft transition-colors"
+      className="text-[11px] px-2 py-0.5 rounded bg-accent-soft text-accent-text border border-accent-border/50 hover:bg-accent-soft transition-colors"
     >
       ↗ {label}
     </a>

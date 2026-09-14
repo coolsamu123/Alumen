@@ -232,7 +232,7 @@ function buildPrompt(args: {
     `companion project ${target}`;
   const kindHelper =
     kind === 'gio' ? 'a global infrastructure service line that the project depends on (e.g. Cloud Services, Security & Compliance, User Workplace, Site Infrastructure, Command Center)' :
-    kind === 'dds' ? 'a Digital & Data Solutions organisational entity affected by the project (geographic zone, business division, or functional app group)' :
+    kind === 'dds' ? 'a Digital Delivery Services (DDS) organisational entity affected by the project (geographic zone, business division, or functional app group)' :
     'another Air Liquide IT project that shares a platform, vendor, timeline dependency, or replaces/extends this one';
 
   // #3 — Canonical definition of the specific target, if the catalog has one.

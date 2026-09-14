@@ -6,10 +6,10 @@ import { getDDSColor, ADMIN_ONLY_TITLE } from '@/lib/constants';
 import LoadingState from './LoadingState';
 import EvidencePanel from './EvidencePanel';
 import type { ProjectImpact, ImpactAnalysisStatus } from '@/lib/types';
-import { SEVERITY_COLORS } from '@/lib/constants';
+import { SEVERITY_COLORS, categoryText, severityStroke } from '@/lib/constants';
 
 export default function ImpactView() {
-  const { projects, filtered: globalFilteredProjects, filters, openUniverse, isAdmin } = useProjectContext();
+  const { projects, filtered: globalFilteredProjects, filters, openUniverse, isAdmin, theme } = useProjectContext();
   const [impacts, setImpacts] = useState<ProjectImpact[]>([]);
   const [status, setStatus] = useState<ImpactAnalysisStatus | null>(null);
   const [stats, setStats] = useState<{ total: number; bySeverity: Record<string, number>; byType: Record<string, number>; byDirection: Record<string, number> } | null>(null);
@@ -233,7 +233,7 @@ export default function ImpactView() {
             </div>
             {Object.entries(stats.bySeverity).sort().map(([sev, count]) => (
               <div key={sev} className="bg-surface-2 rounded-lg px-4 py-2">
-                <div className="text-xs" style={{ color: SEVERITY_COLORS[sev] || '#6b7280' }}>
+                <div className="text-xs" style={{ color: categoryText(SEVERITY_COLORS[sev] || '#6b7280') }}>
                   {sev.charAt(0).toUpperCase() + sev.slice(1)}
                 </div>
                 <div className="text-xl font-bold text-ink-1 font-mono">{count}</div>
@@ -289,7 +289,7 @@ export default function ImpactView() {
         return (
           <div className="space-y-3">
             {limited.map(({ pid, meta, gio, dds, severity }) => {
-              const sevColor = SEVERITY_COLORS[severity] || '#6b7280';
+              const sevColor = severityStroke(severity, theme);
               const projectName = meta?.name || pid;
               return (
                 <div key={pid}
@@ -302,11 +302,11 @@ export default function ImpactView() {
                   <div className="flex items-start justify-between gap-3 mb-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <div className="w-2.5 h-2.5 rounded-full shrink-0 mt-0.5" style={{ background: sevColor }} />
-                      <span className="text-[10px] font-mono shrink-0 text-ink-4">{pid}</span>
+                      <span className="text-[11px] font-mono shrink-0 text-ink-4">{pid}</span>
                       <span className="text-[13px] font-semibold text-ink-1 truncate" title={projectName}>{projectName}</span>
                     </div>
-                    <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold shrink-0"
-                      style={{ background: `${sevColor}22`, color: `color-mix(in srgb, ${sevColor} 70%, var(--ink-1))` }}>
+                    <span className="inline-block px-1.5 py-0.5 rounded text-[11px] font-semibold shrink-0"
+                      style={{ background: `${sevColor}22`, color: categoryText(sevColor) }}>
                       {severity}
                     </span>
                   </div>
@@ -316,7 +316,7 @@ export default function ImpactView() {
                     {gio?.gioServices && gio.gioServices.length > 0 && (
                       <div className="flex items-center gap-1.5 flex-wrap justify-end">
                         {gio.gioServices.map(svc => (
-                          <span key={`gio-${svc}`} className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-900/30 text-purple-300 border border-purple-800/50">
+                          <span key={`gio-${svc}`} className="inline-block px-1.5 py-0.5 rounded text-[11px] font-semibold bg-purple-900/30 text-purple-300 border border-purple-800/50">
                             {svc}
                           </span>
                         ))}
@@ -327,8 +327,8 @@ export default function ImpactView() {
                         {dds.ddsEntities.map(ent => {
                           const c = getDDSColor(ent);
                           return (
-                            <span key={`dds-${ent}`} className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold border"
-                              style={{ background: `${c}22`, color: `color-mix(in srgb, ${c} 70%, var(--ink-1))`, borderColor: `${c}55` }}>
+                            <span key={`dds-${ent}`} className="inline-block px-1.5 py-0.5 rounded text-[11px] font-semibold border"
+                              style={{ background: `${c}22`, color: categoryText(c), borderColor: `${c}55` }}>
                               {ent}
                             </span>
                           );
@@ -341,13 +341,13 @@ export default function ImpactView() {
                   <div className="pl-[18px] space-y-1.5">
                     {gio?.explanation && (
                       <div className="text-xs text-ink-3 leading-relaxed">
-                        <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wide mr-1.5">GIO</span>
+                        <span className="text-[11px] font-bold text-purple-400 uppercase tracking-wide mr-1.5">GIO</span>
                         {gio.explanation}
                       </div>
                     )}
                     {dds?.explanation && (
                       <div className="text-xs text-ink-3 leading-relaxed">
-                        <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wide mr-1.5">DDS</span>
+                        <span className="text-[11px] font-bold text-cyan-400 uppercase tracking-wide mr-1.5">DDS</span>
                         {dds.explanation}
                       </div>
                     )}
@@ -360,12 +360,12 @@ export default function ImpactView() {
                         e.stopPropagation();
                         setExpandedEvidenceId(prev => prev === pid ? null : pid);
                       }}
-                      className="text-[10px] uppercase tracking-wider text-ink-4 hover:text-accent-text transition-colors flex items-center gap-1"
+                      className="text-[11px] uppercase tracking-wider text-ink-4 hover:text-accent-text transition-colors flex items-center gap-1"
                     >
                       <span>{expandedEvidenceId === pid ? '▾' : '▸'}</span>
                       <span>Evidence</span>
                     </button>
-                    <span className="text-[10px] text-ink-faint">
+                    <span className="text-[11px] text-ink-faint">
                       · click anywhere else to open Project Universe
                     </span>
                   </div>

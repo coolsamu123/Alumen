@@ -17,7 +17,7 @@ FREE-FORM TEXT FIELDS:
 4. **security_impacts**: Security impacts including DRMT (Digital Risk Management Toolkit) grade if mentioned, cybersecurity risks, data protection considerations, compliance requirements
 5. **regional_impacts**: Regional impacts — which geographies/regions are affected, deployment scope, local vs global rollout
 6. **ia_embedded**: Whether AI/IA (Artificial Intelligence) is embedded in the project — any ML models, AI features, generative AI, automation, intelligent processing
-7. **gio_sl_dds_impacts**: Direct impacts with GIO Service Lines and/or DDS (Digital & Data Solutions) — which service lines are involved, dependencies, touchpoints
+7. **gio_sl_dds_impacts**: Direct impacts with GIO Service Lines and/or DDS (Digital Delivery Services) — which service lines are involved, dependencies, touchpoints
 8. **dds_gio_workload**: Expected DDS / GIO SL workload — effort estimation, FTE required, resource allocation, support needs
 9. **business_apps_cis**: Impacts with Business Applications and Configuration Items (CIs) — which applications/systems are affected, integrations, decommissions, new CIs
 
@@ -104,12 +104,12 @@ STRUCTURED CROSS-PROJECT SIGNAL (Onda 2 refactor):
       "evidence_quote": "verbatim span from that file, ≤200 chars, first sentence of supporting paragraph",
       "confidence": "stated" | "inferred"
     }
-    Role guidance:
-    - 'primary_provider' = this target PROVIDES capability/governance/infrastructure that this project consumes or builds upon
-    - 'downstream_consumer' = this project produces something that the target consumes
-    - 'regional_executor' = this target (a region) is responsible for executing the rollout
-    - 'risk_owner' = this target owns the risk/compliance posture this project affects
-    - 'blocked_by' = this target's state/decision blocks this project's progress
+    Role guidance — the role always describes what the TARGET does for this project, never the other way round:
+    - 'primary_provider' = the TARGET provides the capability, infrastructure or governance that this project consumes or builds upon
+    - 'downstream_consumer' = the TARGET consumes something this project produces (a service, platform, data feed or tool delivered by the project)
+    - 'regional_executor' = the TARGET (a region) is responsible for executing the rollout
+    - 'risk_owner' = the TARGET owns the risk/compliance posture this project affects
+    - 'blocked_by' = the TARGET's state or decision blocks this project's progress
     Rules:
     - target MUST exactly match one of the canonical names. If the document mentions something close (e.g. "Cyber Sec"), map it to the canonical "Security & Compliance"; if no clear mapping exists, do not invent.
     - Every claim MUST have a verbatim evidence_quote (no paraphrase). If you cannot back the claim with a quote, leave it out.
@@ -161,7 +161,7 @@ DOCUMENT TEXT:
 {{DOCUMENT_TEXT}}`;
 
 export const DEFAULT_IMPACT_PROMPT = `You are an IT portfolio analyst for Air Liquide.
-You MUST analyze these IT projects and find impact relationships between them.
+Analyze the IT projects below and identify the PROJECT-TO-PROJECT impact relationships that the material actually supports.
 
 Look for:
 - Projects using the same technology, platform, or vendor
@@ -170,13 +170,12 @@ Look for:
 - Projects competing for the same resources or budget
 - Projects that need coordination due to overlapping scope
 
-CRITICAL - GIO SERVICES DEPENDENCY:
-Global Infrastructure Operations (GIO) provides these key services:
-1. Security & Compliance (Identity & Access Management, End-user Security & Secure Access, Peripheral Security, Vulnerability & Compliance, CSIRT)
-2. Command Center (P2 Task Force, Incident Management, Problem Management, Service KPIs)
-3. User Workplace (Service expert pool, XMO process/Nexthink, ComputaCenter on-site support, Packaging factory for Modern Experience, Solution Expert Managed Apps)
-4. Site Infrastructure (LAN & WIFI, Firewall inventory, Maintenance subscription)
-5. Cloud Services (G&SM/Service Catalog, E&I S/4 HANA Upgrade, T&O Problem management, APAC Citrix Developer workspace, SAP Basis operations)
+GIO SERVICE LINES (reference — what each one covers at Air Liquide):
+1. Security & Compliance — identity & access (CARM, privileged access management), secure web gateway / SSE and remote access (Zscaler ZPA, replacing the Ivanti VPN), cloud security posture, application protection (WAAP), server hardening & compliance, PKI and certificates, vulnerability management, security architecture, CSIRT
+2. Command Center — 24/7 operations hub: major incident management, observability & monitoring, service orchestration (SIAM), CMDB and operational data quality, AIOps and automation
+3. User Workplace — the employee digital environment: PCs, mobile devices, video conferencing, Google Workspace, enterprise app stores, on-site and remote support
+4. Site Infrastructure (formerly GIO Network & Telecom) — LAN, WAN, Wi-Fi, Cisco ISE, on-site and branch firewalls, local compute across ~3,000 sites
+5. Cloud Services — multi-cloud platform (AWS, GCP), landing zones, FinOps, cloud service-account policies
 
 GIO / DDS pseudo-target rows are MATERIALISED automatically from each project's
 "Atomic impact claims" (see the ATOMIC IMPACT CLAIMS section below). You MUST
@@ -200,7 +199,7 @@ Each project's block may include a "Pre-extracted project relations (from Goals)
 These are GROUNDED in verbatim quotes. For each such relation, you MUST emit a matching impact row with:
   - source = current project_id
   - target = the target PRJ id
-  - impact_type derived from kind (shares_platform → "platform_shared"; shares_vendor → "vendor_shared"; blocked_by/blocking → "timeline_blocking"; replaces/predecessor/successor → "technology_dependency"; parallel → "requires_coordination"; extends → "integration_required")
+  - impact_type derived from kind (shares_platform → "platform_shared"; shares_vendor → "vendor_shared"; blocked_by/blocking → "timeline_blocking"; replaces/predecessor/successor → "technology_dependency"; parallel → "organizational"; extends → "integration_required")
   - direction derived from kind (blocked_by/predecessor → "depends_on"; blocking/successor → "blocks"; replaces → "supersedes"; parallel/shares_* → "requires_coordination"; extends → "depends_on")
   - severity = "high" if confidence=stated AND kind is in {blocked_by, blocking, replaces}; else "low"
   - explanation = reuse the evidence_quote verbatim if it's a self-contained sentence; otherwise compose a 1-line summary
@@ -225,22 +224,32 @@ For every impact row you emit, populate a "citations" array that grounds the exp
 PROJECTS:
 {{PROJECTS_LIST}}
 
-IMPORTANT: You MUST return a JSON array. Find at least the obvious connections.
+OUTPUT
+Return ONLY a JSON array. Return [] when no pair of projects meets the bar — an empty array is a valid answer; do not add weak or speculative rows to fill it.
 Each object must have these exact fields:
 - "source": project ID (e.g. "PRJ0004517")
-- "target": project ID OR "GIO_SERVICES" OR "DDS_IMPACTS"
-- "impact_type": one of [technology_dependency, infrastructure_shared, data_dependency, timeline_blocking, resource_contention, organizational, platform_shared, vendor_shared, integration_required, security_dependency, regional_rollout]
+- "target": another project ID from the PROJECTS list. Never "GIO_SERVICES" or "DDS_IMPACTS" — those rows are produced automatically and any you emit are discarded.
+- "impact_type": one of
+    technology_dependency — one project needs a technology, system or component that the other delivers, changes or retires
+    infrastructure_shared — both run on the same underlying infrastructure (network, hosting, landing zone, datacenter)
+    platform_shared — both build on the same application or data platform (e.g. the same SAP instance, Salesforce org, data platform)
+    vendor_shared — both depend on the same external vendor or integrator in a way that needs coordination
+    data_dependency — one project consumes data that the other produces, owns or migrates
+    integration_required — the two systems must be integrated or interfaced
+    security_dependency — one project's security posture depends on the other (identity, access, network security)
+    timeline_blocking — one project's schedule gates the other's
+    resource_contention — both compete for the same scarce team, budget or change window
+    organizational — overlapping scope, parallel efforts or shared governance that require the teams to coordinate
+    regional_rollout — both roll out to the same region or sites and must be sequenced there
 - "direction": one of [blocks, enables, depends_on, supersedes, shares_resource, feeds_data, competes_with, requires_coordination]
 - "severity": one of [high, low]
-- "explanation": 1-2 sentences why
-- "gio_services": array of strings — only populated when target="GIO_SERVICES", else []
-- "dds_entities": array of strings — only populated when target="DDS_IMPACTS", else []
+- "explanation": 1-2 sentences why, specific to these two projects
 - "citations": array of { "doc_url", "snippet" } as specified above; [] when no document literally backs the claim
 
-Return ONLY a JSON array. Examples:
+Example (shape only — do not copy the content):
 [
-  {"source":"PRJ0001234","target":"GIO_SERVICES","impact_type":"infrastructure_shared","direction":"requires_coordination","severity":"high","explanation":"Project requires AWS Landing Zone and CARM/OKTA integration.","gio_services":["Cloud Services","Security & Compliance"],"dds_entities":[],"citations":[{"doc_url":"https://drive.google.com/drive/folders/ABC123","snippet":"The platform will be deployed on the AWS Landing Zone with CARM/OKTA federation."}]},
-  {"source":"PRJ0001234","target":"DDS_IMPACTS","impact_type":"regional_rollout","direction":"requires_coordination","severity":"high","explanation":"Phase-2 rollout covers Americas and APAC; DDS Europe owns the IT zone for go-live and will absorb 40 FTE-days of change management.","gio_services":[],"dds_entities":["Americas","APAC","Europe"],"citations":[{"doc_url":"https://drive.google.com/drive/folders/ABC123","snippet":"Phase-2 rollout covers Americas and APAC sites starting Q3."}]}
+  {"source":"PRJ0001234","target":"PRJ0005678","impact_type":"security_dependency","direction":"depends_on","severity":"high","explanation":"PRJ0001234 onboards its privileged accounts to the PAM platform that PRJ0005678 is still deploying, so its go-live waits on that rollout.","citations":[{"doc_url":"https://drive.google.com/file/d/EXAMPLE/view","snippet":"Privileged accounts will be onboarded to the new PAM solution once it is available in production."}]},
+  {"source":"PRJ0001234","target":"PRJ0009012","impact_type":"platform_shared","direction":"requires_coordination","severity":"low","explanation":"Both projects extend the same Salesforce org and need a shared release calendar.","citations":[]}
 ]`;
 
 export interface PromptsConfig {

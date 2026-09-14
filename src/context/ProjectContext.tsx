@@ -67,12 +67,22 @@ interface ProjectContextType {
   // the server-side 403 is the actual protection.
   isAdmin: boolean;
 
-  // Color theme — available to every role. Persisted in
-  // localStorage; initial value comes from the inline anti-flash script in
-  // layout.tsx so React hydration matches the painted DOM.
-  theme: 'light' | 'dark';
-  setTheme: (t: 'light' | 'dark') => void;
-  toggleTheme: () => void;
+  // Color theme — available to every role. `themePreference` is what the user
+  // picked ('system' follows the OS and is stored as nothing); `theme` is what
+  // is actually painted. The initial value comes from the inline anti-flash
+  // script in layout.tsx so React hydration matches the painted DOM.
+  theme: ThemeName;
+  themePreference: ThemePreference;
+  setThemePreference: (p: ThemePreference) => void;
+}
+
+export type ThemeName = 'light' | 'dark' | 'dim';
+export type ThemePreference = ThemeName | 'system';
+
+const THEME_STORAGE_KEY = 'strom-theme';
+
+function isThemeName(v: string | null): v is ThemeName {
+  return v === 'light' || v === 'dark' || v === 'dim';
 }
 
 const ProjectContext = createContext<ProjectContextType | null>(null);
@@ -117,19 +127,43 @@ export function ProjectProvider({
 
   // Theme is set pre-hydration by the inline script in layout.tsx, so we read
   // it from <html data-theme> on mount instead of guessing and risking a flash.
-  const [theme, setThemeState] = useState<'light' | 'dark'>('dark');
+  // The preference stays null until localStorage has been read: starting at
+  // 'system' would let the OS listener below repaint over a stored choice.
+  const [theme, setThemeState] = useState<ThemeName>('dark');
+  const [themePreference, setThemePreferenceState] = useState<ThemePreference | null>(null);
   useEffect(() => {
     const current = document.documentElement.getAttribute('data-theme');
-    if (current === 'light' || current === 'dark') setThemeState(current);
+    if (isThemeName(current)) setThemeState(current);
+    let stored: string | null = null;
+    try { stored = localStorage.getItem(THEME_STORAGE_KEY); } catch { /* private mode */ }
+    setThemePreferenceState(isThemeName(stored) ? stored : 'system');
   }, []);
-  const setTheme = useCallback((t: 'light' | 'dark') => {
-    setThemeState(t);
-    document.documentElement.setAttribute('data-theme', t);
-    try { localStorage.setItem('strom-theme', t); } catch { /* private mode */ }
+
+  // While following the OS, repaint when the OS switches.
+  useEffect(() => {
+    if (themePreference !== 'system') return;
+    const mq = window.matchMedia('(prefers-color-scheme: light)');
+    const apply = () => {
+      const t: ThemeName = mq.matches ? 'light' : 'dark';
+      setThemeState(t);
+      document.documentElement.setAttribute('data-theme', t);
+    };
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, [themePreference]);
+
+  const setThemePreference = useCallback((p: ThemePreference) => {
+    setThemePreferenceState(p);
+    try {
+      if (p === 'system') localStorage.removeItem(THEME_STORAGE_KEY);
+      else localStorage.setItem(THEME_STORAGE_KEY, p);
+    } catch { /* private mode */ }
+    if (p !== 'system') {
+      setThemeState(p);
+      document.documentElement.setAttribute('data-theme', p);
+    }
   }, []);
-  const toggleTheme = useCallback(() => {
-    setTheme(theme === 'dark' ? 'light' : 'dark');
-  }, [theme, setTheme]);
 
   // Initial fetch of impacts + which projects have successful goals.
   //
@@ -319,7 +353,7 @@ export function ProjectProvider({
       filtered, filteredWithSignal, uploadFile, refreshProjects,
       analyzeProjects, analyzeWithDocs, analysisResults,
       user, role, isAdmin,
-      theme, setTheme, toggleTheme,
+      theme, themePreference: themePreference ?? 'system', setThemePreference,
     }}>
       {children}
     </ProjectContext.Provider>

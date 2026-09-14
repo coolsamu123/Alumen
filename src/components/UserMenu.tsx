@@ -76,7 +76,7 @@ export default function UserMenu() {
             <div className="text-[13px] font-semibold text-ink-1 truncate">{user.name || '—'}</div>
             <div className="text-[11px] text-ink-muted truncate mt-0.5">{user.email}</div>
             <span
-              className={`inline-block mt-2 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+              className={`inline-block mt-2 px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider ${
                 user.role === 'admin'
                   ? 'bg-accent-soft text-accent-text border border-accent-border'
                   : 'bg-surface-2 text-ink-4 border border-line'

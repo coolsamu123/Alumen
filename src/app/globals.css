@@ -5,67 +5,96 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
 
 /*
- * Theme tokens. Two themes ride on the same variable names — components consume
+ * Theme tokens. Three themes ride on the same variable names — components consume
  * the variables (via Tailwind classes like `bg-surface-1`, `text-ink-muted`)
- * and never reach for raw Tailwind grays or hex literals. Adding a third theme
- * later only requires another [data-theme="…"] block.
+ * and never reach for hex literals. Adding a theme only requires another
+ * [data-theme="…"] block that redefines every token below.
+ *
+ *   dark   Graphite — near-neutral graphite instead of saturated navy, #eceef2
+ *          instead of pure white text. The default.
+ *   light  Cool neutrals biased toward the accent; white cards on a sunken ground.
+ *   dim    Mid-contrast dark for long sessions and projectors.
  *
  *   ink-1  highest contrast (titles)
  *   ink-2  high contrast (subtitles)
  *   ink-3  body text
  *   ink-4  secondary text
- *   ink-muted  labels, hints
- *   ink-faint  very subtle metadata
+ *   ink-muted  labels, hints (≥ 4.5:1 on cards in every theme)
+ *   ink-faint  very subtle metadata — decorative, not for sentences
  *
- *   surface-0  body background
- *   surface    header / toolbar
- *   surface-1  cards
- *   surface-2  elevated cards, hover
- *   surface-3  buttons, chips
+ *   bg            body background
+ *   surface       header / toolbar
+ *   surface-1     cards
+ *   surface-2     elevated cards, hover
+ *   surface-3     buttons, chips
  *   surface-deep  inputs, inset
+ *   surface-sunken expanded regions that hold cards (so cards lift off them)
  *
  *   border        default soft border
  *   border-strong stronger separator
  *
  *   accent        primary blue (solid)
  *   accent-hover  hover state for accent solid
- *   accent-fg     text on top of accent-solid
+ *   accent-fg     text on top of accent-solid — never on accent-soft
  *   accent-soft   soft accent fill (badges, selected)
  *   accent-text   accent-colored text on neutral bg
  *   accent-text-2 secondary accent text
  *   accent-border focus / selected border
+ *
+ *   link / link-hover   anything clickable that reads as text
+ *   cat-mix             how much of a category color (DDS, gate, severity) survives
+ *                       when it colors text — see categoryText() in constants.ts
+ *
+ *   tone-{tech,vendor,data,dds,gio,neutral,ok,warn,bad,info}-{fg,bg,bd}
+ *                       one fg/bg/border triple per tag family — see Tag.tsx
  */
 :root,
 :root[data-theme="dark"] {
-  --bg: #0a0e1a;
-  --surface: #0d1117;
-  --surface-1: #111827;
-  --surface-2: #1f2937;
-  --surface-3: #374151;
-  --surface-deep: #030712;
+  --bg: #0e1014;
+  --surface: #121418;
+  --surface-1: #16191e;
+  --surface-2: #1d2027;
+  --surface-3: #272b33;
+  --surface-deep: #0b0d10;
+  --surface-sunken: #121418;
 
-  --ink-1: #f3f4f6;
-  --ink-2: #e5e7eb;
-  --ink-3: #d1d5db;
-  --ink-4: #9ca3af;
-  --ink-muted: #6b7280;
-  --ink-faint: #4b5563;
+  --ink-1: #eceef2;
+  --ink-2: #d9dde4;
+  --ink-3: #b4bac5;
+  --ink-4: #9098a6;
+  --ink-muted: #8a91a0;
+  --ink-faint: #6b7280;
 
-  --border: #1f2937;
-  --border-strong: #374151;
-  --border-faint: #111827;
+  --border: #23272f;
+  --border-strong: #2f343d;
+  --border-faint: #191c21;
 
   --accent: #2563eb;
   --accent-hover: #1d4ed8;
   --accent-fg: #ffffff;
-  --accent-soft: rgba(59, 130, 246, 0.18);
+  --accent-soft: rgba(79, 124, 255, 0.14);
   --accent-text: #93c5fd;
-  --accent-text-2: #60a5fa;
+  --accent-text-2: #7aa7fb;
   --accent-border: #3b82f6;
 
-  --scrollbar-track: #111827;
-  --scrollbar-thumb: #4b5563;
-  --scrollbar-thumb-hover: #6b7280;
+  --link: #93c5fd;
+  --link-hover: #bfdbfe;
+  --cat-mix: 60%;
+
+  --tone-tech-fg: #9db8ff;    --tone-tech-bg: rgba(79, 124, 255, 0.14);   --tone-tech-bd: rgba(79, 124, 255, 0.30);
+  --tone-vendor-fg: #c4b5fd;  --tone-vendor-bg: rgba(167, 139, 250, 0.14); --tone-vendor-bd: rgba(167, 139, 250, 0.30);
+  --tone-data-fg: #fcd34d;    --tone-data-bg: rgba(245, 158, 11, 0.14);   --tone-data-bd: rgba(245, 158, 11, 0.30);
+  --tone-dds-fg: #6ee7b7;     --tone-dds-bg: rgba(16, 185, 129, 0.14);    --tone-dds-bd: rgba(16, 185, 129, 0.30);
+  --tone-gio-fg: #67e8f9;     --tone-gio-bg: rgba(6, 182, 212, 0.14);     --tone-gio-bd: rgba(6, 182, 212, 0.30);
+  --tone-neutral-fg: #c3c9d3; --tone-neutral-bg: #1d2027;                 --tone-neutral-bd: #2f343d;
+  --tone-ok-fg: #86efac;      --tone-ok-bg: rgba(34, 197, 94, 0.14);      --tone-ok-bd: rgba(34, 197, 94, 0.30);
+  --tone-warn-fg: #fbbf24;    --tone-warn-bg: rgba(251, 191, 36, 0.12);   --tone-warn-bd: rgba(251, 191, 36, 0.30);
+  --tone-bad-fg: #fca5a5;     --tone-bad-bg: rgba(239, 68, 68, 0.14);     --tone-bad-bd: rgba(239, 68, 68, 0.30);
+  --tone-info-fg: #7dd3fc;    --tone-info-bg: rgba(14, 165, 233, 0.14);   --tone-info-bd: rgba(14, 165, 233, 0.30);
+
+  --scrollbar-track: #121418;
+  --scrollbar-thumb: #2f343d;
+  --scrollbar-thumb-hover: #454b56;
 
   --shadow-card: 0 0 20px rgba(99, 102, 241, 0.08);
 
@@ -73,39 +102,107 @@
 }
 
 :root[data-theme="light"] {
-  --bg: #f5f7fa;
+  --bg: #f4f6f8;
   --surface: #ffffff;
   --surface-1: #ffffff;
   --surface-2: #eef1f5;
-  --surface-3: #dde2e8;
-  --surface-deep: #f8fafc;
+  --surface-3: #e3e7ed;
+  --surface-deep: #f8f9fb;
+  --surface-sunken: #f8f9fb;
 
-  --ink-1: #0f172a;
-  --ink-2: #1e293b;
-  --ink-3: #334155;
-  --ink-4: #475569;
-  --ink-muted: #64748b;
-  --ink-faint: #94a3b8;
+  --ink-1: #0e1522;
+  --ink-2: #1c2533;
+  --ink-3: #3a4556;
+  --ink-4: #5a6577;
+  --ink-muted: #687282;
+  --ink-faint: #8a93a1;
 
-  --border: #e2e8f0;
-  --border-strong: #cbd5e1;
-  --border-faint: #eef2f6;
+  --border: #e3e7ec;
+  --border-strong: #d0d6de;
+  --border-faint: #eef1f4;
 
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
+  --accent: #2356d8;
+  --accent-hover: #1c46b5;
   --accent-fg: #ffffff;
-  --accent-soft: rgba(37, 99, 235, 0.10);
-  --accent-text: #1d4ed8;
-  --accent-text-2: #2563eb;
-  --accent-border: #3b82f6;
+  --accent-soft: #eef3fe;
+  --accent-text: #1f4fc4;
+  --accent-text-2: #2356d8;
+  --accent-border: #5b85e8;
 
-  --scrollbar-track: #eef2f6;
-  --scrollbar-thumb: #cbd5e1;
-  --scrollbar-thumb-hover: #94a3b8;
+  --link: #1f4fc4;
+  --link-hover: #163b96;
+  --cat-mix: 45%;
+
+  --tone-tech-fg: #1d4ed8;    --tone-tech-bg: #eff4ff;    --tone-tech-bd: #c7d7fe;
+  --tone-vendor-fg: #6d28d9;  --tone-vendor-bg: #f5f3ff;  --tone-vendor-bd: #ddd6fe;
+  --tone-data-fg: #92400e;    --tone-data-bg: #fffbeb;    --tone-data-bd: #fde68a;
+  --tone-dds-fg: #047857;     --tone-dds-bg: #ecfdf5;     --tone-dds-bd: #a7f3d0;
+  --tone-gio-fg: #0e7490;     --tone-gio-bg: #ecfeff;     --tone-gio-bd: #a5f3fc;
+  --tone-neutral-fg: #334155; --tone-neutral-bg: #f1f5f9; --tone-neutral-bd: #e2e8f0;
+  --tone-ok-fg: #15803d;      --tone-ok-bg: #f0fdf4;      --tone-ok-bd: #bbf7d0;
+  --tone-warn-fg: #b45309;    --tone-warn-bg: #fffbeb;    --tone-warn-bd: #fcd34d;
+  --tone-bad-fg: #b91c1c;     --tone-bad-bg: #fef2f2;     --tone-bad-bd: #fecaca;
+  --tone-info-fg: #0369a1;    --tone-info-bg: #f0f9ff;    --tone-info-bd: #bae6fd;
+
+  --scrollbar-track: #eef1f4;
+  --scrollbar-thumb: #d0d6de;
+  --scrollbar-thumb-hover: #8a93a1;
 
   --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.04);
 
   color-scheme: light;
+}
+
+:root[data-theme="dim"] {
+  --bg: #1c2128;
+  --surface: #22272e;
+  --surface-1: #2a3039;
+  --surface-2: #323944;
+  --surface-3: #3d4550;
+  --surface-deep: #1c2128;
+  --surface-sunken: #22272e;
+
+  --ink-1: #e3e8ee;
+  --ink-2: #cdd5de;
+  --ink-3: #adbac7;
+  --ink-4: #9fabb8;
+  --ink-muted: #909dab;
+  --ink-faint: #768390;
+
+  --border: #373e47;
+  --border-strong: #444c56;
+  --border-faint: #2d333b;
+
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(74, 130, 240, 0.18);
+  --accent-text: #8ab4f8;
+  --accent-text-2: #79a6f6;
+  --accent-border: #4a82f0;
+
+  --link: #8ab4f8;
+  --link-hover: #b3cdfb;
+  --cat-mix: 40%;
+
+  --tone-tech-fg: #9db8ff;    --tone-tech-bg: rgba(79, 124, 255, 0.16);   --tone-tech-bd: rgba(79, 124, 255, 0.32);
+  --tone-vendor-fg: #c4b5fd;  --tone-vendor-bg: rgba(167, 139, 250, 0.16); --tone-vendor-bd: rgba(167, 139, 250, 0.32);
+  --tone-data-fg: #fcd34d;    --tone-data-bg: rgba(245, 158, 11, 0.16);   --tone-data-bd: rgba(245, 158, 11, 0.32);
+  --tone-dds-fg: #6ee7b7;     --tone-dds-bg: rgba(16, 185, 129, 0.16);    --tone-dds-bd: rgba(16, 185, 129, 0.32);
+  --tone-gio-fg: #67e8f9;     --tone-gio-bg: rgba(6, 182, 212, 0.16);     --tone-gio-bd: rgba(6, 182, 212, 0.32);
+  --tone-neutral-fg: #cdd5de; --tone-neutral-bg: #323944;                 --tone-neutral-bd: #444c56;
+  --tone-ok-fg: #86efac;      --tone-ok-bg: rgba(34, 197, 94, 0.16);      --tone-ok-bd: rgba(34, 197, 94, 0.32);
+  --tone-warn-fg: #fbbf24;    --tone-warn-bg: rgba(251, 191, 36, 0.14);   --tone-warn-bd: rgba(251, 191, 36, 0.32);
+  --tone-bad-fg: #fca5a5;     --tone-bad-bg: rgba(239, 68, 68, 0.16);     --tone-bad-bd: rgba(239, 68, 68, 0.32);
+  --tone-info-fg: #7dd3fc;    --tone-info-bg: rgba(14, 165, 233, 0.16);   --tone-info-bd: rgba(14, 165, 233, 0.32);
+
+  --scrollbar-track: #22272e;
+  --scrollbar-thumb: #444c56;
+  --scrollbar-thumb-hover: #5b6470;
+
+  --shadow-card: 0 0 20px rgba(0, 0, 0, 0.25);
+
+  color-scheme: dark;
 }
 
 * {
@@ -122,6 +219,18 @@ body {
 ::-webkit-scrollbar-track { background: var(--scrollbar-track); }
 ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+
+/* Accent means clickable: text links take this, and nothing that isn't a link does. */
+@layer components {
+  .link {
+    color: var(--link);
+    text-underline-offset: 3px;
+  }
+  .link:hover {
+    color: var(--link-hover);
+    text-decoration: underline;
+  }
+}
 
 .line-clamp-2 {
   display: -webkit-box;
@@ -151,145 +260,11 @@ body {
 }
 
 /*
- * Light-theme overrides for Tailwind colored chips.
- *
- * The dark-mode design uses pairs like `bg-purple-900/30 text-purple-300` —
- * a tinted-dark background with a bright/light foreground. Over the dark page
- * surface this reads fine. In light mode the same `bg-purple-900/30` blends
- * over white into a pale wash and the `text-purple-300` foreground disappears
- * into it. We remap the foreground to a darker shade of the same hue
- * (X-700/800) and the tinted background to a lighter wash so the chips stay
- * readable without touching every component.
- *
- * Pure decorative greens/reds in solid buttons (e.g. `bg-red-900/90`) keep
- * their light text — `\!important` is intentionally omitted so component
- * authors can still override per-case if needed.
+ * Colored Tailwind classes (`bg-purple-900/40 text-purple-200`) no longer need
+ * per-class overrides here: tailwind.config.ts serves the whole palette through
+ * CSS variables and mirrors the lightness scale under [data-theme="light"], so
+ * every class — including ones added later — adapts on its own.
  */
-[data-theme="light"] .text-purple-100,
-[data-theme="light"] .text-purple-200,
-[data-theme="light"] .text-purple-300 { color: #6b21a8; }
-[data-theme="light"] .text-purple-400 { color: #7e22ce; }
-
-[data-theme="light"] .text-green-100,
-[data-theme="light"] .text-green-200,
-[data-theme="light"] .text-green-300 { color: #15803d; }
-[data-theme="light"] .text-green-400 { color: #16a34a; }
-
-[data-theme="light"] .text-emerald-200,
-[data-theme="light"] .text-emerald-300 { color: #047857; }
-[data-theme="light"] .text-emerald-400 { color: #059669; }
-
-[data-theme="light"] .text-amber-200,
-[data-theme="light"] .text-amber-300 { color: #b45309; }
-[data-theme="light"] .text-amber-400 { color: #d97706; }
-
-[data-theme="light"] .text-yellow-200,
-[data-theme="light"] .text-yellow-300,
-[data-theme="light"] .text-yellow-400 { color: #a16207; }
-
-[data-theme="light"] .text-cyan-200,
-[data-theme="light"] .text-cyan-300 { color: #0e7490; }
-[data-theme="light"] .text-cyan-400 { color: #0891b2; }
-
-[data-theme="light"] .text-red-100,
-[data-theme="light"] .text-red-200,
-[data-theme="light"] .text-red-300 { color: #b91c1c; }
-[data-theme="light"] .text-red-400 { color: #dc2626; }
-
-[data-theme="light"] .text-pink-200,
-[data-theme="light"] .text-pink-300 { color: #be185d; }
-[data-theme="light"] .text-pink-400 { color: #db2777; }
-
-[data-theme="light"] .text-orange-200,
-[data-theme="light"] .text-orange-300 { color: #c2410c; }
-[data-theme="light"] .text-orange-400 { color: #ea580c; }
-
-[data-theme="light"] .text-fuchsia-200,
-[data-theme="light"] .text-fuchsia-300 { color: #a21caf; }
-
-[data-theme="light"] .text-violet-200,
-[data-theme="light"] .text-violet-300 { color: #6d28d9; }
-
-/* Tinted backgrounds: convert "dark-color at low alpha over dark surface"
- * (deep purple wash) into "bright-color at low alpha over light surface"
- * (pale chip). Hue is preserved, lightness flipped. */
-[data-theme="light"] .bg-purple-900\/30,
-[data-theme="light"] .bg-purple-900\/40,
-[data-theme="light"] .bg-purple-900\/60,
-[data-theme="light"] .bg-purple-900\/90 { background-color: rgb(168 85 247 / 0.12); }
-
-[data-theme="light"] .bg-green-900\/30,
-[data-theme="light"] .bg-green-900\/40,
-[data-theme="light"] .bg-green-900\/60,
-[data-theme="light"] .bg-green-900\/90 { background-color: rgb(34 197 94 / 0.14); }
-
-[data-theme="light"] .bg-emerald-900\/30,
-[data-theme="light"] .bg-emerald-900\/40,
-[data-theme="light"] .bg-emerald-900\/50,
-[data-theme="light"] .bg-emerald-900\/60 { background-color: rgb(16 185 129 / 0.12); }
-
-[data-theme="light"] .bg-amber-900\/30,
-[data-theme="light"] .bg-amber-900\/40,
-[data-theme="light"] .bg-amber-900\/60 { background-color: rgb(245 158 11 / 0.14); }
-
-[data-theme="light"] .bg-yellow-900\/30,
-[data-theme="light"] .bg-yellow-900\/40 { background-color: rgb(234 179 8 / 0.16); }
-
-[data-theme="light"] .bg-cyan-900\/30,
-[data-theme="light"] .bg-cyan-900\/40,
-[data-theme="light"] .bg-cyan-900\/60 { background-color: rgb(6 182 212 / 0.12); }
-
-[data-theme="light"] .bg-red-900\/20,
-[data-theme="light"] .bg-red-900\/30,
-[data-theme="light"] .bg-red-900\/40,
-[data-theme="light"] .bg-red-900\/60,
-[data-theme="light"] .bg-red-900\/90,
-[data-theme="light"] .bg-red-950\/20,
-[data-theme="light"] .bg-red-950\/30,
-[data-theme="light"] .bg-red-950\/50 { background-color: rgb(239 68 68 / 0.12); }
-
-[data-theme="light"] .bg-pink-900\/30,
-[data-theme="light"] .bg-pink-900\/40 { background-color: rgb(236 72 153 / 0.12); }
-
-[data-theme="light"] .bg-orange-900\/30,
-[data-theme="light"] .bg-orange-900\/40,
-[data-theme="light"] .bg-orange-900\/50,
-[data-theme="light"] .bg-orange-900\/60 { background-color: rgb(249 115 22 / 0.14); }
-
-/* Borders follow the same swap to keep edges visible without overpowering. */
-[data-theme="light"] .border-purple-700\/50,
-[data-theme="light"] .border-purple-800,
-[data-theme="light"] .border-purple-800\/50,
-[data-theme="light"] .border-purple-800\/60 { border-color: rgb(168 85 247 / 0.35); }
-
-[data-theme="light"] .border-green-500\/30,
-[data-theme="light"] .border-green-500\/50,
-[data-theme="light"] .border-green-700,
-[data-theme="light"] .border-green-700\/50,
-[data-theme="light"] .border-green-800,
-[data-theme="light"] .border-green-800\/50 { border-color: rgb(34 197 94 / 0.35); }
-
-[data-theme="light"] .border-emerald-800,
-[data-theme="light"] .border-emerald-800\/50 { border-color: rgb(16 185 129 / 0.35); }
-
-[data-theme="light"] .border-amber-800,
-[data-theme="light"] .border-amber-800\/50,
-[data-theme="light"] .border-amber-800\/60 { border-color: rgb(245 158 11 / 0.4); }
-
-[data-theme="light"] .border-cyan-800,
-[data-theme="light"] .border-cyan-800\/50,
-[data-theme="light"] .border-cyan-800\/60 { border-color: rgb(6 182 212 / 0.35); }
-
-[data-theme="light"] .border-red-700,
-[data-theme="light"] .border-red-800,
-[data-theme="light"] .border-red-800\/50,
-[data-theme="light"] .border-red-800\/60,
-[data-theme="light"] .border-red-900\/50 { border-color: rgb(239 68 68 / 0.35); }
-
-[data-theme="light"] .border-orange-500\/30,
-[data-theme="light"] .border-orange-500\/50,
-[data-theme="light"] .border-orange-800,
-[data-theme="light"] .border-orange-800\/50 { border-color: rgb(249 115 22 / 0.4); }
 
 /* ── Data Flow: conduítes animados ────────────────────────────────────────
  * As partículas percorrem o conduíte usando left/top em porcentagem, não

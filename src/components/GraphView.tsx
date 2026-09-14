@@ -3,7 +3,7 @@
 import { useRef, useState, useEffect, useMemo } from 'react';
 import { useProjectContext } from '@/context/ProjectContext';
 import { useForceLayout } from '@/hooks/useForceLayout';
-import { getDDSColor, getGateColor, getDecisionColor } from '@/lib/constants';
+import { getDDSColor, getGateColor, getDecisionColor, categoryText } from '@/lib/constants';
 import AIAnalysisPanel from './AIAnalysisPanel';
 import type { ProjectSummary, CIOOProject } from '@/lib/types';
 
@@ -158,7 +158,7 @@ export default function GraphView() {
                 fill={getDecisionColor(p.latestDecision)} />
 
               {/* ID */}
-              <text textAnchor="middle" dy="0.35em" fontSize={9} fontWeight={600} fill={color} fontFamily="monospace">
+              <text textAnchor="middle" dy="0.35em" fontSize={9} fontWeight={600} style={{ fill: categoryText(color) }} fontFamily="monospace">
                 {p.projectId.replace('PRJ00', '')}
               </text>
 
@@ -180,7 +180,7 @@ export default function GraphView() {
 
       {/* DDS Legend */}
       <div className="absolute bottom-4 left-4 flex flex-col gap-1.5">
-        <div className="text-[10px] text-ink-muted font-bold tracking-widest mb-1">DDS</div>
+        <div className="text-[11px] text-ink-muted font-bold tracking-widest mb-1">DDS</div>
         {Array.from(new Set(nodes.map(p => p.dds))).filter(Boolean).slice(0, 12).map(dds => (
           <div key={dds} className="flex items-center gap-2 text-[11px] text-ink-4">
             <div className="w-2.5 h-2.5 rounded-full" style={{ background: getDDSColor(dds) }} />
@@ -194,24 +194,24 @@ export default function GraphView() {
         <div className="absolute top-4 right-4 w-80 max-h-[calc(100%-2rem)] overflow-y-auto bg-surface-1 border border-line rounded-xl p-5 animate-fadeIn">
           <div className="flex justify-between items-start mb-3">
             <div>
-              <div className="text-[10px] text-ink-muted font-mono mb-1">{selectedProject.projectId}</div>
+              <div className="text-[11px] text-ink-muted font-mono mb-1">{selectedProject.projectId}</div>
               <div className="text-sm font-bold text-ink-1 leading-snug">{selectedProject.name}</div>
             </div>
             <button onClick={() => setSelected(null)} className="text-ink-muted hover:text-ink-3 text-lg leading-none">x</button>
           </div>
 
           <div className="flex gap-1.5 mb-3 flex-wrap">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold"
-              style={{ background: `${getGateColor(selectedProject.currentGate)}22`, color: `color-mix(in srgb, ${getGateColor(selectedProject.currentGate)} 70%, var(--ink-1))` }}>
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold"
+              style={{ background: `${getGateColor(selectedProject.currentGate)}22`, color: categoryText(getGateColor(selectedProject.currentGate)) }}>
               Gate {selectedProject.currentGate}
             </span>
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold"
-              style={{ background: `${getDDSColor(selectedProject.dds)}22`, color: `color-mix(in srgb, ${getDDSColor(selectedProject.dds)} 70%, var(--ink-1))` }}>
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold"
+              style={{ background: `${getDDSColor(selectedProject.dds)}22`, color: categoryText(getDDSColor(selectedProject.dds)) }}>
               {selectedProject.dds}
             </span>
             {selectedProject.latestDecision && (
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold"
-                style={{ background: `${getDecisionColor(selectedProject.latestDecision)}22`, color: `color-mix(in srgb, ${getDecisionColor(selectedProject.latestDecision)} 70%, var(--ink-1))` }}>
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold"
+                style={{ background: `${getDecisionColor(selectedProject.latestDecision)}22`, color: categoryText(getDecisionColor(selectedProject.latestDecision)) }}>
                 {selectedProject.latestDecision}
               </span>
             )}
@@ -223,11 +223,11 @@ export default function GraphView() {
 
           <div className="grid grid-cols-2 gap-2 mb-4">
             <div className="bg-surface-2 rounded-lg p-2">
-              <div className="text-[10px] text-ink-muted">Cost</div>
+              <div className="text-[11px] text-ink-muted">Cost</div>
               <div className="text-xs font-semibold text-ink-2">{selectedProject.costKEur ? `${selectedProject.costKEur}k€` : 'N/A'}</div>
             </div>
             <div className="bg-surface-2 rounded-lg p-2">
-              <div className="text-[10px] text-ink-muted">Reviews</div>
+              <div className="text-[11px] text-ink-muted">Reviews</div>
               <div className="text-xs font-semibold text-ink-2">{selectedProject.reviewCount}</div>
             </div>
           </div>
@@ -235,10 +235,10 @@ export default function GraphView() {
           {/* Tags */}
           {selectedProject.tags.length > 0 && (
             <div className="mb-4">
-              <div className="text-[10px] text-ink-muted font-semibold mb-1.5">TAGS</div>
+              <div className="text-[11px] text-ink-muted font-semibold mb-1.5">TAGS</div>
               <div className="flex flex-wrap gap-1">
                 {selectedProject.tags.map(t => (
-                  <span key={t} className="px-2 py-0.5 rounded text-[9px] text-ink-4 bg-surface-2 border border-line-strong">{t}</span>
+                  <span key={t} className="px-2 py-0.5 rounded text-[11px] text-ink-4 bg-surface-2 border border-line-strong">{t}</span>
                 ))}
               </div>
             </div>
@@ -247,7 +247,7 @@ export default function GraphView() {
           {/* Related projects */}
           {relatedProjects.length > 0 && (
             <div className="mb-4">
-              <div className="text-[10px] text-ink-muted font-semibold mb-2">RELATED ({relatedProjects.length})</div>
+              <div className="text-[11px] text-ink-muted font-semibold mb-2">RELATED ({relatedProjects.length})</div>
               {relatedProjects.slice(0, 8).map(({ project: rp, strength }) => rp && (
                 <div key={rp.projectId}
                   onClick={() => setSelected(rp.projectId)}
@@ -256,7 +256,7 @@ export default function GraphView() {
                   <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: getDDSColor(rp.dds) }} />
                   <div className="flex-1 min-w-0">
                     <div className="text-[11px] font-semibold text-ink-2 truncate">{rp.name}</div>
-                    <div className="text-[10px] text-ink-muted">{rp.dds} · G{rp.currentGate}</div>
+                    <div className="text-[11px] text-ink-muted">{rp.dds} · G{rp.currentGate}</div>
                   </div>
                   <div className="text-[11px] font-bold text-accent-text2">{Math.round(strength * 100)}%</div>
                 </div>

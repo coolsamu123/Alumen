@@ -8,6 +8,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import StageNode from './nodes/StageNode';
 import { STAGES, EDGES, type StageDef } from './stages';
+import { useProjectContext } from '@/context/ProjectContext';
 
 // Grid sizing — drives the vertical (top → down) layout.
 const ROW_HEIGHT = 140;       // px between row centers
@@ -29,6 +30,12 @@ export default function ArchitectureCanvas({ selectedId, onSelect }: {
   onSelect: (id: string | null) => void;
 }) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const { theme } = useProjectContext();
+  const light = theme === 'light';
+  // Concrete colors, not CSS variables: React Flow derives marker ids and the
+  // minimap's SVG fill attributes from these strings.
+  const edgeSolid = light ? '#64748b' : '#6b7280';
+  const edgeDashed = light ? '#94a3b8' : '#4b5563';
 
   const nodes: Node[] = useMemo(() => STAGES.map(s => ({
     id: s.id,
@@ -50,18 +57,18 @@ export default function ArchitectureCanvas({ selectedId, onSelect }: {
     source: e.source,
     target: e.target,
     label: e.label,
-    labelStyle: { fill: '#94a3b8', fontSize: 10, fontWeight: 500 },
-    labelBgStyle: { fill: '#0d1117', fillOpacity: 0.85 },
+    labelStyle: { fill: 'var(--ink-4)', fontSize: 11, fontWeight: 500 },
+    labelBgStyle: { fill: 'var(--surface)', fillOpacity: 0.9 },
     labelBgPadding: [4, 2] as [number, number],
     labelBgBorderRadius: 4,
     style: {
-      stroke: e.dashed ? '#475569' : '#64748b',
+      stroke: e.dashed ? edgeDashed : edgeSolid,
       strokeWidth: e.dashed ? 1 : 1.5,
       strokeDasharray: e.dashed ? '4 4' : undefined,
     },
-    markerEnd: { type: MarkerType.ArrowClosed, color: e.dashed ? '#475569' : '#64748b', width: 14, height: 14 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: e.dashed ? edgeDashed : edgeSolid, width: 14, height: 14 },
     type: 'default',
-  })), []);
+  })), [edgeSolid, edgeDashed]);
 
   const handleNodeClick: NodeMouseHandler = useCallback((_, node) => {
     onSelect(node.id === selectedId ? null : node.id);
@@ -86,20 +93,20 @@ export default function ArchitectureCanvas({ selectedId, onSelect }: {
         nodesConnectable={false}
         elementsSelectable
       >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1f2937" />
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color={light ? '#cbd5e1' : theme === 'dim' ? '#444c56' : '#2f343d'} />
         <Controls position="bottom-right" showInteractive={false} className="!bg-surface-1 !border-line-strong" />
         <MiniMap
           position="top-right"
           pannable zoomable
-          maskColor="rgba(0,0,0,0.5)"
+          maskColor={light ? 'rgba(15,23,42,0.08)' : 'rgba(0,0,0,0.5)'}
           nodeColor={n => {
             const stage = STAGES.find(s => s.id === n.id);
-            if (!stage) return '#374151';
+            if (!stage) return light ? '#d0d6de' : '#374151';
             const colors: Record<string, string> = {
               manual: '#3b82f6', drive: '#a855f7', hygiene: '#64748b', parse: '#64748b',
               llm: '#f97316', sanitize: '#10b981', aggregate: '#22c55e', store: '#06b6d4', external: '#a1a1aa',
             };
-            return colors[stage.type] || '#374151';
+            return colors[stage.type] || (light ? '#d0d6de' : '#374151');
           }}
           className="!bg-surface-1 !border-line-strong"
         />

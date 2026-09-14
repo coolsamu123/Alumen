@@ -147,7 +147,7 @@ export default function DataFlowLive() {
             >
               {v === 'chain' ? '⬡ Chain' : v === 'projects' ? '📋 Projects' : '➕ Queue'}
               {v === 'queue' && q.queue.length > 0 && (
-                <span className="ml-1.5 px-1.5 rounded-full bg-accent-soft text-accent-text text-[10px]">
+                <span className="ml-1.5 px-1.5 rounded-full bg-accent-soft text-accent-text text-[11px]">
                   {q.queue.length}
                 </span>
               )}
@@ -232,7 +232,7 @@ function ChainView({ state }: { state: DataFlowState | null }) {
       <div className="flex flex-col items-center py-1 gap-1">
         <Conduit vertical active={bridged > 0} fast={pipeline?.drive} />
         {upstreamTotal > 0 && (
-          <span className={`text-[10px] ${bridged === upstreamTotal ? 'text-ink-faint' : 'text-amber-400'}`}>
+          <span className={`text-[11px] ${bridged === upstreamTotal ? 'text-ink-faint' : 'text-amber-400'}`}>
             {bridged === upstreamTotal
               ? `${bridged}/${upstreamTotal} upstream projects reached Alumen`
               : `only ${bridged} of ${upstreamTotal} upstream projects reached Alumen — check Drive sources`}
@@ -295,11 +295,11 @@ function ChainView({ state }: { state: DataFlowState | null }) {
 function LaneLabel({ text, hint, accent }: { text: string; hint?: string; accent?: boolean }) {
   return (
     <div className="flex items-baseline gap-2 mt-4 mb-2">
-      <span className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${accent ? 'text-accent-text' : 'text-ink-4'}`}>
+      <span className={`text-[11px] font-semibold uppercase tracking-[0.14em] ${accent ? 'text-accent-text' : 'text-ink-4'}`}>
         {text}
       </span>
       <span className="flex-1 h-px bg-line" />
-      {hint && <span className="text-[10px] text-ink-faint">{hint}</span>}
+      {hint && <span className="text-[11px] text-ink-faint">{hint}</span>}
     </div>
   );
 }
@@ -389,7 +389,7 @@ function StageNode({
     >
       <div className="flex items-center gap-2 mb-1.5">
         <span className="w-5 h-5 shrink-0 rounded-full bg-surface-2 border border-line
-                         text-[10px] font-bold text-ink-4 flex items-center justify-center">
+                         text-[11px] font-bold text-ink-4 flex items-center justify-center">
           {num}
         </span>
         <span className="text-base leading-none shrink-0">{icon}</span>
@@ -400,9 +400,9 @@ function StageNode({
       </div>
 
       <div className="flex items-center gap-1.5 mb-3 min-w-0">
-        <span className="text-[10px] text-ink-muted truncate">{sub}</span>
+        <span className="text-[11px] text-ink-muted truncate">{sub}</span>
         {badge && (
-          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-900/40 text-purple-300 shrink-0">
+          <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-purple-900/40 text-purple-300 shrink-0">
             {badge}
           </span>
         )}
@@ -414,7 +414,7 @@ function StageNode({
           <span className="text-[11px] font-mono text-ink-faint leading-none mb-0.5">/ {metric.of}</span>
         )}
       </div>
-      <div className="text-[9px] uppercase tracking-wider text-ink-faint mt-1">{metric.label}</div>
+      <div className="text-[11px] uppercase tracking-wider text-ink-faint mt-1">{metric.label}</div>
 
       {pct !== null && (
         <div className="mt-2.5 h-1 rounded-full bg-surface-2 overflow-hidden">
@@ -433,10 +433,10 @@ function StageNode({
             </span>
           )}
           {(queued ?? 0) > 0 && (
-            <span className="text-[10px] text-amber-400">{queued} queued</span>
+            <span className="text-[11px] text-amber-400">{queued} queued</span>
           )}
           {(errors ?? 0) > 0 && (
-            <span className="text-[10px] text-red-300">{errors} failed</span>
+            <span className="text-[11px] text-red-300">{errors} failed</span>
           )}
         </div>
       )}
@@ -511,7 +511,7 @@ function ProjectsTable() {
       <div className="border border-line rounded-xl overflow-hidden">
         <table className="w-full text-[12px]">
           <thead>
-            <tr className="border-b border-line text-left text-ink-4 text-[10px] uppercase tracking-wide bg-surface-1">
+            <tr className="border-b border-line text-left text-ink-4 text-[11px] uppercase tracking-wide bg-surface-1">
               <th className="px-3 py-2 font-medium">Project</th>
               {STAGE_COLUMNS.map(c => (
                 <th key={c.key} className="px-2 py-2 font-medium text-center">{c.label}</th>

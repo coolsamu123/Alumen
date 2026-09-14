@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getDb } from './db';
 import { excelDateToISO, parseCost } from './date-utils';
 import { normalizeProjectId } from './project-id';
+import { normalizeDds } from './dds-catalog';
 
 interface RawRow {
   [key: string]: string | number | null | undefined;
@@ -292,7 +293,7 @@ function parseCdioSheet(worksheet: XLSX.WorkSheet): ProjectInsert[] {
     entries.push({
       projectId,
       name: name || 'Unnamed Project',
-      dds: str(row['D']),
+      dds: normalizeOwner(row['D']),
       gate: normalizeGate(row['K']),
       costKEur,
       description: str(row['J']),
@@ -349,7 +350,7 @@ function parseCiooLegacySheet(worksheet: XLSX.WorkSheet): ProjectInsert[] {
     entries.push({
       projectId: projectId || `UNKNOWN-${entries.length}`,
       name: name || 'Unnamed Project',
-      dds: str(row['B']),
+      dds: normalizeOwner(row['B']),
       gate: normalizeGate(row['E']),
       costKEur: parseCost(row['F']),
       description: str(row['K']),
@@ -402,6 +403,29 @@ function dedupeByProjectId(rows: ProjectInsert[]): ProjectInsert[] {
     if (b >= a) byId.set(row.projectId, row);
   }
   return [...byId.values(), ...passthrough];
+}
+
+/**
+ * Canonicalise the owning entity coming from the CDIO spreadsheet.
+ *
+ * The column is typed by hand, so it carries typos ("Indutrial Apps",
+ * "Entreprise Apps") and names the FIT programme retired ("E&C", "IDD" → now
+ * InnoTech). Left raw, those became distinct owner values: filters listed the
+ * same entity three times and colours drifted per spelling.
+ *
+ * "GIO" is deliberately kept as-is rather than dropped. It owns 28 projects and
+ * is a valid owner (PLAN_PROMPTS_CATALOG_REVIEW.md §3.1, item 7) — it is just
+ * never an impact TARGET, which is a different list (CANONICAL_DDS_NAMES).
+ *
+ * Anything unrecognised is preserved verbatim: a spreadsheet may legitimately
+ * name an entity the catalog has not learned yet, and silently blanking it
+ * would lose data the import is supposed to carry.
+ */
+function normalizeOwner(raw: string | number | null | undefined): string {
+  const value = str(raw);
+  if (!value) return '';
+  if (value.toUpperCase() === 'GIO') return 'GIO';
+  return normalizeDds(value) ?? value;
 }
 
 function str(val: string | number | null | undefined): string {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useProjectContext } from '@/context/ProjectContext';
-import { getDDSColor, getGateColor, getDecisionColor, ADMIN_ONLY_TITLE } from '@/lib/constants';
+import { getDDSColor, getGateColor, getDecisionColor, ADMIN_ONLY_TITLE, categoryText } from '@/lib/constants';
 import ProjectPlanningPanel from './ProjectPlanningPanel';
 import { usePlanAllState, type PerProjectPlanState } from '@/hooks/usePlanAllState';
 
@@ -109,7 +109,7 @@ export default function DetailView() {
                     <span className="inline-block px-3 py-1 rounded-full text-[11px] font-bold border"
                       style={{
                         background: `${getGateColor(p.currentGate)}18`,
-                        color: `color-mix(in srgb, ${getGateColor(p.currentGate)} 70%, var(--ink-1))`,
+                        color: categoryText(getGateColor(p.currentGate)),
                         borderColor: `${getGateColor(p.currentGate)}40`,
                         boxShadow: `0 0 8px ${getGateColor(p.currentGate)}25`,
                       }}>
@@ -117,8 +117,8 @@ export default function DetailView() {
                     </span>
                   )}
                   {isUseful(p.dds) && (
-                    <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold"
-                      style={{ background: `${color}22`, color: `color-mix(in srgb, ${color} 70%, var(--ink-1))` }}>
+                    <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold"
+                      style={{ background: `${color}22`, color: categoryText(color) }}>
                       {p.dds}
                     </span>
                   )}
@@ -142,8 +142,8 @@ export default function DetailView() {
               {/* Decision badge */}
               {isUseful(p.latestDecision) && (
                 <div className="mb-3 flex gap-2 flex-wrap">
-                  <span className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold"
-                    style={{ background: `${getDecisionColor(p.latestDecision)}22`, color: `color-mix(in srgb, ${getDecisionColor(p.latestDecision)} 70%, var(--ink-1))` }}>
+                  <span className="inline-block px-2 py-0.5 rounded text-[11px] font-semibold"
+                    style={{ background: `${getDecisionColor(p.latestDecision)}22`, color: categoryText(getDecisionColor(p.latestDecision)) }}>
                     {p.latestDecision}
                   </span>
                 </div>
@@ -160,7 +160,7 @@ export default function DetailView() {
               {p.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-3">
                   {p.tags.slice(0, 5).map(t => (
-                    <span key={t} className="inline-block px-2 py-0.5 rounded text-[9px] text-ink-4 bg-surface-2 border border-line-strong">
+                    <span key={t} className="inline-block px-2 py-0.5 rounded text-[11px] text-ink-4 bg-surface-2 border border-line-strong">
                       {t}
                     </span>
                   ))}
@@ -173,14 +173,14 @@ export default function DetailView() {
                   {p.linkFolder && (
                     <a href={p.linkFolder} target="_blank" rel="noopener noreferrer"
                       onClick={e => e.stopPropagation()}
-                      className="text-[10px] text-accent-text2 hover:text-accent-text underline">
+                      className="text-[11px] text-accent-text2 hover:text-accent-text underline">
                       Folder
                     </a>
                   )}
                   {p.linkPositions && (
                     <a href={p.linkPositions} target="_blank" rel="noopener noreferrer"
                       onClick={e => e.stopPropagation()}
-                      className="text-[10px] text-accent-text2 hover:text-accent-text underline">
+                      className="text-[11px] text-accent-text2 hover:text-accent-text underline">
                       CIOO Position
                     </a>
                   )}

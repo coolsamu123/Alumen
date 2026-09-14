@@ -207,7 +207,7 @@ source_files          : '[…JSON of resolved file paths…]'`,
     "source": "PRJ0021672",
     "target": "GIO_SERVICES",
     "impact_type": "security_dependency",
-    "direction": "provides_to",
+    "direction": "depends_on",
     "severity": "high",
     "explanation": "High-privilege accounts are extensively hosted within the directory to secure access to IT/OT environments.",
     "gio_services": ["Security & Compliance"],
@@ -241,7 +241,7 @@ source_files          : '[…JSON of resolved file paths…]'`,
 source_project_id  : 'PGM0001209'
 target_project_id  : 'GIO_SERVICES'
 impact_type        : 'security_dependency'
-direction          : 'provides_to'
+direction          : 'requires_coordination'           -- claim role=risk_owner
 severity           : 'high'
 explanation        : 'GDSD (Hamza MOKHTARI) raised a major reservation regarding the migration of critical infrastructure…'
 gio_services       : '["Security & Compliance"]'
@@ -286,7 +286,7 @@ llm_model     : 'gemini-2.0-flash'`,
         {
           "impactId": 4575,
           "severity": "high",
-          "direction": "provides_to",
+          "direction": "depends_on",
           "impactTypes": ["security_dependency"],
           "explanations": ["High-privilege accounts are extensively hosted within the directory…"],
           "citationsByExplanation": [[{ "doc_url": "https://drive.google.com/file/d/1fp9On…/view", "file_name": "Q&A …", "snippet": "High-privilege accounts are extensively hosted…" }]],

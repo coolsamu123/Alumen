@@ -9,6 +9,7 @@ import {
   getCatalog,
   reloadCatalog,
   writeCatalogEntry,
+  type CatalogPatch,
   isCanonicalTarget,
 } from '@/lib/target-catalog';
 import { requireAdmin, isSessionError } from '@/lib/auth';
@@ -55,6 +56,12 @@ export async function PATCH(request: NextRequest) {
       kind?: string;
       name?: string;
       description?: string;
+      scope?: string;
+      signals?: string[];
+      notThis?: string[];
+      parent?: string;
+      aliases?: string[];
+      notes?: string;
       typicalRoles?: string[];
       typicalImpactTypes?: string[];
     };
@@ -67,10 +74,26 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: `Unknown ${kind} target: ${body.name}` }, { status: 400 });
     }
 
-    const patch: { description?: string; typicalRoles?: TargetRole[]; typicalImpactTypes?: string[] } = {};
-    if (typeof body.description === 'string') {
-      patch.description = body.description.trim();
-    }
+    const patch: CatalogPatch = {};
+    if (typeof body.description === 'string') patch.description = body.description.trim();
+    if (typeof body.scope === 'string') patch.scope = body.scope.trim();
+    if (typeof body.parent === 'string') patch.parent = body.parent.trim();
+    if (typeof body.notes === 'string') patch.notes = body.notes.trim();
+
+    // Free text, unlike roles and impact types: signals, not-this notes and
+    // aliases are prose the catalog owner writes, so there is no vocabulary to
+    // validate against — only shape. Trim and drop blanks so an empty textarea
+    // line never becomes a signal the model has to weigh.
+    const cleanList = (v: unknown): string[] | undefined =>
+      Array.isArray(v)
+        ? v.filter((x): x is string => typeof x === 'string').map(x => x.trim()).filter(Boolean)
+        : undefined;
+    const signals = cleanList(body.signals);
+    if (signals) patch.signals = signals;
+    const notThis = cleanList(body.notThis);
+    if (notThis) patch.notThis = notThis;
+    const aliases = cleanList(body.aliases);
+    if (aliases) patch.aliases = aliases;
     if (Array.isArray(body.typicalRoles)) {
       const invalid = body.typicalRoles.find(r => !ROLE_SET.has(r));
       if (invalid) {

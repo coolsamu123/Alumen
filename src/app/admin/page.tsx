@@ -289,9 +289,9 @@ export default function AdminPage() {
   const btnDanger: React.CSSProperties = {
     padding: '8px 20px',
     borderRadius: 6,
-    border: '1px solid #7f1d1d',
-    background: '#450a0a55',
-    color: '#fca5a5',
+    border: '1px solid var(--tone-bad-bd)',
+    background: 'var(--tone-bad-bg)',
+    color: 'var(--tone-bad-fg)',
     fontWeight: 600,
     fontSize: 13,
     cursor: 'pointer',
@@ -308,15 +308,16 @@ export default function AdminPage() {
     cursor: 'pointer',
   };
 
-  const chipStyle = (bg: string, color: string): React.CSSProperties => ({
+  // Tone tokens (globals.css, see Tag.tsx) instead of hex pairs, so the chips follow the theme.
+  const chipStyle = (tone: 'tech' | 'vendor' | 'ok' | 'warn'): React.CSSProperties => ({
     display: 'inline-block',
     padding: '4px 12px',
     borderRadius: 6,
     fontSize: 11,
     fontWeight: 600,
-    background: bg,
-    color: color,
-    border: `1px solid ${color}33`,
+    background: `var(--tone-${tone}-bg)`,
+    color: `var(--tone-${tone}-fg)`,
+    border: `1px solid var(--tone-${tone}-bd)`,
   });
 
   return (
@@ -443,7 +444,7 @@ export default function AdminPage() {
 
           {/* Status */}
           <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: 14, marginBottom: 20 }}>
-            <div style={{ fontSize: 10, color: 'var(--ink-faint)', fontWeight: 700, letterSpacing: '0.08em', marginBottom: 8 }}>CURRENT STATUS</div>
+            <div style={{ fontSize: 11, color: 'var(--ink-faint)', fontWeight: 700, letterSpacing: '0.08em', marginBottom: 8 }}>CURRENT STATUS</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{
                 width: 10, height: 10, borderRadius: '50%',
@@ -475,10 +476,10 @@ export default function AdminPage() {
             </button>
           </div>
           {status === 'saved' && (
-            <div style={{ fontSize: 13, color: '#4ade80', marginBottom: 8 }}>API key saved successfully.</div>
+            <div style={{ fontSize: 13, color: 'var(--tone-ok-fg)', marginBottom: 8 }}>API key saved successfully.</div>
           )}
           {status === 'error' && (
-            <div style={{ fontSize: 13, color: '#f87171', marginBottom: 8 }}>{testResult}</div>
+            <div style={{ fontSize: 13, color: 'var(--tone-bad-fg)', marginBottom: 8 }}>{testResult}</div>
           )}
           <div style={{ fontSize: 12, color: 'var(--ink-faint)' }}>
             Get your Gemini key at{' '}
@@ -502,7 +503,7 @@ export default function AdminPage() {
 
           {/* Live status — mirrors the "CURRENT STATUS" pattern used by the Gemini panel. */}
           <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: 14, marginBottom: 16 }}>
-            <div style={{ fontSize: 10, color: 'var(--ink-faint)', fontWeight: 700, letterSpacing: '0.08em', marginBottom: 8 }}>CURRENT STATUS</div>
+            <div style={{ fontSize: 11, color: 'var(--ink-faint)', fontWeight: 700, letterSpacing: '0.08em', marginBottom: 8 }}>CURRENT STATUS</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{
                 width: 10, height: 10, borderRadius: '50%',
@@ -556,13 +557,13 @@ export default function AdminPage() {
             <div style={{ fontSize: 13, color: 'var(--ink-muted)', marginTop: 10 }}>Saving…</div>
           )}
           {langStatus === 'saved' && (
-            <div style={{ fontSize: 13, color: '#4ade80', marginTop: 10 }}>
+            <div style={{ fontSize: 13, color: 'var(--tone-ok-fg)', marginTop: 10 }}>
               ✓ Saved. New analyses will be generated in {outputLanguage === 'fr' ? 'French' : 'English'}.
               Previous analyses stay in their original language — re-run them to get the new translation.
             </div>
           )}
           {langStatus === 'error' && (
-            <div style={{ fontSize: 13, color: '#f87171', marginTop: 10 }}>Could not save language preference.</div>
+            <div style={{ fontSize: 13, color: 'var(--tone-bad-fg)', marginTop: 10 }}>Could not save language preference.</div>
           )}
         </div>
 
@@ -578,12 +579,12 @@ export default function AdminPage() {
             {upstreamStatus === 'testing' ? 'Testing...' : 'Test upstream'}
           </button>
           {upstreamStatus === 'success' && (
-            <div style={{ marginTop: 14, background: '#052e16', border: '1px solid #166534', borderRadius: 8, padding: 12, fontSize: 13, color: '#86efac', whiteSpace: 'pre-wrap' }}>
+            <div style={{ marginTop: 14, background: 'var(--tone-ok-bg)', border: '1px solid var(--tone-ok-bd)', borderRadius: 8, padding: 12, fontSize: 13, color: 'var(--tone-ok-fg)', whiteSpace: 'pre-wrap' }}>
               {upstreamResult}
             </div>
           )}
           {upstreamStatus === 'error' && (
-            <div style={{ marginTop: 14, background: '#450a0a', border: '1px solid #7f1d1d', borderRadius: 8, padding: 12, fontSize: 13, color: '#fca5a5', whiteSpace: 'pre-wrap' }}>
+            <div style={{ marginTop: 14, background: 'var(--tone-bad-bg)', border: '1px solid var(--tone-bad-bd)', borderRadius: 8, padding: 12, fontSize: 13, color: 'var(--tone-bad-fg)', whiteSpace: 'pre-wrap' }}>
               {upstreamResult}
             </div>
           )}
@@ -600,12 +601,12 @@ export default function AdminPage() {
             {testStatus === 'testing' ? 'Testing...' : 'Test Gemini Connection'}
           </button>
           {testStatus === 'success' && (
-            <div style={{ marginTop: 14, background: '#052e16', border: '1px solid #166534', borderRadius: 8, padding: 12, fontSize: 13, color: '#86efac' }}>
+            <div style={{ marginTop: 14, background: 'var(--tone-ok-bg)', border: '1px solid var(--tone-ok-bd)', borderRadius: 8, padding: 12, fontSize: 13, color: 'var(--tone-ok-fg)' }}>
               {testResult}
             </div>
           )}
           {testStatus === 'error' && (
-            <div style={{ marginTop: 14, background: '#450a0a', border: '1px solid #7f1d1d', borderRadius: 8, padding: 12, fontSize: 13, color: '#fca5a5' }}>
+            <div style={{ marginTop: 14, background: 'var(--tone-bad-bg)', border: '1px solid var(--tone-bad-bd)', borderRadius: 8, padding: 12, fontSize: 13, color: 'var(--tone-bad-fg)' }}>
               {testResult}
             </div>
           )}
@@ -621,7 +622,7 @@ export default function AdminPage() {
 
           {/* Status */}
           <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: 14, marginBottom: 16 }}>
-            <div style={{ fontSize: 10, color: 'var(--ink-faint)', fontWeight: 700, letterSpacing: '0.08em', marginBottom: 8 }}>CURRENT STATUS</div>
+            <div style={{ fontSize: 11, color: 'var(--ink-faint)', fontWeight: 700, letterSpacing: '0.08em', marginBottom: 8 }}>CURRENT STATUS</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: saSummary.isConfigured ? 10 : 0 }}>
               <div style={{
                 width: 10, height: 10, borderRadius: '50%',
@@ -665,10 +666,10 @@ export default function AdminPage() {
           {saMessage && (
             <div style={{
               marginTop: 14,
-              background: saStatus === 'error' ? '#450a0a' : '#052e16',
-              border: saStatus === 'error' ? '1px solid #7f1d1d' : '1px solid #166534',
+              background: saStatus === 'error' ? 'var(--tone-bad-bg)' : 'var(--tone-ok-bg)',
+              border: saStatus === 'error' ? '1px solid var(--tone-bad-bd)' : '1px solid var(--tone-ok-bd)',
               borderRadius: 8, padding: 12, fontSize: 13,
-              color: saStatus === 'error' ? '#fca5a5' : '#86efac',
+              color: saStatus === 'error' ? 'var(--tone-bad-fg)' : 'var(--tone-ok-fg)',
             }}>
               {saMessage}
             </div>
@@ -726,7 +727,7 @@ export default function AdminPage() {
             </button>
           </div>
           {mappingStatus === 'saved' && (
-            <div style={{ fontSize: 13, color: '#4ade80', marginTop: 10 }}>Mappings saved.</div>
+            <div style={{ fontSize: 13, color: 'var(--tone-ok-fg)', marginTop: 10 }}>Mappings saved.</div>
           )}
         </div>
 
@@ -739,11 +740,11 @@ export default function AdminPage() {
           {stats && (
             <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
               <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: 12 }}>
-                <div style={{ fontSize: 10, color: 'var(--ink-faint)' }}>Cached Analyses</div>
+                <div style={{ fontSize: 11, color: 'var(--ink-faint)' }}>Cached Analyses</div>
                 <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--ink-1)', fontFamily: "'DM Mono', monospace" }}>{stats.analyses}</div>
               </div>
               <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: 12 }}>
-                <div style={{ fontSize: 10, color: 'var(--ink-faint)' }}>Cached Documents</div>
+                <div style={{ fontSize: 11, color: 'var(--ink-faint)' }}>Cached Documents</div>
                 <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--ink-1)', fontFamily: "'DM Mono', monospace" }}>{stats.documents}</div>
               </div>
             </div>
@@ -756,26 +757,26 @@ export default function AdminPage() {
           <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink-1)', marginBottom: 16 }}>How Impact Analysis Works</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: 14 }}>
-              <span style={chipStyle('#1e3a8a44', 'var(--accent-text-2)')}>1. BATCH ANALYSIS</span>
+              <span style={chipStyle('tech')}>1. BATCH ANALYSIS</span>
               <p style={{ fontSize: 13, color: 'var(--ink-4)', marginTop: 10, lineHeight: 1.6 }}>
                 Go to the <strong style={{ color: 'var(--ink-2)' }}>Impact</strong> tab and click <strong style={{ color: 'var(--ink-2)' }}>Start Full Analysis</strong>.
                 Gemini analyzes all projects in batches of ~22, grouped by DDS division, then cross-DDS.
               </p>
             </div>
             <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: 14 }}>
-              <span style={chipStyle('#4a1d9644', '#c084fc')}>2. IMPACT DETECTION</span>
+              <span style={chipStyle('vendor')}>2. IMPACT DETECTION</span>
               <p style={{ fontSize: 13, color: 'var(--ink-4)', marginTop: 10, lineHeight: 1.6 }}>
                 For each batch, Gemini identifies directed relationships: which project <strong style={{ color: 'var(--ink-2)' }}>blocks, enables, feeds data to, competes with, or requires coordination</strong> with another.
               </p>
             </div>
             <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: 14 }}>
-              <span style={chipStyle('#052e1644', '#4ade80')}>3. SUB-APP INSIGHTS</span>
+              <span style={chipStyle('ok')}>3. SUB-APP INSIGHTS</span>
               <p style={{ fontSize: 13, color: 'var(--ink-4)', marginTop: 10, lineHeight: 1.6 }}>
                 The engine now automatically pulls deep structured insights (8 dimensions like Digital Technologies, AI Embedded, Security) from the <strong style={{ color: 'var(--ink-2)' }}>Goals Extractor Sub-App</strong> to enhance the precision of the AI matching.
               </p>
             </div>
             <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: 14 }}>
-              <span style={chipStyle('#431407', '#fb923c')}>4. CROSS-DDS</span>
+              <span style={chipStyle('warn')}>4. CROSS-DDS</span>
               <p style={{ fontSize: 13, color: 'var(--ink-4)', marginTop: 10, lineHeight: 1.6 }}>
                 After intra-DDS analysis, the engine takes the top projects from each division and analyzes
                 <strong style={{ color: 'var(--ink-2)' }}> cross-organizational impacts</strong> — finding dependencies across Americas, APAC, EU, CF, etc.

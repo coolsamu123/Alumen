@@ -82,7 +82,7 @@ export default function DetailPanel({ stage, stats, onClose }: {
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-baseline gap-3 py-1.5 border-b border-line/40 last:border-b-0">
-      <span className="text-[10px] uppercase tracking-wider text-ink-muted shrink-0 w-24">{label}</span>
+      <span className="text-[11px] uppercase tracking-wider text-ink-muted shrink-0 w-24">{label}</span>
       <span className="text-xs text-ink-2 flex-1 break-words">{value}</span>
     </div>
   );
@@ -122,7 +122,7 @@ function OverviewTab({ stage }: { stage: StageDef }) {
           <ul className="space-y-1.5">
             {d.howItWorks.map((step, i) => (
               <li key={i} className="text-sm text-ink-2 leading-relaxed flex gap-2.5">
-                <span className="text-accent-text2 font-mono text-[10px] mt-1 shrink-0">{(i + 1).toString().padStart(2, '0')}</span>
+                <span className="text-accent-text2 font-mono text-[11px] mt-1 shrink-0">{(i + 1).toString().padStart(2, '0')}</span>
                 <span className="flex-1">{step}</span>
               </li>
             ))}
@@ -274,7 +274,7 @@ function PromptEditor({ promptKey }: { promptKey: 'goals' | 'impact' | 'deep-div
   return (
     <div className="p-5 space-y-3 flex flex-col h-full">
       <div className="text-[11px] uppercase tracking-wider text-ink-muted">
-        Active prompt — {promptKey} · Gemini 2.0 Flash
+        Active prompt — {promptKey} · Gemini (model set in Admin)
       </div>
       <textarea
         value={value}
@@ -348,7 +348,7 @@ function TriggerForm({ stage }: { stage: StageDef }) {
       </div>
       {trigger.body && (
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-ink-muted mb-1">Request body (editable)</div>
+          <div className="text-[11px] uppercase tracking-wider text-ink-muted mb-1">Request body (editable)</div>
           <textarea
             value={body}
             onChange={e => setBody(e.target.value)}
@@ -372,7 +372,7 @@ function TriggerForm({ stage }: { stage: StageDef }) {
       </button>
       {result && (
         <div className={`border rounded-lg p-3 ${result.ok ? 'border-emerald-700/40 bg-emerald-950/30' : 'border-red-700/40 bg-red-950/30'}`}>
-          <div className={`text-[10px] uppercase tracking-wider font-bold mb-1 ${result.ok ? 'text-emerald-300' : 'text-red-300'}`}>
+          <div className={`text-[11px] uppercase tracking-wider font-bold mb-1 ${result.ok ? 'text-emerald-300' : 'text-red-300'}`}>
             {result.ok ? 'OK' : 'Error'}
           </div>
           <pre className="text-[11px] text-ink-2 whitespace-pre-wrap font-mono break-words">
@@ -430,9 +430,9 @@ function StatsTab({ stage, stats }: { stage: StageDef; stats: StromStats | null 
       <div className="grid grid-cols-2 gap-2">
         {cards.map((c, i) => (
           <div key={i} className="bg-surface-2/40 border border-line rounded-lg p-3">
-            <div className="text-[10px] uppercase tracking-wider text-ink-muted">{c.label}</div>
+            <div className="text-[11px] uppercase tracking-wider text-ink-muted">{c.label}</div>
             <div className="text-base font-mono font-bold text-ink-1 mt-0.5">{c.value}</div>
-            {c.hint && <div className="text-[10px] text-ink-faint mt-1 italic">{c.hint}</div>}
+            {c.hint && <div className="text-[11px] text-ink-faint mt-1 italic">{c.hint}</div>}
           </div>
         ))}
       </div>

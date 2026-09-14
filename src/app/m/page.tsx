@@ -60,7 +60,7 @@ export default function MobilePage() {
         </div>
         {/* Sets the cookie the middleware reads, otherwise the redirect would
             bring the phone straight back here. */}
-        <a href="/?desktop=1" className="text-[11px] text-ink-muted underline">desktop</a>
+        <a href="/?desktop=1" className="link text-[11px] underline">desktop</a>
       </header>
 
       <main className="flex-1 pb-20">
@@ -140,11 +140,11 @@ function ChainScreen() {
           <div className="flex items-baseline justify-between">
             <div className="flex items-center gap-2">
               <span className="w-5 h-5 rounded-full bg-surface-2 border border-line
-                               text-[10px] font-bold text-ink-4 flex items-center justify-center">
+                               text-[11px] font-bold text-ink-4 flex items-center justify-center">
                 {i}
               </span>
               <span className="text-sm font-bold">{r.label}</span>
-              <span className="text-[10px] text-ink-muted">{r.sub}</span>
+              <span className="text-[11px] text-ink-muted">{r.sub}</span>
             </div>
             <div className="text-right">
               <span className="text-xl font-mono font-bold">{r.value}</span>
@@ -165,7 +165,7 @@ function ChainScreen() {
         </div>
       ))}
       {state.upstream.readAt && (
-        <p className="text-[10px] text-ink-faint pt-1">
+        <p className="text-[11px] text-ink-faint pt-1">
           upstream read {new Date(state.upstream.readAt).toLocaleTimeString()}
         </p>
       )}
@@ -244,7 +244,7 @@ function StageDots({ stages }: { stages: Record<string, StageStatus> }) {
         return (
           <span key={s.key} className="flex-1 flex flex-col items-center gap-1">
             <span className={`w-full h-1.5 rounded-full ${cor}`} />
-            <span className="text-[8px] text-ink-faint uppercase tracking-wide">
+            <span className="text-[11px] text-ink-faint uppercase tracking-wide">
               {s.label.slice(0, 4)}
             </span>
           </span>
@@ -290,7 +290,7 @@ function ProjectDetail({ row, onBack }: { row: ProjectRow; onBack: () => void })
       <h1 className="text-base font-bold mb-3">{row.name}</h1>
 
       <div className="rounded-xl border border-line bg-surface-1 p-3 mb-4">
-        <div className="text-[10px] uppercase tracking-wider text-ink-faint mb-2">Pipeline</div>
+        <div className="text-[11px] uppercase tracking-wider text-ink-faint mb-2">Pipeline</div>
         <div className="space-y-1.5">
           {STAGES.map(s => {
             const st = row.stages[s.key] ?? 'NONE';
@@ -311,7 +311,7 @@ function ProjectDetail({ row, onBack }: { row: ProjectRow; onBack: () => void })
         </div>
       </div>
 
-      <div className="text-[10px] uppercase tracking-wider text-ink-faint mb-2">
+      <div className="text-[11px] uppercase tracking-wider text-ink-faint mb-2">
         Impacts {impacts && `(${impacts.length})`}
       </div>
       {err && <p className="text-[12px] text-rose-400">{err}</p>}
@@ -327,9 +327,9 @@ function ProjectDetail({ row, onBack }: { row: ProjectRow; onBack: () => void })
               <div className="flex items-center gap-1.5 text-[12px] font-mono mb-1">
                 <span className="text-ink-faint">{outgoing ? '→' : '←'}</span>
                 <span className="text-accent-text">{other}</span>
-                <span className="ml-auto text-[10px] uppercase">{i.severity}</span>
+                <span className="ml-auto text-[11px] uppercase">{i.severity}</span>
               </div>
-              <div className="text-[10px] uppercase tracking-wide text-ink-faint mb-1">
+              <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-1">
                 {i.impactType.replace(/_/g, ' ')}
               </div>
               <p className="text-[12px] text-ink-2 whitespace-pre-wrap">{i.explanation}</p>
@@ -424,7 +424,7 @@ function QueueScreen() {
       </div>
 
       <div className="rounded-xl border border-line bg-surface-1 p-3">
-        <div className="text-[10px] uppercase tracking-wider text-ink-faint mb-1.5">Worker</div>
+        <div className="text-[11px] uppercase tracking-wider text-ink-faint mb-1.5">Worker</div>
         {heartbeat ? (
           <div className="flex items-center gap-2 text-[12px]">
             <span className={`w-2 h-2 rounded-full ${
@@ -438,7 +438,7 @@ function QueueScreen() {
       </div>
 
       <div>
-        <div className="text-[10px] uppercase tracking-wider text-ink-faint mb-2">
+        <div className="text-[11px] uppercase tracking-wider text-ink-faint mb-2">
           Awaiting confirmation ({queue.length})
         </div>
         {queue.length === 0
@@ -449,7 +449,7 @@ function QueueScreen() {
                 <div key={it.projectId}
                   className="rounded-xl border border-line bg-surface-1 p-2.5">
                   <div className="font-mono text-[13px]">{it.projectId}</div>
-                  <div className="text-[10px] text-ink-faint">
+                  <div className="text-[11px] text-ink-faint">
                     {it.requestedBy} · {new Date(it.requestedAt).toLocaleString()}
                   </div>
                 </div>

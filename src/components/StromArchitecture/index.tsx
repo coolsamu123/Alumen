@@ -101,11 +101,11 @@ function Counter({ label, value, tone, sub }: { label: string; value?: number; t
   const toneClass = tone === 'cyan' ? 'text-cyan-300' : tone === 'orange' ? 'text-orange-300' : 'text-emerald-300';
   return (
     <div className="flex flex-col leading-tight">
-      <span className="text-[9px] uppercase tracking-wider text-ink-muted">{label}</span>
+      <span className="text-[11px] uppercase tracking-wider text-ink-muted">{label}</span>
       <span className={`text-base font-mono font-bold ${toneClass}`}>
         {value ?? '—'}
       </span>
-      {sub && <span className="text-[9px] text-ink-faint">{sub}</span>}
+      {sub && <span className="text-[11px] text-ink-faint">{sub}</span>}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import LoadingState from './LoadingState';
 import { useProjectContext } from '@/context/ProjectContext';
 import { ADMIN_ONLY_TITLE } from '@/lib/constants';
+import Tag, { severityTone, type Tone } from './Tag';
 
 interface ProjectGoals {
   id: number;
@@ -84,7 +85,7 @@ function Evidence({ quote, file }: { quote?: string; file?: string }) {
   return (
     <div className="mt-1 pl-3 border-l-2 border-line-strong">
       <span className="text-[11px] text-ink-faint italic leading-relaxed">&ldquo;{quote}&rdquo;</span>
-      {file && <span className="ml-2 text-[10px] text-ink-muted font-mono">{file}</span>}
+      {file && <span className="ml-2 text-[11px] text-ink-muted font-mono">{file}</span>}
     </div>
   );
 }
@@ -127,7 +128,7 @@ const FIELDS = [
 ] as const;
 
 export default function GoalsView() {
-  const { isAdmin } = useProjectContext();
+  const { isAdmin, openUniverse } = useProjectContext();
   const [goals, setGoals] = useState<ProjectGoals[]>([]);
   const [status, setStatus] = useState<RunStatus | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -215,11 +216,11 @@ export default function GoalsView() {
     return true;
   });
 
-  const statusColor = (s: string) => {
-    if (s === 'success') return 'bg-green-500/20 text-green-400 border border-green-500/30';
-    if (s === 'error') return 'bg-red-500/20 text-red-400 border border-red-500/30';
-    if (s === 'partial') return 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30';
-    return 'bg-surface-2 text-ink-4 border border-line-strong';
+  const statusTone = (s: string): Tone => {
+    if (s === 'success') return 'ok';
+    if (s === 'error') return 'bad';
+    if (s === 'partial') return 'warn';
+    return 'neutral';
   };
 
   return (
@@ -350,7 +351,7 @@ export default function GoalsView() {
               : 'No projects match the current filters.'}
           </div>
         ) : (
-          <div className="bg-surface-1 rounded-xl border border-line overflow-hidden shadow-lg">
+          <div className="bg-surface-1 rounded-xl border border-line overflow-hidden shadow-sm tabular-nums">
             {/* Header */}
                         <div className="grid grid-cols-[minmax(0,1fr)_100px_60px_40px_80px_120px_90px_30px] gap-2 bg-surface text-ink-muted text-xs font-semibold uppercase px-4 py-3 border-b border-line">
               <div>Project</div>
@@ -377,18 +378,16 @@ export default function GoalsView() {
                       onClick={() => setExpandedId(isExpanded ? null : g.project_id)}
                     >
                       <div className="min-w-0 truncate pr-2">
-                        <span className="font-mono text-xs text-accent-text2 mr-2">{g.project_id}</span>
+                        <span className="font-mono text-xs text-ink-4 mr-2">{g.project_id}</span>
                         <span className="font-medium text-ink-2">{g.project_name}</span>
                       </div>
                       <div className="text-ink-4 truncate">{g.region}</div>
                       <div className="text-ink-4">{g.gate}</div>
                       <div className="text-ink-muted text-center">{fileCount}</div>
                       <div className="text-center">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${statusColor(g.status)}`}>
-                          {g.status}
-                        </span>
+                        <Tag tone={statusTone(g.status)}>{g.status}</Tag>
                       </div>
-                      <div className="text-ink-muted text-[10px]">
+                      <div className="text-ink-muted text-[11px]">
                         {g.analyzed_at ? new Date(g.analyzed_at).toLocaleString() : 'Never'}
                       </div>
                       <div className="text-center">
@@ -408,7 +407,7 @@ export default function GoalsView() {
 
                     {/* Expanded detail */}
                     {isExpanded && (
-                      <div className="px-6 pb-6 pt-2 bg-surface border-t border-line">
+                      <div className="px-6 pb-6 pt-2 bg-surface-sunken border-t border-line">
                         {g.error_message && (
                           <div className="mt-3 p-3 bg-red-900/20 border border-red-800/50 rounded text-sm text-red-400">
                             {g.error_message}
@@ -417,21 +416,21 @@ export default function GoalsView() {
 
                         {/* Executive one-liner */}
                         {g.summary_one_line && (
-                          <div className="mt-4 p-3 bg-accent-soft border border-accent-border/40 rounded text-sm text-accent-text leading-relaxed">
-                            <span className="text-[10px] font-bold tracking-widest text-accent-text2 uppercase mr-2">Summary</span>
+                          <div className="mt-4 px-3.5 py-3 bg-accent-soft/50 border border-accent-border/30 rounded-lg text-sm text-ink-2 leading-relaxed">
+                            <span className="text-[11px] font-semibold text-accent-text mr-2">Summary</span>
                             {g.summary_one_line}
                           </div>
                         )}
 
                         {/* Canonical tags surfaced as pills */}
                         {(() => {
-                          const blocks: { label: string; items: string[]; color: string }[] = [
-                            { label: 'Tech tags',           items: parseJsonArray(g.tech_tags),            color: 'bg-accent-soft text-accent-fg border-accent-border/60' },
-                            { label: 'Vendors',             items: parseJsonArray(g.vendors),              color: 'bg-purple-900/40 text-purple-200 border-purple-800/60' },
-                            { label: 'Data classifications',items: parseJsonArray(g.data_classifications), color: 'bg-amber-900/40 text-amber-200 border-amber-800/60' },
-                            { label: 'DDS entities touched',items: parseJsonArray(g.dds_entities_touched), color: 'bg-emerald-900/40 text-emerald-200 border-emerald-800/60' },
-                            { label: 'GIO services touched',items: parseJsonArray(g.gio_services_touched), color: 'bg-cyan-900/40 text-cyan-200 border-cyan-800/60' },
-                            { label: 'Mentions',            items: parseJsonArray(g.mentioned_projects),   color: 'bg-surface-2 text-ink-3 border-line-strong' },
+                          const blocks: { label: string; items: string[]; tone: Tone; opensProject?: boolean }[] = [
+                            { label: 'Tech tags',           items: parseJsonArray(g.tech_tags),            tone: 'tech' },
+                            { label: 'Vendors',             items: parseJsonArray(g.vendors),              tone: 'vendor' },
+                            { label: 'Data classifications',items: parseJsonArray(g.data_classifications), tone: 'data' },
+                            { label: 'DDS entities touched',items: parseJsonArray(g.dds_entities_touched), tone: 'dds' },
+                            { label: 'GIO services touched',items: parseJsonArray(g.gio_services_touched), tone: 'gio' },
+                            { label: 'Mentions',            items: parseJsonArray(g.mentioned_projects),   tone: 'neutral', opensProject: true },
                           ];
                           const visible = blocks.filter(b => b.items.length > 0);
                           if (visible.length === 0) return null;
@@ -439,9 +438,11 @@ export default function GoalsView() {
                             <div className="mt-3 space-y-2">
                               {visible.map(b => (
                                 <div key={b.label} className="flex flex-wrap gap-1.5 items-center">
-                                  <span className="text-[10px] font-bold tracking-widest text-ink-muted uppercase w-44 shrink-0">{b.label}</span>
-                                  {b.items.map(it => (
-                                    <span key={it} className={`px-2 py-0.5 rounded text-[11px] font-mono border ${b.color}`}>{it}</span>
+                                  <span className="text-[11px] font-semibold text-ink-muted w-44 shrink-0">{b.label}</span>
+                                  {b.items.map(it => b.opensProject ? (
+                                    <Tag key={it} tone={b.tone} mono onClick={() => openUniverse(it)} title="Open Project Universe">{it}</Tag>
+                                  ) : (
+                                    <Tag key={it} tone={b.tone}>{it}</Tag>
                                   ))}
                                 </div>
                               ))}
@@ -466,10 +467,12 @@ export default function GoalsView() {
                           const evidenceCount = claims.length + relations.length + exclusions.length;
                           if (!evidenceCount && !hasTimeline) return null;
 
+                          // A zero count is left out: "Timeline (0)" read as "no timeline"
+                          // even with the gate dates listed right below it.
                           const Section = ({ title, count, children }: { title: string; count: number; children: React.ReactNode }) => (
-                            <div className="bg-surface-1 rounded-lg border border-line-strong p-4">
-                              <div className="text-[10px] font-bold tracking-widest text-ink-muted uppercase mb-3">
-                                {title} <span className="text-ink-faint">({count})</span>
+                            <div className="bg-surface-1 rounded-lg border border-line p-4">
+                              <div className="text-[11px] font-semibold text-ink-muted mb-3">
+                                {title}{count > 0 && <span className="text-ink-faint"> ({count})</span>}
                               </div>
                               <div className="space-y-3">{children}</div>
                             </div>
@@ -480,13 +483,13 @@ export default function GoalsView() {
                           return (
                             <div className="mt-4 space-y-4">
                               {evidenceCount > 0 && (
-                                <div className="bg-surface-1 rounded-lg border border-line-strong">
+                                <div className="bg-surface-1 rounded-lg border border-line">
                                   <button
                                     type="button"
                                     onClick={() => setEvidenceOpenId(evidenceOpen ? null : g.project_id)}
                                     className="w-full flex items-center justify-between px-4 py-2.5 text-left"
                                   >
-                                    <span className="text-[10px] font-bold tracking-widest text-ink-muted uppercase">
+                                    <span className="text-[11px] font-semibold text-ink-muted">
                                       Extraction evidence
                                       <span className="text-ink-faint ml-1.5">
                                         {claims.length > 0 && `${claims.length} claim${claims.length === 1 ? '' : 's'}`}
@@ -506,11 +509,11 @@ export default function GoalsView() {
                                           {claims.map((c, i) => (
                                             <div key={i} className="text-sm">
                                               <div className="flex flex-wrap gap-1.5 items-center">
-                                                <span className={`px-2 py-0.5 rounded text-[11px] font-mono border ${c.target_kind === 'gio' ? 'bg-cyan-900/40 text-cyan-200 border-cyan-800/60' : 'bg-emerald-900/40 text-emerald-200 border-emerald-800/60'}`}>{c.target}</span>
+                                                <Tag tone={c.target_kind === 'gio' ? 'gio' : 'dds'}>{c.target}</Tag>
                                                 <span className="text-[11px] text-ink-3">{(c.role || '').replace(/_/g, ' ')}</span>
-                                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase border ${c.severity === 'high' ? 'bg-red-900/40 text-red-200 border-red-800/60' : 'bg-surface-2 text-ink-3 border-line-strong'}`}>{c.severity}</span>
-                                                <span className="text-[10px] text-ink-muted font-mono">{(c.impact_type || '').replace(/_/g, ' ')}</span>
-                                                {c.confidence === 'inferred' && <span className="text-[10px] text-amber-300/80 italic">inferred</span>}
+                                                <Tag tone={severityTone(c.severity)}>{c.severity}</Tag>
+                                                <span className="text-[11px] text-ink-muted font-mono">{(c.impact_type || '').replace(/_/g, ' ')}</span>
+                                                {c.confidence === 'inferred' && <span className="text-[11px] text-amber-300/80 italic">inferred</span>}
                                               </div>
                                               <Evidence quote={c.evidence_quote} file={c.evidence_file} />
                                             </div>
@@ -523,9 +526,9 @@ export default function GoalsView() {
                                           {relations.map((r, i) => (
                                             <div key={i} className="text-sm">
                                               <div className="flex flex-wrap gap-1.5 items-center">
-                                                <span className="px-2 py-0.5 rounded text-[11px] font-mono border bg-surface-2 text-ink-3 border-line-strong">{r.project_id}</span>
+                                                <Tag tone="neutral" mono onClick={() => openUniverse(r.project_id)} title="Open Project Universe">{r.project_id}</Tag>
                                                 <span className="text-[11px] text-ink-3">{(r.kind || '').replace(/_/g, ' ')}</span>
-                                                {r.confidence === 'inferred' && <span className="text-[10px] text-amber-300/80 italic">inferred</span>}
+                                                {r.confidence === 'inferred' && <span className="text-[11px] text-amber-300/80 italic">inferred</span>}
                                               </div>
                                               {r.relation && <div className="text-[11px] text-ink-3 mt-0.5">{r.relation}</div>}
                                               <Evidence quote={r.evidence_quote} file={r.source_file} />
@@ -586,7 +589,7 @@ export default function GoalsView() {
                             const isEmpty = !val || val === 'Not identified';
                             return (
                               <div key={key} className={`bg-surface-1 rounded-lg border p-4 ${isEmpty ? 'border-line opacity-60' : 'border-line-strong'}`}>
-                                <div className="text-[10px] font-bold tracking-widest text-ink-muted uppercase mb-2">{label}</div>
+                                <div className="text-[11px] font-semibold text-ink-muted mb-2">{label}</div>
                                 <div className={`text-sm leading-relaxed whitespace-pre-wrap ${isEmpty ? 'text-ink-faint italic' : 'text-ink-3'}`}>
                                   {val || '—'}
                                 </div>

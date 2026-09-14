@@ -19,11 +19,11 @@ import path from 'node:path';
 
 export type TargetKind = 'gio' | 'dds';
 
-// Stable enum of roles a project can play in relation to a target. Mirrors the
-// `role` field that Goals will emit per impact_claim (Onda 3 of the refactor).
-// `impact-engine.ts` derives the impact `direction` from this:
-//   - 'primary_provider'        → 'provides_to'
-//   - 'downstream_consumer'     → 'depends_on'
+// Stable enum of the roles in an impact_claim (Onda 3 of the refactor). A role
+// describes what the TARGET does for the project. `impact-engine.ts` derives the
+// row `direction` (read as project → target) from it:
+//   - 'primary_provider'        → 'depends_on'   (target provides, project depends)
+//   - 'downstream_consumer'     → 'provides_to'  (target consumes what the project provides)
 //   - 'regional_executor'       → 'requires_coordination'
 //   - 'risk_owner'              → 'requires_coordination'
 //   - 'blocked_by'              → 'depends_on'
@@ -82,9 +82,33 @@ export const IMPACT_DIRECTIONS = [
   'competes_with',
 ] as const;
 
+/**
+ * A catalog card.
+ *
+ * `description` alone proved too blunt to steer the model: it says what an
+ * entity is, never where it stops. The five fields added around it are the
+ * shape PLAN_PROMPTS_CATALOG_REVIEW.md §4 Fase C asks for, and each answers a
+ * failure seen in production:
+ *
+ *   scope    — what this entity owns, in one sentence
+ *   signals  — words in a document that genuinely point here
+ *   notThis  — the neighbour it gets confused with, and why (HHC vs HC D&IT,
+ *              Site Infrastructure vs Security & Compliance)
+ *   parent   — aggregation only. A claim on Airgas must NOT also produce a
+ *              claim on Americas; the sum happens in code, not in the model.
+ *   aliases  — the FIT renaming wave (BIS → DDS, new trigrams) means old
+ *              documents say "BIS E&C" for what is now InnoTech
+ *   notes    — anything a human needs that the model should not be told
+ */
 export interface TargetDefinition {
   name: string;
   description: string;
+  scope?: string;
+  signals?: ReadonlyArray<string>;
+  notThis?: ReadonlyArray<string>;
+  parent?: string;
+  aliases?: ReadonlyArray<string>;
+  notes?: string;
   typicalRoles?: ReadonlyArray<TargetRole>;
   typicalImpactTypes?: ReadonlyArray<string>;
 }
@@ -101,21 +125,36 @@ export const CANONICAL_GIO_NAMES = [
   'Cloud Services',
 ] as const;
 
+// E&C and IDD are NOT here: the FIT programme merged both into InnoTech
+// (phase 1, 2025-03-17), so they stopped being impact targets of their own and
+// became aliases — old documents still say them. GM&T stays canonical because
+// the BIS GM&T provider is still live (PLAN_PROMPTS_CATALOG_REVIEW.md §3.1,
+// items 4 and 12).
+//
+// GIO is absent on purpose too: it is a valid project OWNER (28 projects, §3.1
+// item 7) but never an impact target — impacts on GIO go to its five service
+// lines, which live in CANONICAL_GIO_NAMES.
 export const CANONICAL_DDS_NAMES = [
   // Geographic zones
   'Americas', 'Europe', 'APAC', 'AMEI',
   // Business divisions / SBUs
-  'CF', 'GM&T', 'E&C', 'HC D&IT',
+  'CF', 'GM&T', 'HC D&IT',
   'Alizent', 'GDO', 'SEPPIC', 'Airgas', 'HHC',
   // App / functional groups
   'Industrial Apps', 'Enterprise Apps', 'Data & AI Apps',
-  'Digital Factory', 'InnoTech', 'CDIO Office', 'IDD',
+  'Digital Factory', 'InnoTech', 'CDIO Office',
 ] as const;
 
 // ─── JSON data loader ───────────────────────────────────────────────────────
 
 type CatalogEntryData = {
   description?: string;
+  scope?: string;
+  signals?: string[];
+  notThis?: string[];
+  parent?: string;
+  aliases?: string[];
+  notes?: string;
   typicalRoles?: TargetRole[];
   typicalImpactTypes?: string[];
 };
@@ -149,23 +188,51 @@ export function reloadCatalog(): void {
 }
 
 /** Persist a single entry's editable fields. Used by /api/admin/catalog. */
-export function writeCatalogEntry(
-  kind: TargetKind,
-  name: string,
-  patch: { description?: string; typicalRoles?: TargetRole[]; typicalImpactTypes?: string[] }
-): void {
+export interface CatalogPatch {
+  description?: string;
+  scope?: string;
+  signals?: string[];
+  notThis?: string[];
+  parent?: string;
+  aliases?: string[];
+  notes?: string;
+  typicalRoles?: TargetRole[];
+  typicalImpactTypes?: string[];
+}
+
+/** Persist a single entry's editable fields. Used by /api/admin/catalog. */
+export function writeCatalogEntry(kind: TargetKind, name: string, patch: CatalogPatch): void {
   if (!isCanonicalTarget(kind, name)) {
     throw new Error(`Unknown ${kind} target: ${name}`);
   }
   const data = loadCatalog();
   const existing = data[kind][name] ?? {};
   const cleaned: CatalogEntryData = {};
-  const description = patch.description !== undefined ? patch.description : existing.description;
-  if (description !== undefined) cleaned.description = description;
+
+  // An absent key means "leave as is"; an empty string or array means "clear".
+  // Without that distinction the admin screen could never remove a signal, and
+  // a PATCH carrying only `description` would wipe every other field.
+  const text = (k: 'description' | 'scope' | 'parent' | 'notes') => {
+    const v = patch[k] !== undefined ? patch[k] : existing[k];
+    if (typeof v === 'string' && v.trim() !== '') cleaned[k] = v;
+  };
+  text('description');
+  text('scope');
+  text('parent');
+  text('notes');
+
+  const list = (k: 'signals' | 'notThis' | 'aliases' | 'typicalImpactTypes') => {
+    const v = patch[k] !== undefined ? patch[k] : existing[k];
+    if (Array.isArray(v) && v.length > 0) cleaned[k] = v as string[];
+  };
+  list('signals');
+  list('notThis');
+  list('aliases');
+  list('typicalImpactTypes');
+
   const roles = patch.typicalRoles !== undefined ? patch.typicalRoles : existing.typicalRoles;
   if (roles && roles.length > 0) cleaned.typicalRoles = roles;
-  const impactTypes = patch.typicalImpactTypes !== undefined ? patch.typicalImpactTypes : existing.typicalImpactTypes;
-  if (impactTypes && impactTypes.length > 0) cleaned.typicalImpactTypes = impactTypes;
+
   data[kind][name] = cleaned;
   fs.writeFileSync(DATA_PATH, JSON.stringify(data, null, 2) + '\n', 'utf-8');
   cache = data;
@@ -179,6 +246,12 @@ function buildEntry(kind: TargetKind, name: string): TargetDefinition {
   return {
     name,
     description: e.description ?? '',
+    scope: e.scope,
+    signals: e.signals,
+    notThis: e.notThis,
+    parent: e.parent,
+    aliases: e.aliases,
+    notes: e.notes,
     typicalRoles: e.typicalRoles,
     typicalImpactTypes: e.typicalImpactTypes,
   };
@@ -217,9 +290,9 @@ export function getTargetDefinition(kind: TargetKind, target: string): string {
 
 /**
  * Returns the full canonical entry (description + bias hints) for a target.
- * Used by the Goals prompt builder (Onda 3) to inject per-target context
- * inline when asking the LLM to emit `impact_claims`. Returns null when the
- * target name is not in the canonical list.
+ * Not called by any prompt builder yet: the Goals prompt only sees target names
+ * (PLAN_PROMPTS_CATALOG_REVIEW.md §2.3). Returns null when the target name is
+ * not in the canonical list.
  */
 export function getTargetEntry(kind: TargetKind, target: string): TargetDefinition | null {
   if (!isCanonicalTarget(kind, target)) return null;

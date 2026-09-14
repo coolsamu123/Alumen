@@ -69,7 +69,7 @@ export default function AIAnalysisPanel({ project, relatedProjects }: Props) {
 
   return (
     <div className="border-t border-line-strong pt-3 mt-1">
-      <div className="text-[10px] text-ink-muted font-bold tracking-widest mb-2">AI ANALYSIS (Gemini)</div>
+      <div className="text-[11px] text-ink-muted font-bold tracking-widest mb-2">AI ANALYSIS (Gemini)</div>
 
       {/* Action buttons — each fires a live Gemini call via /api/analyze,
           which requires admin server-side (middleware.ts). Disabled rather
@@ -80,7 +80,7 @@ export default function AIAnalysisPanel({ project, relatedProjects }: Props) {
             onClick={() => handlePairwise(peer)}
             disabled={!isAdmin || isAnalyzing}
             title={!isAdmin ? ADMIN_ONLY_TITLE : undefined}
-            className="px-2 py-1 rounded text-[10px] bg-accent-soft border border-accent-border/50 text-accent-text hover:bg-accent-soft transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-2 py-1 rounded text-[11px] bg-accent-soft border border-accent-border/50 text-accent-text hover:bg-accent-soft transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             vs {peer.projectId.replace('PRJ00', '')}
           </button>
@@ -91,7 +91,7 @@ export default function AIAnalysisPanel({ project, relatedProjects }: Props) {
             onClick={handleCluster}
             disabled={!isAdmin || isAnalyzing}
             title={!isAdmin ? ADMIN_ONLY_TITLE : undefined}
-            className="px-2 py-1 rounded text-[10px] bg-purple-900/30 border border-purple-700/50 text-purple-300 hover:bg-purple-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-2 py-1 rounded text-[11px] bg-purple-900/30 border border-purple-700/50 text-purple-300 hover:bg-purple-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Cluster Analysis
           </button>
@@ -102,7 +102,7 @@ export default function AIAnalysisPanel({ project, relatedProjects }: Props) {
             onClick={handleDocAnalysis}
             disabled={!isAdmin || isAnalyzing}
             title={!isAdmin ? ADMIN_ONLY_TITLE : undefined}
-            className="px-2 py-1 rounded text-[10px] bg-green-900/30 border border-green-700/50 text-green-300 hover:bg-green-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-2 py-1 rounded text-[11px] bg-green-900/30 border border-green-700/50 text-green-300 hover:bg-green-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             + Documents
           </button>
@@ -121,7 +121,7 @@ export default function AIAnalysisPanel({ project, relatedProjects }: Props) {
         <div className="space-y-2.5 animate-fadeIn">
           {analysis.themes.length > 0 && (
             <div>
-              <div className="text-[10px] text-accent-text2 font-semibold mb-1">THEMES</div>
+              <div className="text-[11px] text-accent-text2 font-semibold mb-1">THEMES</div>
               {analysis.themes.map((t, i) => (
                 <div key={i} className="text-[11px] text-ink-3 pl-2 border-l-2 border-accent-border mb-1">{t}</div>
               ))}
@@ -130,7 +130,7 @@ export default function AIAnalysisPanel({ project, relatedProjects }: Props) {
 
           {analysis.synergies.length > 0 && (
             <div>
-              <div className="text-[10px] text-green-400 font-semibold mb-1">SYNERGIES</div>
+              <div className="text-[11px] text-green-400 font-semibold mb-1">SYNERGIES</div>
               {analysis.synergies.map((s, i) => (
                 <div key={i} className="text-[11px] text-ink-3 pl-2 border-l-2 border-green-700 mb-1">{s}</div>
               ))}
@@ -139,7 +139,7 @@ export default function AIAnalysisPanel({ project, relatedProjects }: Props) {
 
           {analysis.risks.length > 0 && (
             <div>
-              <div className="text-[10px] text-red-400 font-semibold mb-1">RISKS</div>
+              <div className="text-[11px] text-red-400 font-semibold mb-1">RISKS</div>
               {analysis.risks.map((r, i) => (
                 <div key={i} className="text-[11px] text-ink-3 pl-2 border-l-2 border-red-700 mb-1">{r}</div>
               ))}
@@ -148,14 +148,14 @@ export default function AIAnalysisPanel({ project, relatedProjects }: Props) {
 
           {analysis.recommendations.length > 0 && (
             <div>
-              <div className="text-[10px] text-yellow-400 font-semibold mb-1">RECOMMENDATIONS</div>
+              <div className="text-[11px] text-yellow-400 font-semibold mb-1">RECOMMENDATIONS</div>
               {analysis.recommendations.map((r, i) => (
                 <div key={i} className="text-[11px] text-ink-3 pl-2 border-l-2 border-yellow-700 mb-1">{r}</div>
               ))}
             </div>
           )}
 
-          <div className="text-[10px] text-ink-muted text-right">
+          <div className="text-[11px] text-ink-muted text-right">
             AI Similarity: {Math.round(analysis.similarityScore * 100)}% · {analysis.modelUsed}
           </div>
         </div>

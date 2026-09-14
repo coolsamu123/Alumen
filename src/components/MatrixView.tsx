@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { useProjectContext } from '@/context/ProjectContext';
-import { getDDSColor } from '@/lib/constants';
+import { getDDSColor, categoryText } from '@/lib/constants';
 import type { ProjectSummary, CIOOProject } from '@/lib/types';
 
 
@@ -116,7 +116,7 @@ export default function MatrixView() {
                   color: 'var(--ink-4)',
                   fontWeight: 600,
                 }}>
-                  <span style={{ color: getDDSColor(p.dds) }}>{p.projectId.replace('PRJ00', '')}</span>
+                  <span style={{ color: categoryText(getDDSColor(p.dds)) }}>{p.projectId.replace('PRJ00', '')}</span>
                   {' '}{p.name.slice(0, 14)}
                 </th>
               ))}
@@ -126,7 +126,7 @@ export default function MatrixView() {
             {matrixProjects.map(pa => (
               <tr key={pa.projectId}>
                 <td className="pr-3 font-semibold text-ink-2 whitespace-nowrap text-right">
-                  <span className="text-[10px] font-mono mr-1.5" style={{ color: getDDSColor(pa.dds) }}>
+                  <span className="text-[11px] font-mono mr-1.5" style={{ color: categoryText(getDDSColor(pa.dds)) }}>
                     {pa.projectId.replace('PRJ00', '')}
                   </span>
                   {pa.name.length > 18 ? pa.name.slice(0, 16) + '...' : pa.name}
@@ -135,7 +135,7 @@ export default function MatrixView() {
                   const sim = matrix[pa.projectId]?.[pb.projectId] ?? 0;
                   const isDiag = pa.projectId === pb.projectId;
                   const bg = isDiag
-                    ? '#1e3a8a'
+                    ? 'var(--surface-3)'
                     : sim > 0.5 ? `rgba(59,130,246,${sim})`
                     : sim > 0.2 ? `rgba(99,102,241,${sim})`
                     : sim > 0 ? `rgba(99,102,241,0.1)`
@@ -153,9 +153,9 @@ export default function MatrixView() {
                       }}
                     >
                       {sim > 0.15 && !isDiag && (
-                        <span className="text-[9px] text-white/80 font-mono">{Math.round(sim * 100)}</span>
+                        <span className={`text-[11px] font-mono ${sim > 0.5 ? 'text-white/90' : 'text-ink-1'}`}>{Math.round(sim * 100)}</span>
                       )}
-                      {isDiag && <span className="text-[9px] text-accent-text2">--</span>}
+                      {isDiag && <span className="text-[11px] text-accent-text2">--</span>}
                     </td>
                   );
                 })}
@@ -178,7 +178,7 @@ export default function MatrixView() {
                 fontSize: 11 + Math.min(count, 5),
               }}
             >
-              {tag} <span className="text-[10px] opacity-70">x{count}</span>
+              {tag} <span className="text-[11px] opacity-70">x{count}</span>
             </span>
           ))}
         </div>

@@ -693,7 +693,7 @@ function buildImpactPrompt(records: ProjectFullRecord[]): BuiltImpactPrompt {
         const lines = latest.impact_claims
           .map(c => `      • ${c.target_kind.toUpperCase()} "${c.target}" role=${c.role} sev=${c.severity} type=${c.impact_type} (${c.confidence}): "${c.evidence_quote}" (in ${c.evidence_file})`)
           .join('\n');
-        parts.push(`\n  Atomic impact claims (from Goals — emit one impact row per claim, do not invent extras):\n${lines}`);
+        parts.push(`\n  Atomic impact claims (from Goals — context only; GIO/DDS rows are materialised automatically, do not emit them):\n${lines}`);
       }
 
       // Onda 3: structured timeline + dependencies. Defensive: even though the
@@ -984,6 +984,33 @@ function parseImpactResponse(text: string): RawImpact[] {
   }
 }
 
+// A citation must point at a document that was actually available to the batch.
+// The prompt forbids inventing doc_url values, but nothing enforced it: on
+// 2026-09-14, 22 of the 52 stored project-to-project citations pointed at URLs
+// found nowhere in documents_cache. An unresolvable citation renders as a dead
+// "Sources" entry, which is worse than none — so the citation goes, the row stays.
+function dropUnknownCitations(impacts: RawImpact[], projects: ProjectFullRecord[]): RawImpact[] {
+  const known = new Set<string>();
+  for (const p of projects) {
+    for (const d of getProjectDocuments(p.projectId, 1)) {
+      if (d.status === 'success') known.add(d.url);
+    }
+  }
+  let dropped = 0;
+  const out = impacts.map(imp => {
+    const citations = (imp.citations || []).filter(c => {
+      if (known.has(c.doc_url)) return true;
+      dropped++;
+      return false;
+    });
+    return { ...imp, citations };
+  });
+  if (dropped > 0) {
+    console.log(`[Impact] dropped ${dropped} citation(s) whose doc_url is not among this batch's documents`);
+  }
+  return out;
+}
+
 // ─── Store impacts in DB ─────────────────────────────────────────────────────
 
 function storeImpacts(impacts: RawImpact[], batchId: string, lang: OutputLanguage): number {
@@ -1091,12 +1118,17 @@ interface MaterializedClaim {
   confidence: 'stated' | 'inferred';
 }
 
-// Mirrors prompts.ts:231-236 — the role → direction mapping the LLM was supposed
-// to apply. Now applied deterministically so the column never disagrees with
-// the row's semantics.
+// Roles describe what the TARGET does for the project (Goals prompt, "Role
+// guidance"), while a stored row reads source=project → target. The direction
+// therefore flips the perspective: when the target is the provider, the project
+// depends on it; when the target consumes the project's output, the project
+// provides to it. The earlier mapping copied the role's wording instead, so a
+// project that depends on Security & Compliance rendered as "provides services
+// to Security & Compliance" (PLAN_PROMPTS_CATALOG_REVIEW.md §2.1).
+// scripts/rematerialize-claims.cjs mirrors this table — keep them in sync.
 const ROLE_TO_DIRECTION: Record<string, string> = {
-  primary_provider: 'provides_to',
-  downstream_consumer: 'depends_on',
+  primary_provider: 'depends_on',
+  downstream_consumer: 'provides_to',
   regional_executor: 'requires_coordination',
   risk_owner: 'requires_coordination',
   blocked_by: 'depends_on',
@@ -1188,6 +1220,31 @@ function materializeClaimsAsImpacts(
 
   console.log(`[Impact] materializeClaimsAsImpacts: ${claimsKept}/${claimsSeen} claims materialised (dropped bad target: ${claimsDroppedBadTarget})`);
   return out;
+}
+
+// GIO / DDS rows are replaced, not upserted. INSERT OR REPLACE only overwrites a
+// row whose key still exists, so when a re-extraction changed a project's claims
+// the rows of claims that no longer exist stayed behind as phantom edges — 98 of
+// 279 on 2026-09-14 (PRJ0022184 had 7 GIO rows for 3 claims). Materialisation is
+// the only writer of these rows (parseImpactResponse drops LLM pseudo-target
+// rows), so deleting them all and rewriting from the current claims in one
+// transaction is safe: readers see the old set or the new one, never a gap.
+function replaceMaterialisedClaimRows(
+  records: ProjectFullRecord[],
+  batchId: string,
+  lang: OutputLanguage,
+): { removed: number; inserted: number; total: number } {
+  const db = getDb();
+  const materialised = materializeClaimsAsImpacts(records);
+  let removed = 0;
+  let inserted = 0;
+  db.transaction(() => {
+    removed = db.prepare(
+      "DELETE FROM projects_impact WHERE output_language = ? AND target_project_id IN ('GIO_SERVICES', 'DDS_IMPACTS')"
+    ).run(lang).changes;
+    inserted = storeImpacts(materialised, batchId, lang);
+  })();
+  return { removed, inserted, total: materialised.length };
 }
 
 // ─── Run journal (impact_runs) ───────────────────────────────────────────────
@@ -1300,7 +1357,7 @@ async function processBatch(batch: Batch, batchId: string, lang: OutputLanguage)
 
   console.log(`[Impact] Batch "${batch.label}" (${batch.projects.length} projects) — response length: ${text.length}, preview: ${text.slice(0, 200)}`);
 
-  const impacts = parseImpactResponse(text);
+  const impacts = dropUnknownCitations(parseImpactResponse(text), batch.projects);
   console.log(`[Impact] Batch "${batch.label}" — parsed ${impacts.length} impacts`);
 
   if (impacts.length === 0) return 0;
@@ -1396,12 +1453,12 @@ export async function runFullImpactAnalysis(): Promise<void> {
     // (2026-06-18, db.ts) — an LLM row naming a different entity set simply does
     // not collide. The guarantee now comes from the other end: parseImpactResponse
     // drops every pseudo-target row before it can reach the DB, so this is the
-    // only writer of GIO_SERVICES / DDS_IMPACTS edges.
+    // only writer of GIO_SERVICES / DDS_IMPACTS edges — which is also what makes
+    // replacing the whole set (rather than upserting into it) safe.
     analysisStatus.currentBatchDDS = 'Materialising atomic claims';
     try {
-      const materialised = materializeClaimsAsImpacts(records);
-      const inserted = storeImpacts(materialised, runBatchId, lang);
-      console.log(`[Impact] materialised ${inserted}/${materialised.length} claim rows`);
+      const { removed, inserted, total } = replaceMaterialisedClaimRows(records, runBatchId, lang);
+      console.log(`[Impact] materialised ${inserted}/${total} claim rows (replaced ${removed} previous GIO/DDS rows)`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       analysisStatus.errors.push(`Claim materialisation: ${msg}`);

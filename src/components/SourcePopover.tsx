@@ -42,7 +42,7 @@ export function SourcePopover({ sources, label }: { sources: SourceRef[]; label?
         type="button"
         onClick={e => { e.stopPropagation(); setOpen(o => !o); }}
         title={label || `${sources.length} source${sources.length > 1 ? 's' : ''}`}
-        className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-accent-soft border border-accent-border/60 text-[9px] font-bold text-accent-text hover:bg-accent-border/40 transition-colors"
+        className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-accent-soft border border-accent-border/60 text-[11px] font-bold text-accent-text hover:bg-accent-border/40 transition-colors"
       >
         {sources.length}
       </button>
@@ -52,7 +52,7 @@ export function SourcePopover({ sources, label }: { sources: SourceRef[]; label?
           className="absolute z-50 right-0 top-full mt-1.5 w-80 max-w-[90vw] rounded-md border border-line-strong bg-surface-2 shadow-2xl p-3 text-left animate-fadeIn"
           onClick={e => e.stopPropagation()}
         >
-          <div className="text-[10px] uppercase tracking-wider text-ink-2 mb-2 font-bold">
+          <div className="text-[11px] uppercase tracking-wider text-ink-2 mb-2 font-bold">
             {label || 'Sources'}
           </div>
           <ul className="space-y-3">

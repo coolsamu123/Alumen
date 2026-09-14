@@ -123,7 +123,7 @@ export default function DriveView() {
           className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg shadow-2xl border text-sm font-medium ${
             toast.kind === 'success' ? 'bg-green-900/90 border-green-700 text-green-100' :
             toast.kind === 'error'   ? 'bg-red-900/90 border-red-700 text-red-100' :
-                                       'bg-accent-soft border-accent-border text-accent-fg'
+                                       'bg-surface-1 border-accent-border text-accent-text'
           }`}
         >
           {toast.msg}
@@ -370,14 +370,14 @@ function WatchRoots() {
                 <span className="text-[13px] font-semibold text-ink-1 truncate">
                   {r.label || r.driveId}
                 </span>
-                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${
                   r.kind === 'initiatives'
                     ? 'bg-purple-900/40 text-purple-300'
                     : 'bg-accent-soft text-accent-text'}`}>
                   {r.kind === 'initiatives' ? 'INITIATIVES' : 'PORTFOLIO'}
                 </span>
                 {!r.enabled && (
-                  <span className="text-[10px] text-ink-faint uppercase tracking-wider">disabled</span>
+                  <span className="text-[11px] text-ink-faint uppercase tracking-wider">disabled</span>
                 )}
               </div>
 
@@ -386,7 +386,7 @@ function WatchRoots() {
                 {r.url}
               </a>
 
-              <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1.5 text-[10px] text-ink-faint">
+              <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1.5 text-[11px] text-ink-faint">
                 <span>
                   {r.kind === 'initiatives'
                     ? 'each direct subfolder becomes one initiative'
@@ -402,7 +402,7 @@ function WatchRoots() {
               </div>
 
               {r.lastRunError && (
-                <p className="mt-1 text-[10px] text-rose-400 break-words">{r.lastRunError}</p>
+                <p className="mt-1 text-[11px] text-rose-400 break-words">{r.lastRunError}</p>
               )}
             </div>
 
@@ -910,7 +910,7 @@ function ProjectExplorer({
         <div className="text-[11px] text-ink-muted">{visible.length} / {rows?.length ?? 0}</div>
         {/* DEBUG: temporary indicator so we know SSE is delivering the syncAll payload. */}
         {syncAll && (
-          <div className={`text-[10px] font-mono px-2 py-0.5 rounded ${
+          <div className={`text-[11px] font-mono px-2 py-0.5 rounded ${
             syncing ? 'bg-accent-soft text-accent-text' :
             syncAll.status === 'done' && syncAll.totalProjects > 0 ? 'bg-green-900/40 text-green-300' :
             'bg-surface-2 text-ink-muted'
@@ -1004,7 +1004,7 @@ function ProjectExplorer({
               <ColumnHeader label="Local"   col="localPath"       sort={sort} onSort={toggleSort}
                 filter={<FilterSelect value={filters.local} onChange={v => updateFilter('local', v as ColumnFilters['local'])}
                   options={[{ value: 'any', label: 'Any' }, { value: 'yes', label: 'Downloaded' }, { value: 'no', label: 'No' }]} />} />
-              <th className="px-2 py-1.5 text-right align-top text-[10px] uppercase text-ink-muted font-medium">Actions</th>
+              <th className="px-2 py-1.5 text-right align-top text-[11px] uppercase text-ink-muted font-medium">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line/60">
@@ -1057,14 +1057,14 @@ function ProjectExplorer({
                 <td className="px-2 py-1.5 text-ink-3 max-w-xs truncate" title={r.name}>{r.name || '—'}</td>
                 <td className="px-2 py-1.5 whitespace-nowrap">
                   <span
-                    className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${SOURCE_BADGE[r.source].className}`}
+                    className={`px-1.5 py-0.5 rounded text-[11px] font-semibold ${SOURCE_BADGE[r.source].className}`}
                     title={SOURCE_BADGE[r.source].title}
                   >
                     {SOURCE_BADGE[r.source].label}
                   </span>
                   {r.missingSince && (
                     <span
-                      className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-900/40 text-red-300"
+                      className="ml-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-red-900/40 text-red-300"
                       title={`Folder no longer in Drive since ${r.missingSince}. Kept: its goals and impact edges are still valid.`}
                     >
                       fora do Drive
@@ -1094,7 +1094,7 @@ function ProjectExplorer({
                     {r.impactCount}
                   </span>
                 </td>
-                <td className="px-2 py-1.5 font-mono text-[10px] max-w-[280px]">
+                <td className="px-2 py-1.5 font-mono text-[11px] max-w-[280px]">
                   {r.linkFolder ? (
                     <a
                       href={r.linkFolder.split(' ')[0]}
@@ -1109,7 +1109,7 @@ function ProjectExplorer({
                     <span className="text-ink-faint">—</span>
                   )}
                 </td>
-                <td className="px-2 py-1.5 font-mono text-[10px] max-w-[260px]">
+                <td className="px-2 py-1.5 font-mono text-[11px] max-w-[260px]">
                   {r.localPath ? (
                     <span className="text-ink-4 truncate inline-block max-w-full align-bottom" title={r.localPath}>
                       {r.localPath}
@@ -1161,7 +1161,7 @@ function ColumnHeader({
         <button
           type="button"
           onClick={() => onSort(col)}
-          className={`flex items-center gap-1 ${justify} text-[10px] uppercase font-medium text-ink-muted hover:text-ink-2 cursor-pointer select-none`}
+          className={`flex items-center gap-1 ${justify} text-[11px] uppercase font-medium text-ink-muted hover:text-ink-2 cursor-pointer select-none`}
         >
           <span>{label}</span>
           <span className="text-ink-4 w-2 inline-block">

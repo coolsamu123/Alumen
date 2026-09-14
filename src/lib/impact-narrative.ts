@@ -63,8 +63,8 @@ export interface NarrativeParts {
 }
 
 // direction → verb phrase. Built from the prompts.ts → impact-engine mappings:
-//   role=primary_provider     → provides_to
-//   role=downstream_consumer  → depends_on
+//   role=primary_provider     → depends_on    (the target provides; the project depends on it)
+//   role=downstream_consumer  → provides_to   (the target consumes what the project provides)
 //   role=regional_executor    → requires_coordination
 //   role=risk_owner           → requires_coordination
 //   role=blocked_by           → depends_on

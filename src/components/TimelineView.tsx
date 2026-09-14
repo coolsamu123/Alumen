@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { useProjectContext } from '@/context/ProjectContext';
-import { getDDSColor, getDecisionColor, getGateColor } from '@/lib/constants';
+import { getDDSColor, getDecisionColor, getGateColor, categoryText } from '@/lib/constants';
 
 /** Normalize DD/MM/YYYY or YYYY-MM-DD to a Date-sortable ISO string (YYYY-MM-DD). */
 function normalizeDate(raw: string): string {
@@ -171,7 +171,7 @@ export default function TimelineView() {
                     <div className={`text-sm font-bold ${isCurrent ? 'text-accent-text2' : 'text-ink-2'}`}>
                       {monthLabel(month)}
                     </div>
-                    <div className="text-[10px] text-ink-muted">{items.length} review{items.length !== 1 ? 's' : ''}</div>
+                    <div className="text-[11px] text-ink-muted">{items.length} review{items.length !== 1 ? 's' : ''}</div>
                   </div>
                   <div className={`w-3 h-3 rounded-full shrink-0 -ml-[6px] z-10 border-2 border-bg ${isCurrent ? 'bg-accent' : 'bg-surface-3'}`} />
                   <div className={`flex-1 h-px ml-4 ${isCurrent ? 'bg-accent/30' : 'bg-surface-2'}`} />
@@ -191,20 +191,20 @@ export default function TimelineView() {
                           ${isSelected ? 'border-accent-border ring-1 ring-accent-border/30' : ''}`}
                       >
                         {/* Date */}
-                        <span className="text-[10px] text-ink-muted font-mono w-[72px] shrink-0">
+                        <span className="text-[11px] text-ink-muted font-mono w-[72px] shrink-0">
                           {p.reviewDateRaw}
                         </span>
 
                         {/* Project ID */}
-                        <span className="text-[10px] font-mono font-semibold shrink-0 w-[90px]" style={{ color: ddsColor }}>
+                        <span className="text-[11px] font-mono font-semibold shrink-0 w-[90px]" style={{ color: categoryText(ddsColor) }}>
                           {p.projectId}
                         </span>
 
                         {/* Gate badge */}
                         {p.currentGate ? (
                           <span
-                            className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0"
-                            style={{ background: `${getGateColor(p.currentGate)}20`, color: `color-mix(in srgb, ${getGateColor(p.currentGate)} 70%, var(--ink-1))` }}
+                            className="inline-block px-1.5 py-0.5 rounded text-[11px] font-bold shrink-0"
+                            style={{ background: `${getGateColor(p.currentGate)}20`, color: categoryText(getGateColor(p.currentGate)) }}
                           >
                             G{p.currentGate}
                           </span>
@@ -213,8 +213,8 @@ export default function TimelineView() {
                         {/* Decision badge */}
                         {p.latestDecision ? (
                           <span
-                            className="inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold shrink-0"
-                            style={{ background: `${getDecisionColor(p.latestDecision)}22`, color: `color-mix(in srgb, ${getDecisionColor(p.latestDecision)} 70%, var(--ink-1))` }}
+                            className="inline-block px-1.5 py-0.5 rounded text-[11px] font-semibold shrink-0"
+                            style={{ background: `${getDecisionColor(p.latestDecision)}22`, color: categoryText(getDecisionColor(p.latestDecision)) }}
                           >
                             {p.latestDecision}
                           </span>
@@ -228,8 +228,8 @@ export default function TimelineView() {
                         {/* DDS */}
                         {p.dds && (
                           <span
-                            className="inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold shrink-0"
-                            style={{ background: `${ddsColor}18`, color: `color-mix(in srgb, ${ddsColor} 70%, var(--ink-1))` }}
+                            className="inline-block px-1.5 py-0.5 rounded text-[11px] font-semibold shrink-0"
+                            style={{ background: `${ddsColor}18`, color: categoryText(ddsColor) }}
                           >
                             {p.dds}
                           </span>

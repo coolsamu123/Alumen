@@ -15,7 +15,8 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useProjectContext } from '@/context/ProjectContext';
-import { getDDSColor, SEVERITY_COLORS } from '@/lib/constants';
+import { getDDSColor, SEVERITY_COLORS, categoryText, severityStroke } from '@/lib/constants';
+import Tag, { severityTone } from './Tag';
 import LoadingState from './LoadingState';
 import EvidencePanel, { DeepDiveButton } from './EvidencePanel';
 import { SourcePopover, type SourceRef } from './SourcePopover';
@@ -264,7 +265,7 @@ function CenterNode({ data }: { data: { project: CenterProject } }) {
           </span>
         )}
         {project.currentGate && (
-          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-accent-soft text-accent-fg border border-accent-border">
+          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-accent-soft text-accent-text border border-accent-border">
             Gate {project.currentGate}
           </span>
         )}
@@ -323,7 +324,7 @@ function ProjectSatelliteNode({ data }: { data: { label: string; sublabel: strin
           {data.sublabel}
         </span>
         <span className="text-[9px] px-1.5 py-0.5 rounded font-semibold"
-          style={{ background: `${SEVERITY_COLOR[data.severity] || '#6b7280'}33`, color: `color-mix(in srgb, ${SEVERITY_COLOR[data.severity] || '#6b7280'} 70%, var(--ink-1))` }}>
+          style={{ background: `${SEVERITY_COLOR[data.severity] || '#6b7280'}33`, color: categoryText(SEVERITY_COLOR[data.severity] || '#6b7280') }}>
           {data.severity}
         </span>
       </div>
@@ -463,7 +464,7 @@ export default function ProjectUniverseView() {
       });
 
       const edgeId = `edge-${item.id}`;
-      const sevColor = SEVERITY_COLOR[node.severity] || '#6b7280';
+      const sevColor = severityStroke(node.severity, theme);
       const primary = node.impacts[0];
       out.edges.push({
         id: edgeId,
@@ -512,7 +513,7 @@ export default function ProjectUniverseView() {
       });
 
       const edgeId = `edge-${item.id}`;
-      const sevColor = SEVERITY_COLOR[node.severity] || '#6b7280';
+      const sevColor = severityStroke(node.severity, theme);
       const primary = node.impacts[0];
       out.edges.push({
         id: edgeId,
@@ -567,7 +568,7 @@ export default function ProjectUniverseView() {
       });
 
       const edgeId = `edge-${item.id}`;
-      const sevColor = SEVERITY_COLOR[edge.severity] || '#6b7280';
+      const sevColor = severityStroke(edge.severity, theme);
       out.edges.push({
         id: edgeId,
         source: 'center',
@@ -616,7 +617,7 @@ export default function ProjectUniverseView() {
     }
 
     return { ...out, edgeDetailsMap: detailsMap };
-  }, [data, openUniverse]);
+  }, [data, openUniverse, theme]);
 
   // Apply selection visual to edges
   const decoratedEdges = useMemo(() => edges.map(e => ({
@@ -667,7 +668,7 @@ export default function ProjectUniverseView() {
           ← Voltar
         </button>
         <div className="flex-1">
-          <div className="text-[10px] uppercase tracking-widest text-ink-muted">Project Universe</div>
+          <div className="text-[11px] uppercase tracking-widest text-ink-muted">Project Universe</div>
           <div className="text-sm font-bold text-ink-1 truncate">{data.project.name}</div>
         </div>
         <div className="flex gap-3 text-xs text-ink-4">
@@ -697,7 +698,7 @@ export default function ProjectUniverseView() {
             nodesConnectable={false}
             elementsSelectable={false}
           >
-            <Background gap={32} size={1} color={theme === 'light' ? '#cbd5e1' : '#1e293b'} />
+            <Background gap={32} size={1} color={theme === 'light' ? '#cbd5e1' : theme === 'dim' ? '#444c56' : '#2f343d'} />
             <Controls className="!bg-surface-1 !border-line-strong" showInteractive={false} />
           </ReactFlow>
 
@@ -771,11 +772,11 @@ export default function ProjectUniverseView() {
                           {group.narrative ? (
                             <>
                               <div>
-                                <div className="text-[9px] uppercase tracking-wider text-accent-text2 font-bold mb-1">Why this matters</div>
+                                <div className="text-[11px] uppercase tracking-wider text-accent-text2 font-bold mb-1">Why this matters</div>
                                 <div className="text-ink-1">{group.narrative}</div>
                               </div>
                               <div className="border-t border-line/40 pt-2">
-                                <div className="text-[9px] uppercase tracking-wider text-ink-muted font-bold mb-1.5">
+                                <div className="text-[11px] uppercase tracking-wider text-ink-muted font-bold mb-1.5">
                                   Evidence{group.items.length > 1 ? ` (${group.items.length})` : ''}
                                 </div>
                                 <div className="flex flex-col gap-2">
@@ -790,10 +791,10 @@ export default function ProjectUniverseView() {
                                         {(item.impactType || item.severity) && (
                                           <div className="flex gap-1.5 flex-wrap mt-1.5">
                                             {item.severity && sevColor && (
-                                              <Badge label={item.severity} bg={`${sevColor}33`} fg={sevColor} />
+                                              <Tag tone={severityTone(item.severity)}>{item.severity}</Tag>
                                             )}
                                             {item.impactType && (
-                                              <Badge label={item.impactType.replace(/_/g, ' ')} bg="#1e3a8a55" fg="#93c5fd" />
+                                              <Tag tone="info">{item.impactType.replace(/_/g, ' ')}</Tag>
                                             )}
                                           </div>
                                         )}
@@ -815,10 +816,10 @@ export default function ProjectUniverseView() {
                                   {(item.impactType || item.severity) && (
                                     <div className="flex gap-1.5 flex-wrap pt-1 border-t border-line/40">
                                       {item.severity && sevColor && (
-                                        <Badge label={item.severity} bg={`${sevColor}33`} fg={sevColor} />
+                                        <Tag tone={severityTone(item.severity)}>{item.severity}</Tag>
                                       )}
                                       {item.impactType && (
-                                        <Badge label={item.impactType.replace(/_/g, ' ')} bg="#1e3a8a55" fg="#93c5fd" />
+                                        <Tag tone="info">{item.impactType.replace(/_/g, ' ')}</Tag>
                                       )}
                                     </div>
                                   )}
@@ -886,13 +887,5 @@ function Stat({ label, value, color }: { label: string; value: number; color: st
       <span className="text-ink-muted">{label}:</span>
       <span className="font-bold text-ink-2 font-mono">{value}</span>
     </div>
-  );
-}
-
-function Badge({ label, bg, fg }: { label: string; bg: string; fg: string }) {
-  return (
-    <span className="text-[10px] font-semibold px-2 py-0.5 rounded" style={{ background: bg, color: fg }}>
-      {label}
-    </span>
   );
 }

@@ -7,6 +7,12 @@ type TargetKind = 'gio' | 'dds';
 interface CatalogEntry {
   name: string;
   description: string;
+  scope?: string;
+  signals?: string[];
+  notThis?: string[];
+  parent?: string;
+  aliases?: string[];
+  notes?: string;
   typicalRoles?: string[];
   typicalImpactTypes?: string[];
 }
@@ -19,9 +25,21 @@ interface CatalogPayload {
 
 interface Draft {
   description: string;
+  scope: string;
+  signals: string;      // one per line in the textarea, array on the wire
+  notThis: string;      // idem
+  parent: string;
+  aliases: string;      // idem
+  notes: string;
   typicalRoles: string[];
   typicalImpactTypes: string[];
 }
+
+/** Textarea (one item per line) ⇄ array. Blank lines dropped so a trailing
+ *  newline never becomes an empty signal. */
+const linesToList = (v: string): string[] =>
+  v.split('\n').map(x => x.trim()).filter(Boolean);
+const listToLines = (v: string[] | undefined): string => (v ?? []).join('\n');
 
 const DDS_GROUPS: { title: string; subtitle: string; members: string[] }[] = [
   {
@@ -32,21 +50,23 @@ const DDS_GROUPS: { title: string; subtitle: string; members: string[] }[] = [
   {
     title: 'Business Divisions & SBUs',
     subtitle: 'Specialised Digital Delivery Services (DDS) or World Business Lines (WBLs).',
-    members: ['CF', 'GM&T', 'E&C', 'HC D&IT', 'Alizent', 'GDO', 'SEPPIC', 'Airgas', 'HHC'],
+    members: ['CF', 'GM&T', 'HC D&IT', 'Alizent', 'GDO', 'SEPPIC', 'Airgas', 'HHC'],
   },
   {
     title: 'App & Functional Groups',
-    subtitle: 'Delivery units and governance structures within Global Digital Services (GDS).',
-    members: ['Industrial Apps', 'Enterprise Apps', 'Data & AI Apps', 'Digital Factory', 'InnoTech', 'CDIO Office', 'IDD'],
+    subtitle: 'Delivery units and governance structures within Global Delivery Services (GDS).',
+    members: ['Industrial Apps', 'Enterprise Apps', 'Data & AI Apps', 'Digital Factory', 'InnoTech', 'CDIO Office'],
   },
 ];
 
 const ROLE_HELP: Record<string, string> = {
-  primary_provider: 'Project provides this target as its main output.',
-  downstream_consumer: 'Project consumes capabilities of the target.',
-  regional_executor: 'Project executes a rollout in the target region/division.',
-  risk_owner: 'Target owns risks introduced or affected by the project.',
-  blocked_by: 'Project is blocked by something the target controls.',
+  // A role describes what the TARGET does for the project — same wording as the
+  // Goals prompt's "Role guidance", so admins bias toward the meaning the LLM uses.
+  primary_provider: 'Target provides capability, infrastructure or governance that the project consumes.',
+  downstream_consumer: 'Target consumes something the project produces.',
+  regional_executor: 'Target (a region) executes the project rollout.',
+  risk_owner: 'Target owns the risk or compliance posture the project affects.',
+  blocked_by: "Target's state or decision blocks the project.",
 };
 
 const KIND_LABEL: Record<TargetKind, string> = {
@@ -67,9 +87,62 @@ function isSameStringList(a: string[], b: string[]) {
 function toDraft(entry: CatalogEntry): Draft {
   return {
     description: entry.description ?? '',
+    scope: entry.scope ?? '',
+    signals: listToLines(entry.signals),
+    notThis: listToLines(entry.notThis),
+    parent: entry.parent ?? '',
+    aliases: listToLines(entry.aliases),
+    notes: entry.notes ?? '',
     typicalRoles: [...(entry.typicalRoles ?? [])],
     typicalImpactTypes: [...(entry.typicalImpactTypes ?? [])],
   };
+}
+
+/** One labelled textarea. Six near-identical blocks inline would have tripled
+ *  the length of the card for no gain. */
+function Field({
+  label, hint, value, onChange, rows, mono, placeholder,
+}: {
+  label: string;
+  hint: string;
+  value: string;
+  onChange: (v: string) => void;
+  rows: number;
+  mono?: boolean;
+  placeholder?: string;
+}) {
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ fontSize: 11, color: 'var(--ink-faint)', fontWeight: 700, letterSpacing: '0.08em', marginBottom: 6 }}>
+        {label}
+        <span style={{ marginLeft: 8, color: 'var(--ink-muted)', fontWeight: 500, letterSpacing: 0, textTransform: 'none' }}>
+          {hint}
+        </span>
+      </div>
+      <textarea
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        rows={Math.max(rows, Math.min(10, value.split('\n').length + 1))}
+        placeholder={placeholder}
+        style={{
+          width: '100%',
+          background: 'var(--surface-2)',
+          border: '1px solid var(--border-strong)',
+          color: 'var(--ink-2)',
+          borderRadius: 8,
+          padding: '10px 12px',
+          fontSize: 13,
+          fontFamily: mono
+            ? "'JetBrains Mono', ui-monospace, monospace"
+            : "'DM Sans', 'Segoe UI', sans-serif",
+          lineHeight: 1.55,
+          outline: 'none',
+          resize: 'vertical',
+          boxSizing: 'border-box',
+        }}
+      />
+    </div>
+  );
 }
 
 export default function CatalogAdminPage() {
@@ -123,6 +196,12 @@ export default function CatalogAdminPage() {
     const draft = drafts[draftKey(kind, name)];
     if (!server || !draft) return false;
     if (server.description !== draft.description) return true;
+    if ((server.scope ?? '') !== draft.scope) return true;
+    if ((server.parent ?? '') !== draft.parent) return true;
+    if ((server.notes ?? '') !== draft.notes) return true;
+    if (listToLines(server.signals) !== draft.signals) return true;
+    if (listToLines(server.notThis) !== draft.notThis) return true;
+    if (listToLines(server.aliases) !== draft.aliases) return true;
     if (!isSameStringList(server.typicalRoles ?? [], draft.typicalRoles)) return true;
     if (!isSameStringList(server.typicalImpactTypes ?? [], draft.typicalImpactTypes)) return true;
     return false;
@@ -152,6 +231,12 @@ export default function CatalogAdminPage() {
           kind,
           name,
           description: draft.description,
+          scope: draft.scope,
+          signals: linesToList(draft.signals),
+          notThis: linesToList(draft.notThis),
+          parent: draft.parent,
+          aliases: linesToList(draft.aliases),
+          notes: draft.notes,
           typicalRoles: draft.typicalRoles,
           typicalImpactTypes: draft.typicalImpactTypes,
         }),
@@ -214,7 +299,7 @@ export default function CatalogAdminPage() {
     return (
       <div style={{ padding: 40, fontFamily: "'DM Sans', sans-serif", color: 'var(--ink-2)' }}>
         <div style={{ fontSize: 16, fontWeight: 700 }}>Failed to load catalog</div>
-        <div style={{ marginTop: 8, color: '#f87171' }}>{loadError}</div>
+        <div style={{ marginTop: 8, color: 'var(--tone-bad-fg)' }}>{loadError}</div>
         <a href="/admin" style={{ marginTop: 24, display: 'inline-block', color: 'var(--accent-text-2)' }}>← Back to admin</a>
       </div>
     );
@@ -328,8 +413,8 @@ export default function CatalogAdminPage() {
                 </span>
                 {dirty > 0 && (
                   <span style={{
-                    background: '#f59e0b22',
-                    color: '#f59e0b',
+                    background: 'var(--tone-warn-bg)',
+                    color: 'var(--tone-warn-fg)',
                     borderRadius: 10,
                     padding: '1px 8px',
                     fontSize: 11,
@@ -395,7 +480,7 @@ export default function CatalogAdminPage() {
         key={entry.name}
         style={{
           background: 'var(--surface-1)',
-          border: `1px solid ${dirty ? '#f59e0b66' : 'var(--surface-2)'}`,
+          border: `1px solid ${dirty ? 'var(--tone-warn-bd)' : 'var(--surface-2)'}`,
           borderRadius: 12,
           padding: 20,
           transition: 'border-color 0.15s ease',
@@ -409,7 +494,7 @@ export default function CatalogAdminPage() {
             borderRadius: 4,
             background: 'var(--surface-2)',
             color: 'var(--ink-faint)',
-            fontSize: 10,
+            fontSize: 11,
             fontWeight: 700,
             letterSpacing: '0.06em',
             textTransform: 'uppercase',
@@ -420,9 +505,9 @@ export default function CatalogAdminPage() {
             <span style={{
               padding: '2px 8px',
               borderRadius: 4,
-              background: '#f59e0b22',
-              color: '#f59e0b',
-              fontSize: 10,
+              background: 'var(--tone-warn-bg)',
+              color: 'var(--tone-warn-fg)',
+              fontSize: 11,
               fontWeight: 700,
               letterSpacing: '0.06em',
               textTransform: 'uppercase',
@@ -434,7 +519,7 @@ export default function CatalogAdminPage() {
 
         {/* Description */}
         <div style={{ marginTop: 14 }}>
-          <div style={{ fontSize: 10, color: 'var(--ink-faint)', fontWeight: 700, letterSpacing: '0.08em', marginBottom: 6 }}>
+          <div style={{ fontSize: 11, color: 'var(--ink-faint)', fontWeight: 700, letterSpacing: '0.08em', marginBottom: 6 }}>
             DESCRIPTION
           </div>
           <textarea
@@ -462,9 +547,70 @@ export default function CatalogAdminPage() {
           </div>
         </div>
 
+        {/* The five fields added in Fase C. `description` says what an entity
+            IS; these say where it STOPS, which is what the model kept getting
+            wrong — HHC read as HC D&IT, site firewalls read as corporate
+            security, a claim on Airgas duplicated onto Americas. */}
+        <Field
+          label="SCOPE"
+          hint="— one sentence: what this entity owns."
+          value={draft.scope}
+          onChange={v => updateDraft(kind, entry.name, { scope: v })}
+          rows={2}
+          placeholder="Designs, builds and runs …"
+        />
+
+        <Field
+          label="SIGNALS"
+          hint="— one per line. Words in a document that genuinely point here."
+          value={draft.signals}
+          onChange={v => updateDraft(kind, entry.name, { signals: v })}
+          rows={4}
+          mono
+          placeholder={'Zscaler\nZPA\nvulnerability management'}
+        />
+
+        <Field
+          label="NOT THIS"
+          hint="— one per line. The neighbour it gets confused with, and why."
+          value={draft.notThis}
+          onChange={v => updateDraft(kind, entry.name, { notThis: v })}
+          rows={3}
+          placeholder="Site firewalls belong to Site Infrastructure, not here."
+        />
+
+        <Field
+          label="ALIASES"
+          hint="— one per line. Old names that must resolve here (the FIT renaming wave)."
+          value={draft.aliases}
+          onChange={v => updateDraft(kind, entry.name, { aliases: v })}
+          rows={3}
+          mono
+          placeholder={'BIS E&C\nIDD'}
+        />
+
+        <Field
+          label="PARENT"
+          hint="— aggregation only. A claim on a child must NOT also claim the parent."
+          value={draft.parent}
+          onChange={v => updateDraft(kind, entry.name, { parent: v })}
+          rows={1}
+          mono
+          placeholder="Americas"
+        />
+
+        <Field
+          label="NOTES"
+          hint="— for humans. Not sent to the model."
+          value={draft.notes}
+          onChange={v => updateDraft(kind, entry.name, { notes: v })}
+          rows={2}
+          placeholder="Parent not confirmed."
+        />
+
         {/* Roles */}
         <div style={{ marginTop: 18 }}>
-          <div style={{ fontSize: 10, color: 'var(--ink-faint)', fontWeight: 700, letterSpacing: '0.08em', marginBottom: 8 }}>
+          <div style={{ fontSize: 11, color: 'var(--ink-faint)', fontWeight: 700, letterSpacing: '0.08em', marginBottom: 8 }}>
             TYPICAL ROLES
             <span style={{ marginLeft: 8, color: 'var(--ink-muted)', fontWeight: 500, letterSpacing: 0, textTransform: 'none' }}>
               — bias the Goals LLM toward these roles when this target shows up. Empty = no bias.
@@ -481,9 +627,9 @@ export default function CatalogAdminPage() {
                   style={{
                     padding: '5px 10px',
                     borderRadius: 6,
-                    border: `1px solid ${active ? '#7c3aed' : 'var(--border-strong)'}`,
-                    background: active ? '#7c3aed22' : 'var(--surface-2)',
-                    color: active ? '#c084fc' : 'var(--ink-4)',
+                    border: `1px solid ${active ? 'var(--tone-vendor-bd)' : 'var(--border-strong)'}`,
+                    background: active ? 'var(--tone-vendor-bg)' : 'var(--surface-2)',
+                    color: active ? 'var(--tone-vendor-fg)' : 'var(--ink-4)',
                     fontSize: 12,
                     fontWeight: 600,
                     fontFamily: "'DM Mono', monospace",
@@ -500,7 +646,7 @@ export default function CatalogAdminPage() {
 
         {/* Impact types */}
         <div style={{ marginTop: 18 }}>
-          <div style={{ fontSize: 10, color: 'var(--ink-faint)', fontWeight: 700, letterSpacing: '0.08em', marginBottom: 8 }}>
+          <div style={{ fontSize: 11, color: 'var(--ink-faint)', fontWeight: 700, letterSpacing: '0.08em', marginBottom: 8 }}>
             TYPICAL IMPACT TYPES
             <span style={{ marginLeft: 8, color: 'var(--ink-muted)', fontWeight: 500, letterSpacing: 0, textTransform: 'none' }}>
               — bias hints for the Impact engine. Empty = no bias.
@@ -516,9 +662,9 @@ export default function CatalogAdminPage() {
                   style={{
                     padding: '5px 10px',
                     borderRadius: 6,
-                    border: `1px solid ${active ? '#0284c7' : 'var(--border-strong)'}`,
-                    background: active ? '#0284c722' : 'var(--surface-2)',
-                    color: active ? '#38bdf8' : 'var(--ink-4)',
+                    border: `1px solid ${active ? 'var(--tone-info-bd)' : 'var(--border-strong)'}`,
+                    background: active ? 'var(--tone-info-bg)' : 'var(--surface-2)',
+                    color: active ? 'var(--tone-info-fg)' : 'var(--ink-4)',
                     fontSize: 12,
                     fontWeight: 600,
                     fontFamily: "'DM Mono', monospace",
@@ -538,9 +684,9 @@ export default function CatalogAdminPage() {
                 style={{
                   padding: '5px 10px',
                   borderRadius: 6,
-                  border: '1px solid #f59e0b',
-                  background: '#f59e0b22',
-                  color: '#fbbf24',
+                  border: '1px solid var(--tone-warn-bd)',
+                  background: 'var(--tone-warn-bg)',
+                  color: 'var(--tone-warn-fg)',
                   fontSize: 12,
                   fontWeight: 600,
                   fontFamily: "'DM Mono', monospace",
@@ -606,9 +752,9 @@ export default function CatalogAdminPage() {
           gap: 10,
         }}>
           <div style={{ flex: 1, fontSize: 12 }}>
-            {err && <span style={{ color: '#f87171' }}>⚠ {err}</span>}
-            {!err && isSaved && <span style={{ color: '#4ade80' }}>✓ Saved.</span>}
-            {!err && !isSaved && dirty && <span style={{ color: '#f59e0b' }}>Unsaved changes.</span>}
+            {err && <span style={{ color: 'var(--tone-bad-fg)' }}>⚠ {err}</span>}
+            {!err && isSaved && <span style={{ color: 'var(--tone-ok-fg)' }}>✓ Saved.</span>}
+            {!err && !isSaved && dirty && <span style={{ color: 'var(--tone-warn-fg)' }}>Unsaved changes.</span>}
             {!err && !isSaved && !dirty && <span style={{ color: 'var(--ink-faint)' }}>In sync with disk.</span>}
           </div>
           <button

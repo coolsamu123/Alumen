@@ -30,7 +30,7 @@ export default function SampleBlock({ sample }: { sample: Sample }) {
       )}
       <div className="bg-surface-deep border border-line rounded-lg overflow-hidden">
         <div className="flex items-center justify-between px-3 py-1.5 bg-surface-2/40 border-b border-line">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">
             {LANG_LABEL[sample.language]}
           </span>
           <CopyButton text={sample.code} />
@@ -50,7 +50,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={() => navigator.clipboard.writeText(text).catch(() => {})}
-      className="text-[10px] text-ink-muted hover:text-ink-2 px-1.5 py-0.5 rounded hover:bg-surface-2 transition-colors"
+      className="text-[11px] text-ink-muted hover:text-ink-2 px-1.5 py-0.5 rounded hover:bg-surface-2 transition-colors"
       title="Copy to clipboard"
     >
       copy

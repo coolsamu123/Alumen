@@ -1,7 +1,7 @@
 {
   "gio": {
     "Security & Compliance": {
-      "description": "The Global Infrastructure and Operations (GIO) Security & Compliance Service Line is a transversal organization within Air Liquide dedicated to designing, building, and operating the security solutions that protect the Group. Under the leadership of Director Jean-Charles MARTIN, the service line is structured into several specialized teams to manage the full lifecycle of cybersecurity, from strategy and innovation to operations and incident. The organization is divided into five primary functional teams and three regional management offices to ensure global coverage and local proximity:1\nGovernance & Service Management (Mehdi GASMI): Responsible for defining service strategy, managing the lifecycle of service offerings, ensuring steering and governance, and managing strategic vendor contracts.1\nEngineering & Innovation (Guillaume LARDEUX): Focuses on designing security solutions, providing technical expertise, leading major projects, and conducting technology watches.1\nTransition & Operations (Grégoire PENET): Manages platform operations, administration, monitoring, incident management, and the definition of operational standards.\nCSIRT (Pierre-Olivier MARTIN): The Computer Security Incident Response Team is dedicated to detecting, analyzing, and delivering responses to cybersecurity incidents.\nCybersecurity Roadmap Coordination (Bassam ZINE): Coordinates the overall Cybersecurity Roadmap and interfaces with the broader Digital & IT (D&IT) governance.\nRegional Managers: Located in Europe, Africa, Middle-East & India (Vincent CAO), the Americas (Brian EASTERLING), and Asia (Chiew Geok NG) to manage local projects, demand pipelines, and escalations.\nCore Services and Responsibilities\nThe Security & Compliance service line manages several critical infrastructure and governance services: Identity & Access - \tManaged through CARM (Centralized Access Rights Management) and AdminPass (Privileged Access Management). \nNetwork Security\t - Operates Secure Web Gateways (SWG) and Firewalls; currently transitioning to SSE (Secure Service Edge) and Zscaler Private Access (ZPA) for Zero-Trust connectivity. Cloud Security- Transitioning from Prisma Cloud to Cortex Cloud (integrated with Cortex XSIAM) to provide AI-powered security management across multi-cloud environments. Application Protection - WAAP (Web Application & API Protection) provides enhanced security and bot management for critical applications through. Compliance & Hardening - Enforces server security standards (GT04) using tools like Qualys for automated compliance assessment. PKI & Certificates -Manages the Certificate Lifecycle Management (CLM) project to automate public and private certificate renewals via Sectigo",
+      "description": "GIO service line for the Group's security solutions, from identity and access to cloud and application protection, vulnerability management and incident response.",
       "typicalRoles": [
         "primary_provider",
         "risk_owner"
@@ -10,10 +10,41 @@
         "security_dependency",
         "infrastructure_shared",
         "organizational"
-      ]
+      ],
+      "scope": "Designs, builds and runs the Group's security solutions: identity and access, network security and remote access, cloud security, application protection, hardening and compliance, PKI and certificates, vulnerability management, security architecture and CSIRT.",
+      "signals": [
+        "CARM",
+        "PAM",
+        "AdminPass",
+        "SWG",
+        "SSE",
+        "Zscaler",
+        "ZPA",
+        "ZTNA",
+        "VPN replacement",
+        "Prisma Cloud",
+        "Cortex",
+        "XSIAM",
+        "WAAP",
+        "GT04",
+        "Qualys",
+        "Sectigo",
+        "PKI",
+        "certificate",
+        "vulnerability management",
+        "security architecture",
+        "CSIRT",
+        "penetration test",
+        "hardening"
+      ],
+      "notThis": [
+        "Site firewalls, WAN rules and site edge belong to Site Infrastructure — this line owns corporate vulnerability management, security architecture and CSIRT, not the site perimeter.",
+        "Rolling a new access client out to end users is User Workplace as a consumer; the ZPA/ZTNA platform itself is owned here."
+      ],
+      "parent": "GIO"
     },
     "Command Center": {
-      "description": "The Command Center Service Line, formerly referred to as GOPs, is a centralized transversal organization within Air Liquide Global Infrastructure and Operations. It serves as the dedicated hub for monitoring, managing, and coordinating digital operations to ensure the stability, availability, and security of the Group infrastructure.\n\nThe service line is led by Director Graeme White and is structured to provide 24/7 global coverage through functional leads and regional managers. The global leadership includes Transition and Operations Lead Reshania Misra, while regional management is handled by Raj Ramamoorthy for the Americas, Jey Muniandi for Asia-Pacific, and Karl Serdar for Europe, Africa, Middle-East, and India. Specialized functional roles include Karim Rahmani as Operations Expert Lead and Sidonie Chantoury for Major Incident Management.\n\nThe Command Center is currently undergoing a transformation to move from a reactive posture to a proactive, intelligence-driven orchestration model. Its core services include Major Incident Management for the standardized coordination and resolution of critical global incidents, and Observability and Monitoring to anticipate issues before they impact business operations. The service line also manages Service Orchestration through SIAM, maintains Data and CMDB Quality for accurate operational reporting, and utilizes AIOps and Automation for automated incident response.",
+      "description": "GIO service line acting as the transversal hub that monitors and coordinates digital operations around the clock.",
       "typicalRoles": [
         "primary_provider",
         "risk_owner"
@@ -22,10 +53,30 @@
         "infrastructure_shared",
         "organizational",
         "vendor_shared"
+      ],
+      "scope": "Transversal hub monitoring and coordinating digital operations 24/7: major incident management, observability and monitoring, service orchestration (SIAM), data quality and CMDB, AIOps and automation.",
+      "signals": [
+        "major incident",
+        "observability",
+        "monitoring",
+        "SIAM",
+        "CMDB",
+        "AIOps",
+        "24/7",
+        "NOC",
+        "service orchestration",
+        "event correlation"
+      ],
+      "notThis": [
+        "Building the monitored service is the owning service line's work; this line owns watching and coordinating it."
+      ],
+      "parent": "GIO",
+      "aliases": [
+        "GOPs"
       ]
     },
     "User Workplace": {
-      "description": "The User Workplace Service Line is a transversal organization within Air Liquide’s Global Infrastructure and Operations (GIO) responsible for designing and implementing the digital environment provided to employees. This encompasses hardware such as PCs, mobile devices, and video conferencing, alongside software suites like Google Workspace and enterprise application stores, and on-site or remote support services.\n\nThe service line is led by Director Jérôme Bachelerie and is organized into functional teams and regional management to balance global strategy with local proximity. Key leadership roles include:\nGovernance and Service Management: Guillaume Chirol leads this team, which defines service strategy and manages the service portfolio and strategic vendor contracts.\nEngineering and Innovation: François Desideri manages this group, which is responsible for designing workplace solutions and leading major technical projects.\nTransition and Operations: Managed by Béatrice Lubrano, this team oversees operational standards and continuous improvement plans.\nBusiness Office: Dieter Heming leads this team, which focuses on asset management and service line activity reports.\nRegional Managers: Olivier Pirz leads the Europe, Africa, Middle-East, and India region; Asgar Bhallo manages the Americas; and Revin Imasalam leads Asia.\nCurrent strategic initiatives for 2026 include:\nModern Management Project: This initiative aims to enhance the employee experience for PC and mobile devices by implementing a cloud-based management solution. A pilot for this \"Modern Experience\" is scheduled for mid-2026 to validate the migration process and device performance.\nZero-Trust Transformation: The service line is replacing traditional VPNs with Zscaler Private Access to modernize remote connectivity. Full decommissioning of the legacy Ivanti solution is targeted for October 2026.\nConsistent Print Management: This project will implement a single, centralized Managed Printing Services solution to ensure security compliance across the global printer fleet.\nUser Experience Improvements: Ongoing efforts include enhancing the MyItCorner self-help portal and expanding chatbot and ServiceNow automation capabilities to reduce support tickets and improve satisfaction.",
+      "description": "GIO service line owning the employee digital environment: devices, collaboration tools, corporate app distribution and end-user support.",
       "typicalRoles": [
         "downstream_consumer",
         "primary_provider"
@@ -33,20 +84,65 @@
       "typicalImpactTypes": [
         "platform_shared",
         "technology_dependency"
-      ]
+      ],
+      "scope": "The employee digital environment: PCs, mobile devices, videoconferencing, Google Workspace, corporate app stores, local and remote support. Initiatives include cloud device management, managed printing, self-service portal and ServiceNow automation.",
+      "signals": [
+        "laptop",
+        "PC",
+        "mobile device",
+        "videoconference",
+        "Google Workspace",
+        "Modern Management",
+        "Intune",
+        "app store",
+        "managed printing",
+        "self-service portal",
+        "service desk",
+        "end-user support"
+      ],
+      "notThis": [
+        "The remote-access platform (ZPA/VPN) is owned by Security & Compliance; this line appears only as the consumer of a rollout to users."
+      ],
+      "parent": "GIO"
     },
     "Site Infrastructure": {
-      "description": "The Site Infrastructure Service Line is a transversal organization within Air Liquide’s Global Infrastructure and Operations (GIO) responsible for the design, industrialization, and maintenance of the Group's physical and local digital foundations. This includes local area networks (LAN), wide area networks (WAN), Wi-Fi, firewalls, and on-site computing resources across approximately 3,000 sites globally.\nThe service line is led by Director Olivier Duccini and is structured around global functional teams and regional hubs to ensure technical consistency and operational proximity. Key leadership includes:\nGlobal Teams: The organization focuses on Engineering & Innovation to design infrastructure solutions, and Transition & Operations to manage operational standards and site delivery.\nRegional Management: Regional Solution Architects such as Mark Williams (Americas), Erwan Hamon (EAMEI), and Tai Keong Fua (APAC) support local project follow-ups and architectural governance.",
+      "description": "GIO service line owning the local digital foundations of the Group's sites: networks, site security equipment and local compute.",
       "typicalRoles": [
         "primary_provider"
       ],
       "typicalImpactTypes": [
         "infrastructure_shared",
         "regional_rollout"
-      ]
+      ],
+      "scope": "Physical and local digital foundations of roughly 3,000 sites: LAN, WAN, Wi-Fi, Cisco ISE, site firewalls (WAN rules and site edge) and local compute.",
+      "signals": [
+        "LAN",
+        "WAN",
+        "Wi-Fi",
+        "WiFi",
+        "Cisco ISE",
+        "site firewall",
+        "branch firewall",
+        "network equipment",
+        "switch",
+        "router",
+        "local compute",
+        "edge"
+      ],
+      "notThis": [
+        "Corporate vulnerability management, security architecture and CSIRT belong to Security & Compliance.",
+        "Cloud connectivity belongs to Cloud Services."
+      ],
+      "parent": "GIO",
+      "aliases": [
+        "GIO Network & Telecom",
+        "GIO N&T",
+        "Network & Telecom"
+      ],
+      "notes": "Renamed from GIO Network & Telecom; both names still appear in documents because of the transition."
     },
     "Cloud Services": {
-      "description": "The Cloud Services Service Line is a transversal organization within Air Liquide’s Global Infrastructure and Operations (GIO) responsible for the Group's multi-cloud strategy and environment management. The service line provides a standardized, automated, and secured framework for deploying infrastructure across major providers such as AWS and GCP. Key areas of focus include FinOps for cost optimization, such as the current campaign to delete aged EC2 snapshots to save over $200,000 annually, and the enforcement of security policies like the 1-year maximum lifecycle for Service Account keys.\n\nThe service line is also leading several innovation initiatives for the 2027–2030 roadmap:\nCloud Center of Excellence: Establishing a framework built on Platform Engineering and Site Reliability Engineering (SRE) to move operations from basic infrastructure toward full-stack management for cloud-native applications.\nSky Bridge: Creating a consistent, secure connectivity fabric and gateway pattern to interconnect on-premise, edge, and multiple cloud providers sovereignly.\nContainerization by Default: Making cloud-agnostic containerization the standard build and deploy method to ensure workloads can port freely across providers to leverage the best pricing.\nCloud Brokerage: Enabling single applications to distribute services across several clouds to use the best specific offerings from each CSP.\nWifi on the Cloud: Moving Wi-Fi control planes to the cloud for centralized, AI-assisted operations and faster site rollouts.\nLocalised Data Backup: Implementing sovereignty-aware backups of critical data to ensure residency and recoverability where specific regulations require it.",
+      "description": "GIO service line owning the Group's multi-cloud strategy and environment, including the deployment framework, cost management and service-account policy.",
       "typicalRoles": [
         "primary_provider"
       ],
@@ -54,7 +150,26 @@
         "infrastructure_shared",
         "platform_shared",
         "technology_dependency"
-      ]
+      ],
+      "scope": "Multi-cloud strategy and environment (AWS, GCP): a standardised, automated and secure deployment framework, FinOps, and security policies for service accounts.",
+      "signals": [
+        "AWS",
+        "GCP",
+        "Azure",
+        "multi-cloud",
+        "landing zone",
+        "FinOps",
+        "service account",
+        "Cloud Center of Excellence",
+        "containerisation",
+        "Kubernetes",
+        "cloud backup"
+      ],
+      "notThis": [
+        "Wi-Fi is Site Infrastructure. \"Wi-Fi on the Cloud\" is a roadmap item, not ownership.",
+        "Cloud security POLICY is set with Security & Compliance; this line owns the environment."
+      ],
+      "parent": "GIO"
     }
   },
   "dds": {
@@ -65,6 +180,23 @@
       ],
       "typicalImpactTypes": [
         "regional_rollout"
+      ],
+      "scope": "Regional hub covering North America (NAM), Argentina (ARG) and Latin America (LATAM).",
+      "signals": [
+        "NAM",
+        "LATAM",
+        "ARG",
+        "North America",
+        "Latin America",
+        "United States",
+        "Brazil",
+        "Mexico",
+        "Canada",
+        "Argentina",
+        "Americas Procurement Center"
+      ],
+      "notThis": [
+        "Airgas is a separate entity whose parent is Americas — mark Airgas when the text is about Airgas."
       ]
     },
     "Europe": {
@@ -74,6 +206,29 @@
       ],
       "typicalImpactTypes": [
         "regional_rollout"
+      ],
+      "scope": "Regional hub organised in the business clusters CE (Central Europe), SWE (South-West Europe) and NEC (North-East Europe), which govern billing, customer portfolio and IT portfolio.",
+      "signals": [
+        "CE",
+        "SWE",
+        "NEC",
+        "Central Europe",
+        "South-West Europe",
+        "North-East Europe",
+        "France",
+        "Germany",
+        "Spain",
+        "Italy",
+        "Benelux",
+        "Nordics",
+        "Poland"
+      ],
+      "notThis": [
+        "EAMEI is a GIO regional direction, not a DDS entity. A document saying EAMEI marks Europe only when the scope is the whole region; otherwise mark whatever the text identifies by country or site.",
+        "GIO delivery clusters do not define DDS Europe."
+      ],
+      "aliases": [
+        "DDS Europe"
       ]
     },
     "APAC": {
@@ -83,6 +238,18 @@
       ],
       "typicalImpactTypes": [
         "regional_rollout"
+      ],
+      "scope": "Regional hub covering Greater China (GCH) and the rest of Asia-Pacific.",
+      "signals": [
+        "GCH",
+        "Greater China",
+        "China",
+        "Japan",
+        "Korea",
+        "Singapore",
+        "Australia",
+        "Asia-Pacific",
+        "Shanghai"
       ]
     },
     "AMEI": {
@@ -92,49 +259,226 @@
       ],
       "typicalImpactTypes": [
         "regional_rollout"
+      ],
+      "scope": "Regional hub covering Africa, the Middle East and India.",
+      "signals": [
+        "Africa",
+        "Middle East",
+        "India",
+        "Egypt",
+        "Saudi",
+        "UAE",
+        "South Africa"
+      ],
+      "notThis": [
+        "EAMEI alone does not mark AMEI — see Europe."
       ]
     },
     "CF": {
-      "description": "Corporate Functions. Covers critical Group domains including Finance, HR, Procurement, Communication, Legal, and Intellectual Property."
+      "description": "Corporate Functions. Covers critical Group domains including Finance, HR, Procurement, Communication, Legal, and Intellectual Property.",
+      "scope": "Corporate Functions: Finance, HR, Procurement, Communication, Legal and Intellectual Property.",
+      "signals": [
+        "Finance",
+        "HR",
+        "Human Resources",
+        "Payroll",
+        "Procurement",
+        "Purchasing",
+        "Legal",
+        "Communication",
+        "Intellectual Property",
+        "Workday",
+        "MyHR",
+        "SAP FI"
+      ]
     },
     "GM&T": {
-      "description": "Global Markets & Technologies. A business division supported by dedicated D&IT Business Partners."
-    },
-    "E&C": {
-      "description": "Engineering & Construction. Operates as a separate DDS entity from InnoTech for the 2026 roadmap."
+      "description": "Global Markets & Technologies. A business division supported by dedicated D&IT Business Partners.",
+      "scope": "Global Markets & Technologies business division.",
+      "signals": [
+        "GM&T",
+        "Global Markets",
+        "hydrogen energy",
+        "maritime",
+        "space"
+      ],
+      "notes": "The IDD IT groups that sat under GM&T moved to InnoTech; the BIS GM&T provider is still live, so GM&T stays canonical. The BGMT trigram is not an alias until that provider is retired."
     },
     "HC D&IT": {
-      "description": "Healthcare Digital & Information Technology. Provides specialised digital services for the Healthcare business line."
+      "description": "Healthcare Digital & Information Technology. Provides specialised digital services for the Healthcare business line.",
+      "scope": "Healthcare Digital & Information Technology: the technology-governance function of the Healthcare vertical — IT leadership, architecture validation, and compliance with global security and IT-procurement standards.",
+      "signals": [
+        "IT Leader",
+        "architecture validation",
+        "technical compliance",
+        "healthcare IT standards",
+        "DevOps for healthcare",
+        "branch ERP"
+      ],
+      "notThis": [
+        "Business operations, users and care programmes belong to HHC."
+      ]
     },
     "Alizent": {
-      "description": "Subsidiary focused on industrial IoT and asset tracking."
+      "description": "Subsidiary focused on industrial IoT and asset tracking.",
+      "scope": "Subsidiary for industrial IoT and asset tracking.",
+      "signals": [
+        "Alizent",
+        "IoT",
+        "asset tracking",
+        "telemetry",
+        "connected assets"
+      ]
     },
     "GDO": {
-      "description": "Global Digital Organization. The central driver for digital transformation and innovation across the Group."
+      "description": "Global Digital Organization. The central driver for digital transformation and innovation across the Group.",
+      "scope": "Global Data Operations: the data operations entity inside Global Delivery Services.",
+      "signals": [
+        "Global Data Operations",
+        "data platform operations",
+        "data pipeline operations",
+        "data governance operations"
+      ],
+      "notThis": [
+        "The GDO acronym appears in documents of 64 of 69 analysed projects. Being mentioned is not being impacted — claim it only when the project changes or depends on GDO's work."
+      ],
+      "parent": "GDS"
     },
     "SEPPIC": {
-      "description": "Specialty healthcare and beauty ingredient subsidiary, maintained as its own DDS entity."
+      "description": "Specialty healthcare and beauty ingredient subsidiary, maintained as its own DDS entity.",
+      "scope": "Subsidiary producing specialty ingredients for health and beauty, kept as a DDS entity of its own.",
+      "signals": [
+        "SEPPIC",
+        "specialty ingredients",
+        "cosmetics",
+        "pharmaceutical excipients"
+      ]
     },
     "Airgas": {
-      "description": "Key entity within the Americas hub, specifically focused on industrial and medical gas markets."
+      "description": "Key entity within the Americas hub, specifically focused on industrial and medical gas markets.",
+      "scope": "Industrial and medical gas markets in the United States, integrated into the Americas organisational structure.",
+      "signals": [
+        "Airgas",
+        "Airgas PRO",
+        "US retail gas",
+        "branch network"
+      ],
+      "notThis": [
+        "Do not also claim Americas for the same evidence — the aggregation is done downstream, not by adding a second claim."
+      ],
+      "parent": "Americas"
     },
     "HHC": {
-      "description": "Home Healthcare. Manages digital solutions for chronic patient care, such as the kairin respiratory monitoring solution."
+      "description": "Home Healthcare. Manages digital solutions for chronic patient care, such as the kairin respiratory monitoring solution.",
+      "scope": "The Home Healthcare vertical on both the business and the delivery side: the global GBU (operations, operational excellence, care programmes) and the DDS HHC IT service provider.",
+      "signals": [
+        "Home Healthcare",
+        "HHC",
+        "DDS HHC",
+        "patient",
+        "home care",
+        "respiratory",
+        "TechCARE",
+        "Data Healthcare",
+        "VitalAire"
+      ],
+      "notThis": [
+        "HC D&IT is the technology-governance function for the same vertical. Business process, users, operations or a care programme → HHC. IT delivery, architecture, tooling or technical compliance → HC D&IT.",
+        "Provider support (\"DDS HHC: support\") is HHC, not HC D&IT."
+      ],
+      "aliases": [
+        "DDS HHC",
+        "BIS Home Healthcare",
+        "Home Healthcare"
+      ]
     },
     "Industrial Apps": {
-      "description": "Group within GDS that partners with Industrial Direction to define technical product roadmaps."
+      "description": "Group within GDS that partners with Industrial Direction to define technical product roadmaps.",
+      "scope": "Works with the Industrial Direction to define product technical roadmaps.",
+      "signals": [
+        "industrial applications",
+        "plant systems",
+        "MES",
+        "SCADA",
+        "production systems",
+        "industrial roadmap"
+      ],
+      "parent": "GDS",
+      "aliases": [
+        "Indutrial Apps",
+        "DDS Industrial Apps",
+        "BIS Industrial Apps"
+      ]
     },
     "Enterprise Apps": {
-      "description": "Group focused on digital solutions for core enterprise-wide business processes."
+      "description": "Group focused on digital solutions for core enterprise-wide business processes.",
+      "scope": "Digital solutions for the corporate processes that cut across the Group.",
+      "signals": [
+        "ERP",
+        "SAP",
+        "Salesforce",
+        "ServiceNow",
+        "corporate application",
+        "cross-group process"
+      ],
+      "aliases": [
+        "Entreprise Apps",
+        "DDS Enterprise Apps",
+        "BIS Enterprise Apps"
+      ],
+      "notes": "Parent not confirmed (§3.1, item 10)."
     },
     "Data & AI Apps": {
-      "description": "Specialised technical chapter within GDS dedicated to managing data strategy and artificial intelligence products."
+      "description": "Specialised technical chapter within GDS dedicated to managing data strategy and artificial intelligence products.",
+      "scope": "Data strategy and artificial-intelligence products.",
+      "signals": [
+        "data strategy",
+        "AI product",
+        "machine learning platform",
+        "analytics product",
+        "generative AI platform",
+        "data science"
+      ],
+      "parent": "GDS",
+      "aliases": [
+        "Digital & AI"
+      ]
     },
     "Digital Factory": {
-      "description": "Delivery engine within GDS responsible for the rapid development and scaling of digital products."
+      "description": "Delivery engine within GDS responsible for the rapid development and scaling of digital products.",
+      "scope": "Delivery engine: agile development and scaling of digital products.",
+      "signals": [
+        "digital factory",
+        "agile delivery",
+        "product squad",
+        "scaling digital products"
+      ],
+      "parent": "GDS",
+      "aliases": [
+        "Digital"
+      ]
     },
     "InnoTech": {
-      "description": "Organisational grouping planned to eventually integrate E&C and IDD; for the 2026 roadmap they remain distinct."
+      "description": "GBU formed by merging the IDD and E&C divisions. Both former names still appear in older documents and resolve here.",
+      "scope": "GBU created by merging IDD (Innovation & Development) and E&C (Engineering & Construction).",
+      "signals": [
+        "InnoTech",
+        "DDS InnoTech",
+        "Engineering & Construction",
+        "E&C",
+        "IDD",
+        "Innovation & Development",
+        "engineering projects",
+        "plant construction",
+        "R&D"
+      ],
+      "aliases": [
+        "E&C",
+        "BIS E&C",
+        "IDD",
+        "DDS InnoTech"
+      ],
+      "notes": "E&C and IDD are no longer targets of their own; older documents still use both names. The DIN and BEC trigrams normalise structured fields only, never free text."
     },
     "CDIO Office": {
       "description": "Office of the Chief Digital & Information Officer. Sets the Group's overall Digital & IT vision and governance.",
@@ -144,10 +488,19 @@
       ],
       "typicalImpactTypes": [
         "organizational"
-      ]
-    },
-    "IDD": {
-      "description": "Innovation & Development Division. Currently operating as a separate DDS from the InnoTech umbrella."
+      ],
+      "scope": "Office of the Chief Digital & Information Officer: sets the Group's Digital & IT vision and governance.",
+      "signals": [
+        "CDIO",
+        "digital governance",
+        "IT strategy",
+        "gating process",
+        "portfolio governance"
+      ],
+      "aliases": [
+        "CDIOO"
+      ],
+      "notes": "Parent not confirmed (§3.1, item 10)."
     }
   }
 }

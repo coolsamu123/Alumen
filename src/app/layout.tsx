@@ -13,12 +13,13 @@ export const metadata: Metadata = {
 };
 
 // Runs before React hydrates so the page never paints with the wrong theme.
-// Reads localStorage('strom-theme'); falls back to prefers-color-scheme.
+// Reads localStorage('strom-theme') — 'light' | 'dark' | 'dim'; anything else
+// (including nothing) means "follow the OS" via prefers-color-scheme.
 const THEME_BOOT = `
 (function(){
   try {
     var t = localStorage.getItem('strom-theme');
-    if (t !== 'light' && t !== 'dark') {
+    if (t !== 'light' && t !== 'dark' && t !== 'dim') {
       t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
     }
     document.documentElement.setAttribute('data-theme', t);

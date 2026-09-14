@@ -108,6 +108,25 @@ export function getDecisionColor(decision: string): string {
   return DECISION_COLORS[decision] || '#475569';
 }
 
+// The category palettes above were tuned for a dark canvas: on white,
+// HC D&IT #39ff14 reads at 1.36:1. Dots, stripes and strokes keep the raw hue;
+// *text* painted in a category color goes through this mix with the theme's
+// strongest ink. `--cat-mix` is set per theme in globals.css so the worst entry
+// of the palette still clears 4.5:1 against that theme's surfaces.
+export function categoryText(color: string): string {
+  return `color-mix(in srgb, ${color} var(--cat-mix), var(--ink-1))`;
+}
+
+// React Flow builds marker ids from the edge color string, so edges get
+// concrete colors rather than CSS variables. Sky-300 all but vanishes on a
+// white canvas; the light theme draws the same hues a few steps darker.
+export function severityStroke(severity: string, theme: 'light' | 'dark' | 'dim'): string {
+  if (theme !== 'light') return SEVERITY_COLORS[severity] || SEVERITY_FALLBACK;
+  if (severity === 'high') return '#dc2626';
+  if (severity === 'low' || severity === 'medium') return '#0284c7';
+  return '#64748b';
+}
+
 // Tooltip on every control that a basic user can see but not use. The
 // server-side 403 (middleware.ts role gate) is the real protection — this is
 // the cosmetic half that tells the user *why* it's greyed out instead of
