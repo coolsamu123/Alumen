@@ -107,6 +107,13 @@ export interface TargetDefinition {
   signals?: ReadonlyArray<string>;
   notThis?: ReadonlyArray<string>;
   parent?: string;
+  /**
+   * Which band of the map this sits in. Catalog metadata, not a rule for the
+   * model — the map needs columns, and deriving them from `parent` alone would
+   * collapse regions and business units into one undifferentiated pile of
+   * parentless entities.
+   */
+  group?: string;
   aliases?: ReadonlyArray<string>;
   notes?: string;
   typicalRoles?: ReadonlyArray<TargetRole>;
@@ -153,6 +160,7 @@ type CatalogEntryData = {
   signals?: string[];
   notThis?: string[];
   parent?: string;
+  group?: string;
   aliases?: string[];
   notes?: string;
   typicalRoles?: TargetRole[];
@@ -194,6 +202,7 @@ export interface CatalogPatch {
   signals?: string[];
   notThis?: string[];
   parent?: string;
+  group?: string;
   aliases?: string[];
   notes?: string;
   typicalRoles?: TargetRole[];
@@ -212,13 +221,14 @@ export function writeCatalogEntry(kind: TargetKind, name: string, patch: Catalog
   // An absent key means "leave as is"; an empty string or array means "clear".
   // Without that distinction the admin screen could never remove a signal, and
   // a PATCH carrying only `description` would wipe every other field.
-  const text = (k: 'description' | 'scope' | 'parent' | 'notes') => {
+  const text = (k: 'description' | 'scope' | 'parent' | 'notes' | 'group') => {
     const v = patch[k] !== undefined ? patch[k] : existing[k];
     if (typeof v === 'string' && v.trim() !== '') cleaned[k] = v;
   };
   text('description');
   text('scope');
   text('parent');
+  text('group');
   text('notes');
 
   const list = (k: 'signals' | 'notThis' | 'aliases' | 'typicalImpactTypes') => {
@@ -250,6 +260,7 @@ function buildEntry(kind: TargetKind, name: string): TargetDefinition {
     signals: e.signals,
     notThis: e.notThis,
     parent: e.parent,
+    group: e.group,
     aliases: e.aliases,
     notes: e.notes,
     typicalRoles: e.typicalRoles,

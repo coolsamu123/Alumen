@@ -45,11 +45,11 @@ function countUsage(kind: TargetKind, names: readonly string[]): Map<string, Usa
         const e = out.get(r.name);
         if (e) e.owners = r.n;
       }
-    } catch { /* tabela pode não existir */ }
+    } catch { /* table may not exist yet */ }
   }
 
-  // Claims e "touched" saem do JSON gravado, não de colunas indexáveis, então
-  // a contagem é feita em memória — são ~70 linhas, não vale um índice.
+  // Claims and "touched" live inside stored JSON, not indexable columns, so
+  // counting happens in memory — ~70 rows, not worth an index.
   try {
     const rows = db.prepare(
       `SELECT impact_claims, dds_entities_touched, gio_services_touched
@@ -62,7 +62,7 @@ function countUsage(kind: TargetKind, names: readonly string[]): Map<string, Usa
 
     for (const r of rows) {
       let claims: Array<{ target_kind?: string; target?: string }> = [];
-      try { claims = JSON.parse(r.impact_claims || '[]'); } catch { /* ignora */ }
+      try { claims = JSON.parse(r.impact_claims || '[]'); } catch { /* skip */ }
       for (const c of claims) {
         if (c?.target_kind !== kind) continue;
         const e = out.get(String(c.target ?? ''));
@@ -71,13 +71,13 @@ function countUsage(kind: TargetKind, names: readonly string[]): Map<string, Usa
 
       const raw = kind === 'dds' ? r.dds_entities_touched : r.gio_services_touched;
       let touched: string[] = [];
-      try { touched = JSON.parse(raw || '[]'); } catch { /* ignora */ }
+      try { touched = JSON.parse(raw || '[]'); } catch { /* skip */ }
       for (const t of new Set(touched)) {
         const e = out.get(String(t));
         if (e) e.touched++;
       }
     }
-  } catch { /* tabela pode não existir */ }
+  } catch { /* table may not exist yet */ }
 
   return out;
 }
@@ -93,9 +93,9 @@ export async function GET() {
       }));
     };
 
-    // Tabela de consulta de nomes antigos, com a distinção que importa: trigrama
-    // vale só em campo estruturado, porque sigla de três letras colide com
-    // outra coisa — "DIN" também é a norma técnica alemã.
+    // Old-name lookup, carrying the distinction that matters: a trigram holds
+    // only in structured fields, because three-letter codes collide with other
+    // meanings — "DIN" is also the German standards body.
     const oldNames = [
       ...Object.entries(DDS_ALIASES).map(([from, to]) => ({ from, to, scope: 'free text and structured fields' })),
       ...Object.entries(GIO_ALIASES).map(([from, to]) => ({ from, to, scope: 'free text and structured fields' })),

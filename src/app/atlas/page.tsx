@@ -16,17 +16,8 @@ import { useEffect, useMemo, useState } from 'react';
  * uses. Nothing to keep in sync by hand.
  */
 
-interface Entity {
-  name: string;
-  description: string;
-  scope?: string;
-  signals?: string[];
-  notThis?: string[];
-  parent?: string;
-  aliases?: string[];
-  notes?: string;
-  usage: { owners: number; claims: number; touched: number };
-}
+import EntityMap from './EntityMap';
+import type { Entity } from './types';
 
 interface Atlas {
   gio: Entity[];
@@ -38,6 +29,9 @@ export default function AtlasPage() {
   const [atlas, setAtlas] = useState<Atlas | null>(null);
   const [error, setError] = useState('');
   const [q, setQ] = useState('');
+  // Selecting on the map filters the cards: both halves answer the same
+  // question, and keeping them independent would mean searching twice.
+  const [selected, setSelected] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/atlas')
@@ -46,8 +40,8 @@ export default function AtlasPage() {
       .catch(e => setError(String(e)));
   }, []);
 
-  // A busca cobre nome, sinais E nomes antigos — encontrar "BIS E&C" e cair em
-  // InnoTech é o uso principal desta página, não um extra.
+  // Search covers name, signals AND old names — typing "BIS E&C" and landing
+  // on InnoTech is this page's main use, not an extra.
   const matches = (e: Entity) => {
     const t = q.trim().toLowerCase();
     if (!t) return true;
@@ -65,13 +59,16 @@ export default function AtlasPage() {
   if (error) return <p className="p-6 text-sm text-rose-400">{error}</p>;
   if (!atlas) return <p className="p-6 text-sm text-ink-muted">Loading…</p>;
 
+  const all = [...atlas.gio, ...atlas.dds];
+  const visible = (e: Entity) => matches(e) && (!selected || e.name === selected);
+
   const groups: { kind: string; title: string; sub: string; items: Entity[] }[] = [
     { kind: 'gio', title: 'GIO · Global Infrastructure Operations',
       sub: 'Five service lines. GIO itself owns projects but is never an impact target.',
-      items: atlas.gio.filter(matches) },
+      items: atlas.gio.filter(visible) },
     { kind: 'dds', title: 'DDS · Digital Delivery Services',
       sub: 'Regions, business divisions and functional groups.',
-      items: atlas.dds.filter(matches) },
+      items: atlas.dds.filter(visible) },
   ];
 
   return (
@@ -93,6 +90,8 @@ export default function AtlasPage() {
           className="w-full mb-6 px-3 py-2.5 rounded-xl bg-surface-1 border border-line
                      text-sm outline-none focus:border-accent-border"
         />
+
+        <EntityMap all={all} selected={selected} onSelect={setSelected} />
 
         {oldHits.length > 0 && (
           <div className="mb-6 rounded-xl border border-accent-border bg-accent-soft p-4">
@@ -155,8 +154,8 @@ function Card({ e }: { e: Entity }) {
         </p>
       ) : null}
 
-      {/* A fronteira é o que mais se consulta: é aqui que se decide entre duas
-          entidades próximas, e foi onde a extração mais errou. */}
+      {/* The boundary is what gets consulted most: it is where you decide
+          between two close entities, and where extraction erred most. */}
       {e.notThis?.map((n, i) => (
         <p key={i} className="text-[12px] text-amber-400/90 leading-relaxed mb-1">
           <span className="font-semibold">not this: </span>{n}

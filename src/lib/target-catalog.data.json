@@ -41,7 +41,8 @@
         "Site firewalls, WAN rules and site edge belong to Site Infrastructure — this line owns corporate vulnerability management, security architecture and CSIRT, not the site perimeter.",
         "Rolling a new access client out to end users is User Workplace as a consumer; the ZPA/ZTNA platform itself is owned here."
       ],
-      "parent": "GIO"
+      "parent": "GIO",
+      "group": "GIO"
     },
     "Command Center": {
       "description": "GIO service line acting as the transversal hub that monitors and coordinates digital operations around the clock.",
@@ -73,7 +74,8 @@
       "parent": "GIO",
       "aliases": [
         "GOPs"
-      ]
+      ],
+      "group": "GIO"
     },
     "User Workplace": {
       "description": "GIO service line owning the employee digital environment: devices, collaboration tools, corporate app distribution and end-user support.",
@@ -103,7 +105,8 @@
       "notThis": [
         "The remote-access platform (ZPA/VPN) is owned by Security & Compliance; this line appears only as the consumer of a rollout to users."
       ],
-      "parent": "GIO"
+      "parent": "GIO",
+      "group": "GIO"
     },
     "Site Infrastructure": {
       "description": "GIO service line owning the local digital foundations of the Group's sites: networks, site security equipment and local compute.",
@@ -139,7 +142,8 @@
         "GIO N&T",
         "Network & Telecom"
       ],
-      "notes": "Renamed from GIO Network & Telecom; both names still appear in documents because of the transition."
+      "notes": "Renamed from GIO Network & Telecom; both names still appear in documents because of the transition.",
+      "group": "GIO"
     },
     "Cloud Services": {
       "description": "GIO service line owning the Group's multi-cloud strategy and environment, including the deployment framework, cost management and service-account policy.",
@@ -169,7 +173,8 @@
         "Wi-Fi is Site Infrastructure. \"Wi-Fi on the Cloud\" is a roadmap item, not ownership.",
         "Cloud security POLICY is set with Security & Compliance; this line owns the environment."
       ],
-      "parent": "GIO"
+      "parent": "GIO",
+      "group": "GIO"
     }
   },
   "dds": {
@@ -197,7 +202,8 @@
       ],
       "notThis": [
         "Airgas is a separate entity whose parent is Americas — mark Airgas when the text is about Airgas."
-      ]
+      ],
+      "group": "Region"
     },
     "Europe": {
       "description": "Regional hub managing a perimeter that includes Central Europe (CE), South West Europe (SWE), and North East Europe (NEC).",
@@ -229,7 +235,8 @@
       ],
       "aliases": [
         "DDS Europe"
-      ]
+      ],
+      "group": "Region"
     },
     "APAC": {
       "description": "Regional hub covering Greater China (GCH) and the broader Asia-Pacific region.",
@@ -250,7 +257,8 @@
         "Australia",
         "Asia-Pacific",
         "Shanghai"
-      ]
+      ],
+      "group": "Region"
     },
     "AMEI": {
       "description": "Regional hub responsible for digital operations across Africa, Middle East, and India.",
@@ -272,7 +280,8 @@
       ],
       "notThis": [
         "EAMEI alone does not mark AMEI — see Europe."
-      ]
+      ],
+      "group": "Region"
     },
     "CF": {
       "description": "Corporate Functions. Covers critical Group domains including Finance, HR, Procurement, Communication, Legal, and Intellectual Property.",
@@ -290,7 +299,8 @@
         "Workday",
         "MyHR",
         "SAP FI"
-      ]
+      ],
+      "group": "Business"
     },
     "GM&T": {
       "description": "Global Markets & Technologies. A business division supported by dedicated D&IT Business Partners.",
@@ -302,7 +312,8 @@
         "maritime",
         "space"
       ],
-      "notes": "The IDD IT groups that sat under GM&T moved to InnoTech; the BIS GM&T provider is still live, so GM&T stays canonical. The BGMT trigram is not an alias until that provider is retired."
+      "notes": "The IDD IT groups that sat under GM&T moved to InnoTech; the BIS GM&T provider is still live, so GM&T stays canonical. The BGMT trigram is not an alias until that provider is retired.",
+      "group": "Business"
     },
     "HC D&IT": {
       "description": "Healthcare Digital & Information Technology. Provides specialised digital services for the Healthcare business line.",
@@ -317,7 +328,8 @@
       ],
       "notThis": [
         "Business operations, users and care programmes belong to HHC."
-      ]
+      ],
+      "group": "Business"
     },
     "Alizent": {
       "description": "Subsidiary focused on industrial IoT and asset tracking.",
@@ -328,7 +340,8 @@
         "asset tracking",
         "telemetry",
         "connected assets"
-      ]
+      ],
+      "group": "Business"
     },
     "GDO": {
       "description": "Global Digital Organization. The central driver for digital transformation and innovation across the Group.",
@@ -342,7 +355,8 @@
       "notThis": [
         "The GDO acronym appears in documents of 64 of 69 analysed projects. Being mentioned is not being impacted — claim it only when the project changes or depends on GDO's work."
       ],
-      "parent": "GDS"
+      "parent": "GDS",
+      "group": "GDS"
     },
     "SEPPIC": {
       "description": "Specialty healthcare and beauty ingredient subsidiary, maintained as its own DDS entity.",
@@ -352,7 +366,8 @@
         "specialty ingredients",
         "cosmetics",
         "pharmaceutical excipients"
-      ]
+      ],
+      "group": "Business"
     },
     "Airgas": {
       "description": "Key entity within the Americas hub, specifically focused on industrial and medical gas markets.",
@@ -366,7 +381,8 @@
       "notThis": [
         "Do not also claim Americas for the same evidence — the aggregation is done downstream, not by adding a second claim."
       ],
-      "parent": "Americas"
+      "parent": "Americas",
+      "group": "Region"
     },
     "HHC": {
       "description": "Home Healthcare. Manages digital solutions for chronic patient care, such as the kairin respiratory monitoring solution.",
@@ -390,7 +406,8 @@
         "DDS HHC",
         "BIS Home Healthcare",
         "Home Healthcare"
-      ]
+      ],
+      "group": "Business"
     },
     "Industrial Apps": {
       "description": "Group within GDS that partners with Industrial Direction to define technical product roadmaps.",
@@ -408,7 +425,8 @@
         "Indutrial Apps",
         "DDS Industrial Apps",
         "BIS Industrial Apps"
-      ]
+      ],
+      "group": "GDS"
     },
     "Enterprise Apps": {
       "description": "Group focused on digital solutions for core enterprise-wide business processes.",
@@ -426,7 +444,8 @@
         "DDS Enterprise Apps",
         "BIS Enterprise Apps"
       ],
-      "notes": "Parent not confirmed (§3.1, item 10)."
+      "notes": "Parent not confirmed (§3.1, item 10).",
+      "group": "Functional"
     },
     "Data & AI Apps": {
       "description": "Specialised technical chapter within GDS dedicated to managing data strategy and artificial intelligence products.",
@@ -442,7 +461,8 @@
       "parent": "GDS",
       "aliases": [
         "Digital & AI"
-      ]
+      ],
+      "group": "GDS"
     },
     "Digital Factory": {
       "description": "Delivery engine within GDS responsible for the rapid development and scaling of digital products.",
@@ -456,7 +476,8 @@
       "parent": "GDS",
       "aliases": [
         "Digital"
-      ]
+      ],
+      "group": "GDS"
     },
     "InnoTech": {
       "description": "GBU formed by merging the IDD and E&C divisions. Both former names still appear in older documents and resolve here.",
@@ -478,7 +499,8 @@
         "IDD",
         "DDS InnoTech"
       ],
-      "notes": "E&C and IDD are no longer targets of their own; older documents still use both names. The DIN and BEC trigrams normalise structured fields only, never free text."
+      "notes": "E&C and IDD are no longer targets of their own; older documents still use both names. The DIN and BEC trigrams normalise structured fields only, never free text.",
+      "group": "Business"
     },
     "CDIO Office": {
       "description": "Office of the Chief Digital & Information Officer. Sets the Group's overall Digital & IT vision and governance.",
@@ -500,7 +522,8 @@
       "aliases": [
         "CDIOO"
       ],
-      "notes": "Parent not confirmed (§3.1, item 10)."
+      "notes": "Parent not confirmed (§3.1, item 10).",
+      "group": "Functional"
     }
   }
 }
