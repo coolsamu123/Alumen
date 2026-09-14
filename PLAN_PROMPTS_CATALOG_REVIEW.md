@@ -44,7 +44,7 @@ Nada foi alterado no código.
 |---|---|
 | Revisão, decisões e atlas | ✅ feito (14/09/2026) |
 | A: corrigir sem chamar o LLM | ✅ em produção (14/09/2026); falta só uma verificação |
-| B: conjunto de referência | 🟡 **ferramenta pronta; falta a revisão do gabarito** *(negócio)*, ver §0.2 |
+| B: conjunto de referência | ✅ **feita** (14/09/2026) — 5 projetos revisados, linha de base da v4 medida, ver §0.2 |
 | C: reescrever o catálogo | ✅ **feita** (14/09/2026), ver §0.1 |
 | D: prompt de Goals v5 | ⬜ não iniciada |
 | E: prompt de Impact v2 | ⬜ não iniciada |
@@ -72,7 +72,7 @@ Nada foi alterado no código.
 
 **Fase B: conjunto de referência** — ferramenta pronta, ver §0.2
 - [x] Escolher 10 projetos variados, incluindo PGM0001209 e PRJ0019818 — proposta por dado em `scripts/reference-set.cjs propose`
-- [ ] **Revisar** alvos, papéis e severidades de cada um *(negócio)* — `data/reference-set.json` já vem pré-preenchido
+- [x] **Revisar** alvos, papéis e severidades — 5 dos 10 revisados; o negócio decidiu que 5 bastam
 - [x] Script que compara a extração com o gabarito
 
 **Fase C: reescrever o catálogo** — ✅ feita, detalhe no §0.1
@@ -210,6 +210,45 @@ parece aprovação.
 O arquivo fica **fora do Git de propósito**: lista nomes de projetos da Air
 Liquide e o mapeamento esperado de cada um, e o repositório é público. Registrado
 no `.gitignore` com essa razão, para não parecer esquecimento.
+
+### Linha de base da v4 sobre o gabarito (14/09/2026)
+
+Revisão feita entrada a entrada com o negócio. **5 dos 10 projetos** — decisão
+de parar em 5, por suficiência.
+
+| Métrica | v4 |
+|---|---:|
+| Precisão de alvo | 85,7% |
+| Cobertura | 94,7% |
+| Papel correto | 100,0% |
+| Severidade correta | 83,3% |
+
+**É contra estes números que a Fase D se mede.** Papel em 100% significa que
+esse eixo não tem para onde melhorar e só pode piorar — vale vigiar.
+
+**As correções que criaram a diferença**, e o que cada uma revela:
+
+- **`PRJ0019818`: `HC D&IT` → `HHC`.** A evidência diz "DDS HHC", e o §3.1 item
+  8 já decidia que isso é HHC. Confirmação de que o erro existe e é o que o
+  catálogo novo deve corrigir. O mesmo modelo acertou a mesma expressão no
+  `PRJ0020030` — a inconsistência é o problema, não o erro isolado.
+- **`PRJ0017466`: duas entradas removidas.** A de `Alizent` reusava *a mesma
+  citação* da entrada de GDO, e a frase só menciona "GIO, GDO" — Alizent não
+  aparece nela. A de `User Workplace` vinha de uma **pergunta** feita no gate
+  ("Como foi avaliada a carga de trabalho?"), não de uma afirmação. São os dois
+  modos de citação que não sustenta claim (§2.6).
+- **Três severidades `low` → `high`**, todas com dinheiro ou esforço explícito
+  na frase (€30.000 e 0,10 FTE; 10K€ já aprovado; "precisaremos do suporte
+  deles"). O §2.2 mostra 82% de `high` no geral; aqui o modelo errou para
+  **baixo**, o que sugere que o problema não é viés numa direção, e sim ausência
+  de critério.
+
+**Fronteira sem cobertura:** AMEI não tem projeto com goals, então nenhuma
+entrada do gabarito exercita essa região.
+
+**Leitura honesta do número:** 5 projetos e 19 entradas são pouco para separar
+melhora real de variação. Serve para pegar regressão grosseira, não para
+declarar vitória por diferença de poucos pontos.
 
 ---
 
