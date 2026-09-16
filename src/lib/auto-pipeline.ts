@@ -150,10 +150,53 @@ function updateRootRunResult(
  * Impact is not listed: runAutoDiscoveryCycle only spends Impact budget when
  * goalsAdded > 0, so it can never fire on its own.
  */
+/**
+ * Projects still moving through the Apps Script half of the chain.
+ *
+ * Anything not DONE and not ERROR counts: QUEUED (waiting) and IN_PROGRESS
+ * (being worked). ERROR is excluded on purpose — a failed project would hold
+ * the gate shut forever, and its failure is not a reason to freeze everyone
+ * else's analysis.
+ */
+export function upstreamInFlight(): { total: number; projects: string[] } {
+  try {
+    const rows = getDb().prepare(`
+      SELECT DISTINCT project_id FROM upstream_status
+      WHERE status NOT IN ('DONE', 'ERROR')
+      ORDER BY project_id
+    `).all() as Array<{ project_id: string }>;
+    return { total: rows.length, projects: rows.map(r => r.project_id) };
+  } catch {
+    return { total: 0, projects: [] };
+  }
+}
+
 export function pendingWork(): { total: number; reasons: string[] } {
   const db = getDb();
   const reasons: string[] = [];
   let total = 0;
+
+  // GATE: hold the whole Alumen half until every upstream project has finished
+  // copy AND cleanup.
+  //
+  // Without this the cycle fires the moment ONE project finishes, and with four
+  // arriving minutes apart that is four full cycles — each one dragging a
+  // complete Impact recomparison of the portfolio behind it, because Impact
+  // runs whenever goalsAdded > 0. Waiting for the batch turns four expensive
+  // passes into one.
+  //
+  // Known window: a project sitting in _alumen_queue.json but not yet merged
+  // into the control sheet is invisible here, because this function answers
+  // from SQLite alone and the queue file lives on Drive. The heartbeat merges
+  // within 10 minutes, after which the gate sees it.
+  const inFlight = upstreamInFlight();
+  if (inFlight.total > 0) {
+    return {
+      total: 0,
+      reasons: [`holding: ${inFlight.total} project(s) still in copy/cleanup — ` +
+                inFlight.projects.slice(0, 5).join(', ')],
+    };
+  }
 
   const count = (sql: string): number => {
     try {

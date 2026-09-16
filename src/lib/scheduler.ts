@@ -44,7 +44,13 @@ export function startScheduler(): void {
       if (isAutoCycleRunning()) return;
 
       const { total, reasons } = pendingWork();
-      if (total === 0) return;
+      if (total === 0) {
+        // A hold is not the same as nothing to do, and the difference matters
+        // when someone queues four projects and watches nothing happen for
+        // half an hour. Logged at most every 15 minutes, which is the tick.
+        if (reasons.length) console.log(`[scheduler] ${reasons[0]}`);
+        return;
+      }
 
       console.log(`[scheduler] ${total} pending — ${reasons.join('; ')}`);
       await runAutoDiscoveryCycle('scheduled', 'full');

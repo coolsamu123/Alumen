@@ -168,7 +168,14 @@ function num(value: unknown): number | null {
  */
 function normalizeStatus(value: unknown): UpstreamStatus {
   const raw = String(value ?? '').replace(/[^\p{L}\p{N}\s_-]/gu, '').trim().toUpperCase();
-  if (!raw) return 'UNKNOWN';
+  // An empty status is how a project is ENQUEUED: you write the id in column A
+  // and leave B..E blank, and the Apps Script picks up whatever is not DONE or
+  // ERROR. Mapping that to UNKNOWN hid every waiting project — the Chain showed
+  // "10 copied" with four more sitting in the sheet and nothing saying so.
+  //
+  // UNKNOWN stays for a value that is present but unrecognised, which is a
+  // different problem and deserves a different name.
+  if (!raw) return 'QUEUED';
   if (raw.includes('ERROR') || raw.includes('FAIL')) return 'ERROR';
   if (raw.includes('DONE') || raw.includes('COMPLETE')) return 'DONE';
   // PROCESS matters as much as PROGRESS: the Apps Script writes the literal
