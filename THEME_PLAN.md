@@ -1,5 +1,12 @@
 # Plano — Tema Light + Toggle (Strom)
 
+> **Atualização 2026-09-14 — revisão do tema.** Partes deste plano foram substituídas:
+> - **Três temas:** `dark` passou a ser o Graphite (grafite quase neutro), `light` foi refeito com superfícies em níveis (`--surface-sunken`), e entrou o `dim` (escuro de contraste médio). O toggle virou o `ThemeMenu`, com as opções System/Light/Dark/Dim. "System" é gravado como ausência de `strom-theme`.
+> - **Remapeamento `[data-theme="light"] .bg-purple-900\/40 {…}` removido.** Ele era uma lista branca, e 122 usos escapavam dela. Agora `tailwind.config.ts` serve a paleta Tailwind via variáveis `--pal-*` e espelha a escala no light (900→100, 200→800; 500–700 ficam iguais).
+> - **Opacidade sobre tokens:** `bg-surface-2/50` etc. não eram gerados. Os tokens agora passam por `color-mix(... <alpha-value> ...)`.
+> - **Tags:** o componente `<Tag tone>` usa os tons semânticos `--tone-{tech,vendor,data,dds,gio,neutral,ok,warn,bad,info}-{fg,bg,bd}`.
+> - **Cores categóricas (DDS/Gate/Decision/Severity) em texto** passam por `categoryText()`. `--cat-mix` é calibrado por tema para ≥ 4,5:1. Nas arestas do React Flow, usar `severityStroke()`.
+
 Objetivo: oferecer ao usuário (admin ou público) a escolha entre tema **dark** (atual) e **light**, com toggle no header e persistência por browser.
 
 Caminho escolhido: **A — Token refactor**. Default: respeita `prefers-color-scheme` do SO.
