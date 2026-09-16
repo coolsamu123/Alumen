@@ -1,0 +1,398 @@
+<mxfile host="app.diagrams.net" agent="Alumen" type="device">
+  <diagram id="solution" name="1 · Solution architecture">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="title" value="Alumen — Solution architecture&lt;br&gt;&lt;font style=&quot;font-size: 11px&quot; color=&quot;#666666&quot;&gt;IT portfolio intelligence · internal to Air Liquide only · target state with Okta SSO&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;fontSize=20;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="40" y="10" width="900" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ============ ZONE A : users ============ -->
+        <mxCell id="zoneA" value="Air Liquide corporate network" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#9AA5B1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=4;fontSize=13;fontStyle=1;container=1;collapsible=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="60" width="340" height="300" as="geometry" />
+        </mxCell>
+        <mxCell id="a-desktop" value="&lt;b&gt;Desktop browser&lt;/b&gt;&lt;br&gt;Portfolio · Data Flow · Impact · Atlas · Admin" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="zoneA">
+          <mxGeometry x="20" y="50" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="a-mobile" value="&lt;b&gt;Android browser&lt;/b&gt; — route /m&lt;br&gt;Submit a project · follow the chain" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="zoneA">
+          <mxGeometry x="20" y="140" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="a-note" value="No anonymous mode and no public entry point.&lt;br&gt;Every path — pages and APIs — requires a session (middleware.ts).&lt;br&gt;The host-based exemption that used to allow a bypass was removed." style="shape=note;whiteSpace=wrap;html=1;size=14;fillColor=#FFF2CC;strokeColor=#D6B656;align=left;spacingLeft=6;verticalAlign=top;fontSize=10;" vertex="1" parent="zoneA">
+          <mxGeometry x="20" y="215" width="300" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- ============ ZONE B : identity ============ -->
+        <mxCell id="zoneB" value="Identity provider (Air Liquide)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#9AA5B1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=4;fontSize=13;fontStyle=1;container=1;collapsible=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="390" width="340" height="250" as="geometry" />
+        </mxCell>
+        <mxCell id="b-okta" value="&lt;b&gt;Okta&lt;/b&gt; — SAML 2.0 IdP&lt;br&gt;Authenticates with AL corporate credentials.&lt;br&gt;Identity delivered = &lt;i&gt;corporate email&lt;/i&gt;." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;align=left;spacingLeft=8;fontSize=11;dashed=1;" vertex="1" parent="zoneB">
+          <mxGeometry x="20" y="50" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="b-assign" value="&lt;b&gt;App assignment — the real gate&lt;/b&gt;&lt;br&gt;Who may reach Alumen is decided by GIO in Okta,&lt;br&gt;not inside the application.&lt;br&gt;Onboarding: ServiceNow/CMDB → MMS demand → survey → GIO approval → metadata exchange." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;align=left;spacingLeft=8;fontSize=10;dashed=1;" vertex="1" parent="zoneB">
+          <mxGeometry x="20" y="145" width="300" height="85" as="geometry" />
+        </mxCell>
+
+        <!-- ============ LEGEND ============ -->
+        <mxCell id="legend" value="Legend" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#9AA5B1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=4;fontSize=13;fontStyle=1;container=1;collapsible=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="670" width="340" height="230" as="geometry" />
+        </mxCell>
+        <mxCell id="l1" value="Alumen application (AWS EC2)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=10;" vertex="1" parent="legend">
+          <mxGeometry x="20" y="40" width="300" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="l2" value="Google Workspace / Cloud (AL tenant)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=10;" vertex="1" parent="legend">
+          <mxGeometry x="20" y="74" width="300" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="l3" value="Identity — Okta (AL IdP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=10;" vertex="1" parent="legend">
+          <mxGeometry x="20" y="108" width="300" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="l4" value="Dashed = planned, not yet built" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;dashed=1;fontSize=10;" vertex="1" parent="legend">
+          <mxGeometry x="20" y="142" width="300" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="l5" value="Data store" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=10;" vertex="1" parent="legend">
+          <mxGeometry x="20" y="176" width="300" height="26" as="geometry" />
+        </mxCell>
+
+        <!-- ============ ZONE C : hosting ============ -->
+        <mxCell id="zoneC" value="AWS EC2 · eu-north-1 · Elastic IP · single instance" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#9AA5B1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=4;fontSize=13;fontStyle=1;container=1;collapsible=0;" vertex="1" parent="1">
+          <mxGeometry x="440" y="60" width="700" height="880" as="geometry" />
+        </mxCell>
+        <mxCell id="c-nginx" value="&lt;b&gt;nginx&lt;/b&gt; — reverse proxy&lt;br&gt;Target: :443 TLS (DNS name + certificate) → proxy_pass 127.0.0.1:3333&lt;br&gt;&lt;font color=&quot;#B85450&quot;&gt;Today: :80 on a raw IP, no TLS — blocks Okta.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="zoneC">
+          <mxGeometry x="40" y="50" width="620" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c-app" value="systemd service `alumen` — Next.js 14, production build (Restart=always, OOMScoreAdjust)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#6C8EBF;verticalAlign=top;align=left;spacingLeft=10;spacingTop=4;fontSize=12;fontStyle=1;container=1;collapsible=0;dashed=0;" vertex="1" parent="zoneC">
+          <mxGeometry x="40" y="150" width="620" height="690" as="geometry" />
+        </mxCell>
+        <mxCell id="c-mw" value="&lt;b&gt;middleware.ts&lt;/b&gt; — session gate (Edge runtime). Signature/shape/expiry only; no DB." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="c-app">
+          <mxGeometry x="20" y="50" width="580" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="c-acs" value="&lt;b&gt;/api/auth/acs&lt;/b&gt;&lt;br&gt;SAML assertion consumer.&lt;br&gt;Validates signature, finds the user by email, JIT-creates as &lt;i&gt;basic&lt;/i&gt;." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;align=left;spacingLeft=8;fontSize=10;dashed=1;" vertex="1" parent="c-app">
+          <mxGeometry x="20" y="115" width="280" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="c-login" value="&lt;b&gt;/api/auth/login&lt;/b&gt;&lt;br&gt;Local password (scrypt). The only code that knows what a password is.&lt;br&gt;After SSO: break-glass only." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="c-app">
+          <mxGeometry x="320" y="115" width="280" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="c-sess" value="&lt;b&gt;Session cookie&lt;/b&gt; — HMAC-signed, httpOnly: { uid, role, tv, exp }. Provider-agnostic: it does not record &lt;i&gt;how&lt;/i&gt; you proved who you are." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="c-app">
+          <mxGeometry x="20" y="195" width="580" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="c-ui" value="&lt;b&gt;App Router UI&lt;/b&gt; — Portfolio · Data Flow (live chain) · Impact graph · Entity atlas · Admin · /m" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="c-app">
+          <mxGeometry x="20" y="260" width="580" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="c-api" value="&lt;b&gt;API routes&lt;/b&gt; — /api/projects · /api/goals · /api/impact · /api/atlas · /api/drive · /api/admin&lt;br&gt;Authoritative recheck per request (auth.ts): is_active + token_version + role + scope." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="c-app">
+          <mxGeometry x="20" y="330" width="580" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="c-sched" value="&lt;b&gt;scheduler.ts&lt;/b&gt; (instrumentation hook)&lt;br&gt;Tick every 15 min. Asks SQLite first — no Drive call, no LLM, when there is nothing to do." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="c-app">
+          <mxGeometry x="20" y="400" width="280" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c-eng" value="&lt;b&gt;Engines&lt;/b&gt;&lt;br&gt;drive · file hygiene · text extraction · goals · impact · deep-dive&lt;br&gt;Canonical GIO/DDS catalog" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="c-app">
+          <mxGeometry x="320" y="400" width="280" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c-sync" value="&lt;b&gt;upstream-sync.ts&lt;/b&gt;&lt;br&gt;Polls the control spreadsheet every 15 s. Read-only: the spreadsheet has exactly one writer." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="c-app">
+          <mxGeometry x="20" y="485" width="280" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c-queue" value="&lt;b&gt;alumen-queue.ts&lt;/b&gt;&lt;br&gt;Writes the queue file the Apps Script reads. Alumen removes an item only after seeing the project in the control sheet." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="c-app">
+          <mxGeometry x="320" y="485" width="280" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c-db" value="&lt;b&gt;SQLite&lt;/b&gt; (better-sqlite3) — data/cioo.db on the EBS volume&lt;br&gt;projects · documents + extracted text · goals · impacts · deep-dives · users + scopes · upstream_status&lt;br&gt;&lt;i&gt;Single file, single writer. Backup = copy the file.&lt;/i&gt;" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;align=left;spacingLeft=12;fontSize=11;verticalAlign=middle;" vertex="1" parent="c-app">
+          <mxGeometry x="20" y="570" width="580" height="95" as="geometry" />
+        </mxCell>
+
+        <!-- ============ ZONE D : google workspace ============ -->
+        <mxCell id="zoneD" value="Google Workspace — Air Liquide tenant" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#9AA5B1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=4;fontSize=13;fontStyle=1;container=1;collapsible=0;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="60" width="400" height="500" as="geometry" />
+        </mxCell>
+        <mxCell id="d-src" value="&lt;b&gt;Corporate project folders&lt;/b&gt;&lt;br&gt;Charters, SoWs, planning decks — the source documents.&lt;br&gt;&lt;i&gt;The service account cannot read these: they carry Drive classification labels.&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="zoneD">
+          <mxGeometry x="20" y="50" width="360" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="d-as" value="&lt;b&gt;Apps Script “Copy Utility”&lt;/b&gt;&lt;br&gt;Runs as a &lt;i&gt;nominal AL user&lt;/i&gt;, on a time trigger (~10 min).&lt;br&gt;Copies files, removes the classification label, deduplicates, writes status.&lt;br&gt;&lt;i&gt;This is the only component with human-level Drive rights.&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="zoneD">
+          <mxGeometry x="20" y="145" width="360" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="d-sd" value="&lt;b&gt;Shared Drive “Alumen”&lt;/b&gt; → folder Copy Utility&lt;br&gt;Label-free copies, shared with the service account." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="zoneD">
+          <mxGeometry x="20" y="250" width="360" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="d-sheet" value="&lt;b&gt;Control spreadsheet&lt;/b&gt;&lt;br&gt;Tabs: SyncStatus (copy) · Update Control File (cleanup).&lt;br&gt;Read as XLSX export — raw values, not formatted cells." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="zoneD">
+          <mxGeometry x="20" y="340" width="360" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="d-queue" value="&lt;b&gt;alumen-queue.json&lt;/b&gt; — the hand-off file between the two worlds" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="zoneD">
+          <mxGeometry x="20" y="430" width="360" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ============ ZONE E : google cloud ============ -->
+        <mxCell id="zoneE" value="Google Cloud — AL project" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#9AA5B1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=4;fontSize=13;fontStyle=1;container=1;collapsible=0;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="600" width="400" height="250" as="geometry" />
+        </mxCell>
+        <mxCell id="e-gemini" value="&lt;b&gt;Gemini API&lt;/b&gt; (gemini-3-pro)&lt;br&gt;Goal extraction · impact analysis · deep-dives.&lt;br&gt;Temperature 0.1; output validated against the canonical catalog before it is stored." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="zoneE">
+          <mxGeometry x="20" y="50" width="360" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="e-sa" value="&lt;b&gt;Service account&lt;/b&gt; — Drive API v3&lt;br&gt;Key file on the instance (data/service-account.json).&lt;br&gt;Scopes: drive, drive.scripts. &lt;i&gt;The Sheets API cannot be enabled on the AL project — everything goes through Drive.&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;align=left;spacingLeft=8;fontSize=10;" vertex="1" parent="zoneE">
+          <mxGeometry x="20" y="145" width="360" height="85" as="geometry" />
+        </mxCell>
+
+        <!-- ============ NOTES ============ -->
+        <mxCell id="n1" value="&lt;b&gt;TLS is the long-lead prerequisite&lt;/b&gt;&lt;br&gt;Okta POSTs the assertion to an ACS URL and requires HTTPS. DNS name + certificate + nginx :443 is infrastructure work that blocks SSO and depends on no code. Start it first." style="shape=note;whiteSpace=wrap;html=1;size=14;fillColor=#FFF2CC;strokeColor=#D6B656;align=left;spacingLeft=6;verticalAlign=top;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="440" y="960" width="340" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="n2" value="&lt;b&gt;Okta answers WHO. Alumen answers WHAT.&lt;/b&gt;&lt;br&gt;Role is never read from a SAML claim: Okta groups are administered by GIO, so binding role to a claim would hand the admin list outside. Role lives in SQLite and changes only from the admin screen." style="shape=note;whiteSpace=wrap;html=1;size=14;fillColor=#FFF2CC;strokeColor=#D6B656;align=left;spacingLeft=6;verticalAlign=top;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="800" y="960" width="340" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="n3" value="&lt;b&gt;Corporate email is the join key&lt;/b&gt;&lt;br&gt;Local accounts are created with the real corporate email, so on cut-over the SAML assertion matches the row that already exists and the user keeps role, scope and history. Migration cost: zero. With JIT on, a mismatched email fails silently to the wrong side — it creates a new basic user instead of erroring." style="shape=note;whiteSpace=wrap;html=1;size=14;fillColor=#FFF2CC;strokeColor=#D6B656;align=left;spacingLeft=6;verticalAlign=top;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="960" width="440" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- ============ EDGES ============ -->
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="a-desktop" target="c-nginx">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e1l" value="HTTPS · internal network only" style="edgeLabel;html=1;fontSize=10;labelBackgroundColor=#ffffff;" vertex="1" connectable="0" parent="e1">
+          <mxGeometry x="-0.1" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="a-mobile" target="c-nginx">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" value="proxy_pass 127.0.0.1:3333" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c-nginx" target="c-mw">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" value="1 · no session → SAML AuthnRequest" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;dashed=1;strokeColor=#D79B00;" edge="1" parent="1" source="c-mw" target="b-okta">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" value="2 · signed assertion, HTTPS POST" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;dashed=1;strokeColor=#D79B00;" edge="1" parent="1" source="b-okta" target="c-acs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" value="3 · issue cookie" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;dashed=1;strokeColor=#D79B00;" edge="1" parent="1" source="c-acs" target="c-sess">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" value="issue cookie" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c-login" target="c-sess">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" value="verified on every request" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;dashed=1;" edge="1" parent="1" source="c-sess" target="c-mw">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" value="fetch" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c-ui" target="c-api">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" value="read / write" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c-api" target="c-db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e11" value="enqueue a project" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c-api" target="c-queue">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e12" value="write (Drive API v3)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c-queue" target="d-queue">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e13" value="reads + merges" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;dashed=1;" edge="1" parent="1" source="d-as" target="d-queue">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e14" value="reads" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="d-as" target="d-src">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e15" value="copies · removes labels · dedupes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="d-as" target="d-sd">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e16" value="writes per-project status" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="d-as" target="d-sheet">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e17" value="XLSX export every 15 s" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="d-sheet" target="c-sync">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e18" value="mirror upstream_status" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c-sync" target="c-db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e19" value="runs, only when work is pending" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c-sched" target="c-eng">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e20" value="list + download documents" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c-eng" target="d-sd">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e21" value="document text → structured JSON" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c-eng" target="e-gemini">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e22" value="goals · impacts" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c-eng" target="c-db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e23" value="authenticates as" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;dashed=1;" edge="1" parent="1" source="c-eng" target="e-sa">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram id="auth" name="2 · Authentication &amp; authorization">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="p2title" value="Alumen — Authentication &amp;amp; authorization&lt;br&gt;&lt;font style=&quot;font-size: 11px&quot; color=&quot;#666666&quot;&gt;Okta answers &lt;i&gt;who you are&lt;/i&gt;. Alumen answers &lt;i&gt;what you may see&lt;/i&gt;. The two questions never mix.&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;fontSize=20;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="60" y="20" width="1000" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="band1" value="1 — Authentication · proving who you are" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#CCCCCC;verticalAlign=top;align=left;spacingLeft=10;spacingTop=4;fontSize=12;fontStyle=1;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="40" y="100" width="1580" height="260" as="geometry" />
+        </mxCell>
+        <mxCell id="band2" value="2 — Authorization · deciding what you may see (always local, always from SQLite)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#CCCCCC;verticalAlign=top;align=left;spacingLeft=10;spacingTop=4;fontSize=12;fontStyle=1;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="40" y="400" width="1580" height="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="a1" value="Browser requests&lt;br&gt;any Alumen URL" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="170" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="a2" value="middleware.ts&lt;br&gt;&lt;b&gt;valid session cookie?&lt;/b&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="260" y="160" width="180" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="a3" value="Redirect to /login&lt;br&gt;→ SAML AuthnRequest&lt;br&gt;&lt;i&gt;(API paths get 401 JSON instead)&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=10;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="490" y="165" width="180" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="a4" value="&lt;b&gt;Okta&lt;/b&gt;&lt;br&gt;AL corporate credentials + MFA.&lt;br&gt;&lt;i&gt;Is this person assigned to the Alumen app?&lt;/i&gt; — the real gate, held by GIO." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=10;dashed=1;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="720" y="160" width="220" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="a5" value="&lt;b&gt;/api/auth/acs&lt;/b&gt;&lt;br&gt;Validate signature, issuer, audience and NotOnOrAfter.&lt;br&gt;&lt;i&gt;Requires HTTPS.&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=10;dashed=1;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="990" y="160" width="210" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="a6" value="row in &lt;b&gt;users&lt;/b&gt; for this&lt;br&gt;corporate email?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1250" y="155" width="190" height="105" as="geometry" />
+        </mxCell>
+        <mxCell id="a7" value="&lt;b&gt;JIT provisioning&lt;/b&gt;&lt;br&gt;INSERT role='basic', auth_provider='okta', password_hash=NULL.&lt;br&gt;&lt;i&gt;'basic' is a literal here — never read from a claim.&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="1230" y="275" width="230" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="a8" value="&lt;b&gt;Issue session cookie&lt;/b&gt;&lt;br&gt;{ uid, role, tv, exp }&lt;br&gt;HMAC-signed, httpOnly.&lt;br&gt;&lt;i&gt;role comes from the database.&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="1480" y="160" width="140" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="a9" value="&lt;b&gt;/api/auth/login&lt;/b&gt; — local password (scrypt)&lt;br&gt;Same cookie, different proof. The only place in the system that knows what a password is; after SSO it stays as break-glass." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="490" y="275" width="450" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b1" value="&lt;b&gt;auth.ts — authoritative recheck&lt;/b&gt;&lt;br&gt;Reread from SQLite on every request: is_active still 1? token_version still the one in the cookie?" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="60" y="445" width="260" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="b2" value="&lt;b&gt;Role gate&lt;/b&gt;&lt;br&gt;/admin · /api/admin · /api/drive · /api/prompts · /api/auto-discovery require role='admin'. Writes on /api/impact, /api/goals, /api/projects too." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="370" y="445" width="260" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="b3" value="&lt;b&gt;Scope filter&lt;/b&gt;&lt;br&gt;user_scopes is an EXCEPTION list: a user with no row sees the whole portfolio, and an admin ignores it entirely. Impact crossing the boundary is hidden." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="680" y="445" width="260" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="b4" value="Response" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="990" y="465" width="140" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="r1" value="&lt;b&gt;Revocation does not wait for the cookie to expire&lt;/b&gt;&lt;br&gt;token_version is bumped on deactivate, role change and password reset. Any cookie issued before that moment is refused at its next authoritative recheck, even though the cookie itself is still within its lifetime." style="shape=note;whiteSpace=wrap;html=1;size=14;fillColor=#FFF2CC;strokeColor=#D6B656;align=left;spacingLeft=6;verticalAlign=top;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="600" width="370" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="r2" value="&lt;b&gt;JIT belongs to the Okta path only&lt;/b&gt;&lt;br&gt;The local login route never auto-creates a user — that would be open registration. JIT is safe only because someone already authenticated the person upstream. The two routes therefore treat an unknown user differently: one refuses, the other creates." style="shape=note;whiteSpace=wrap;html=1;size=14;fillColor=#FFF2CC;strokeColor=#D6B656;align=left;spacingLeft=6;verticalAlign=top;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="460" y="600" width="370" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="r3" value="&lt;b&gt;Lockout guards&lt;/b&gt;&lt;br&gt;The last active admin cannot demote or deactivate themselves. Before SSO is switched on, every row with role='admin' must carry a real corporate email — otherwise JIT silently creates a new basic user and the instance is left with no admin reachable from the web." style="shape=note;whiteSpace=wrap;html=1;size=14;fillColor=#FFF2CC;strokeColor=#D6B656;align=left;spacingLeft=6;verticalAlign=top;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="860" y="600" width="370" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="r4" value="&lt;b&gt;Break-glass&lt;/b&gt;&lt;br&gt;scripts/create-admin.mjs writes straight to SQLite over SSH, bypassing HTTP and sessions entirely. It is kept permanently — it is exactly what recovers the email-mismatch scenario at cut-over." style="shape=note;whiteSpace=wrap;html=1;size=14;fillColor=#FFF2CC;strokeColor=#D6B656;align=left;spacingLeft=6;verticalAlign=top;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="600" width="360" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="a1" target="a2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f2" value="no" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="a2" target="a3"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;dashed=1;strokeColor=#D79B00;" edge="1" parent="1" source="a3" target="a4"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f4" value="signed assertion (HTTPS POST)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;dashed=1;strokeColor=#D79B00;" edge="1" parent="1" source="a4" target="a5"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f5" value="look up by email" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="a5" target="a6"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f6" value="no" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="a6" target="a7"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f7" value="found" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="a6" target="a8"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="a7" target="a8"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="a9" target="a8"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f10" value="yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="a2" target="b1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f11" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="b1" target="b2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="b2" target="b3"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="f13" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="b3" target="b4"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram id="pipeline" name="3 · Data pipeline">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="p3title" value="Alumen — Data pipeline, end to end&lt;br&gt;&lt;font style=&quot;font-size: 11px&quot; color=&quot;#666666&quot;&gt;From a project folder in the corporate Drive to an impact graph. Two worlds, one hand-off file.&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;fontSize=20;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="60" y="20" width="1000" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="lane1" value="Upstream · Google Workspace, runs as a nominal AL user" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F5FBF4;strokeColor=#B9D9B4;verticalAlign=top;align=left;spacingLeft=10;spacingTop=4;fontSize=12;fontStyle=1;fontColor=#4A7A44;" vertex="1" parent="1">
+          <mxGeometry x="40" y="100" width="1580" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="lane2" value="Alumen · AWS EC2, runs as the service account" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F6F9FD;strokeColor=#BBD0E8;verticalAlign=top;align=left;spacingLeft=10;spacingTop=4;fontSize=12;fontStyle=1;fontColor=#4C6A8C;" vertex="1" parent="1">
+          <mxGeometry x="40" y="400" width="1580" height="360" as="geometry" />
+        </mxCell>
+
+        <mxCell id="u0" value="&lt;b&gt;0 · Enqueue&lt;/b&gt;&lt;br&gt;A user adds a project id from the Alumen UI (desktop or /m)." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="70" y="150" width="230" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="u1" value="&lt;b&gt;alumen-queue.json&lt;/b&gt;&lt;br&gt;On the Shared Drive. Alumen only removes an item once the project shows up in the control sheet, so a missed run never loses a request." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="360" y="150" width="240" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="u2" value="&lt;b&gt;1 · Copy&lt;/b&gt;&lt;br&gt;Apps Script trigger (~10 min) copies the project folder into the Shared Drive, skipping files already there." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="660" y="150" width="240" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="u3" value="&lt;b&gt;2 · Cleanup&lt;/b&gt;&lt;br&gt;Removes the Drive classification label and deletes duplicates. &lt;i&gt;Until this runs the copies are invisible to the service account.&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="960" y="150" width="240" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="u4" value="&lt;b&gt;Control spreadsheet&lt;/b&gt;&lt;br&gt;One row per project, per stage. The only writer is the Apps Script; Alumen reads it as XLSX every 15 s and mirrors it." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="150" width="280" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="gate" value="&lt;b&gt;Batch gate&lt;/b&gt; — Discover does not start while any project in the batch is still in copy or cleanup. Without it the chain ran per project and the later stages fired repeatedly on a partial batch." style="shape=note;whiteSpace=wrap;html=1;size=14;fillColor=#FFF2CC;strokeColor=#D6B656;align=left;spacingLeft=6;verticalAlign=top;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="600" y="305" width="600" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p1" value="&lt;b&gt;3 · Discover&lt;/b&gt;&lt;br&gt;Match the folder to a project row; record link_folder." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="70" y="450" width="280" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="p2" value="&lt;b&gt;4 · Download&lt;/b&gt;&lt;br&gt;List and fetch the documents through the Drive API." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="400" y="450" width="280" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="p3s" value="&lt;b&gt;5 · Hygiene&lt;/b&gt;&lt;br&gt;Classify each file, drop what carries no signal, deduplicate." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="730" y="450" width="280" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="p4" value="&lt;b&gt;6 · Extract text&lt;/b&gt;&lt;br&gt;PDF, Office and Google formats → plain text, stored per document." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="450" width="280" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="p5" value="&lt;b&gt;7 · Goals&lt;/b&gt; — Gemini&lt;br&gt;Objectives, affected entities and impact claims, each with a citation." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="70" y="570" width="280" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="p6" value="&lt;b&gt;8 · Validate&lt;/b&gt;&lt;br&gt;Every entity name is checked against the canonical GIO/DDS catalog; anything unrecognised is dropped, not guessed." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="400" y="570" width="280" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="p7" value="&lt;b&gt;9 · Impact&lt;/b&gt; — Gemini, batched&lt;br&gt;Project-to-project and project-to-entity relations, with severity and direction." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="730" y="570" width="280" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="p8" value="&lt;b&gt;10 · Serve&lt;/b&gt;&lt;br&gt;Portfolio, live Data Flow chain, impact graph, entity atlas." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="570" width="280" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="pdb" value="&lt;b&gt;SQLite&lt;/b&gt; — data/cioo.db&lt;br&gt;Every stage writes its result here; the next stage reads it back. The database, not memory, is what makes a run resumable." style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=10;align=left;spacingLeft=12;" vertex="1" parent="1">
+          <mxGeometry x="1380" y="450" width="220" height="195" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pnote" value="&lt;b&gt;Cost control&lt;/b&gt; — the scheduler ticks every 15 minutes but asks SQLite first: with nothing new it makes no Drive call and no LLM call. The portfolio-wide impact recomparison only runs when new goals were actually added, so it cannot fire on its own." style="shape=note;whiteSpace=wrap;html=1;size=14;fillColor=#FFF2CC;strokeColor=#D6B656;align=left;spacingLeft=6;verticalAlign=top;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="70" y="790" width="740" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="pnote2" value="&lt;b&gt;What the tool is for&lt;/b&gt; — Alumen is decision &lt;i&gt;support&lt;/i&gt;: it surfaces overlaps and dependencies across the portfolio that nobody has time to read for. Every claim carries the citation it came from, so a reader can check it against the source document." style="shape=note;whiteSpace=wrap;html=1;size=14;fillColor=#FFF2CC;strokeColor=#D6B656;align=left;spacingLeft=6;verticalAlign=top;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="860" y="790" width="740" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="g1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="u0" target="u1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="g2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="u1" target="u2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="g3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="u2" target="u3"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="g4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="u3" target="u4"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="g5" value="every project in the batch is DONE" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="u4" target="p1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="g6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="p1" target="p2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="g7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="p2" target="p3s"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="g8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="p3s" target="p4"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="g9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="p4" target="p5"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="g10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="p5" target="p6"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="g11" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="p6" target="p7"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="g12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="p7" target="p8"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="g13" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;dashed=1;" edge="1" parent="1" source="p4" target="pdb"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="g14" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;labelBackgroundColor=#ffffff;dashed=1;" edge="1" parent="1" source="p8" target="pdb"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
