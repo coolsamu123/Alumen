@@ -378,14 +378,23 @@ function StageNode({
 
   return (
     <div
-      // Only a stage that is actually working lights up. An earlier version
-      // pulsed every stage that had ever seen data, marching down the chain in
-      // a loop — it read as constant activity and buried the one state that
-      // matters. Continuous motion belongs to the conduits, not to the boxes.
+      // Three states, because two were not enough to answer "where is the work
+      // right now".
+      //
+      // `running` is the truth but it is a blink: a project is IN_PROGRESS for
+      // seconds, while the mirror refreshes every 15s and the page polls every
+      // 15s. Someone watching a batch move through the chain almost always
+      // looked between the flashes and saw nothing lit.
+      //
+      // `queued` lasts minutes and answers the question actually being asked —
+      // this is the stage holding the batch. Amber, so it never reads as
+      // "working"; green stays reserved for work actually happening.
       className={`relative flex-1 min-w-0 rounded-2xl border p-4 transition-all
         ${running
           ? 'bg-emerald-500/5 alumen-running'
-          : 'border-line bg-surface-1 hover:border-line-strong'}`}
+          : (queued ?? 0) > 0
+            ? 'border-amber-500/60 bg-amber-500/5'
+            : 'border-line bg-surface-1 hover:border-line-strong'}`}
     >
       <div className="flex items-center gap-2 mb-1.5">
         <span className="w-5 h-5 shrink-0 rounded-full bg-surface-2 border border-line
@@ -433,7 +442,10 @@ function StageNode({
             </span>
           )}
           {(queued ?? 0) > 0 && (
-            <span className="text-[11px] text-amber-400">{queued} queued</span>
+            <span className={`text-[11px] text-amber-400 ${running ? '' : 'font-semibold flex items-center gap-1'}`}>
+              {!running && <span className="w-2 h-2 rounded-full bg-amber-400" />}
+              {queued} {running ? 'queued' : 'waiting here'}
+            </span>
           )}
           {(errors ?? 0) > 0 && (
             <span className="text-[11px] text-red-300">{errors} failed</span>

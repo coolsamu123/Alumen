@@ -134,9 +134,13 @@ function ChainScreen() {
     <div className="p-4 space-y-2">
       {rows.map((r, i) => (
         <div key={r.label}
+          // Same three states as the desktop chain: green only for work
+          // actually happening, amber for the stage holding the batch.
           className={`rounded-xl border p-3 ${r.running
             ? 'border-emerald-500 bg-emerald-500/5'
-            : 'border-line bg-surface-1'}`}>
+            : r.queued > 0
+              ? 'border-amber-500/60 bg-amber-500/5'
+              : 'border-line bg-surface-1'}`}>
           <div className="flex items-baseline justify-between">
             <div className="flex items-center gap-2">
               <span className="w-5 h-5 rounded-full bg-surface-2 border border-line
@@ -158,7 +162,11 @@ function ChainScreen() {
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> running
                 </span>
               )}
-              {r.queued > 0 && <span className="text-amber-400">{r.queued} queued</span>}
+              {r.queued > 0 && (
+                <span className={r.running ? 'text-amber-400' : 'font-semibold text-amber-400'}>
+                  {r.queued} {r.running ? 'queued' : 'waiting here'}
+                </span>
+              )}
               {r.errors > 0 && <span className="text-red-300">{r.errors} failed</span>}
             </div>
           )}
