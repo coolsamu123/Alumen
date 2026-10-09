@@ -764,11 +764,11 @@ export async function dryRunGoals(projectId: string): Promise<{
   error?: string;
 }> {
   const project = scanProjects().find(p => p.projectId === projectId);
-  if (!project) return { projectId, claims: [], iaEmbeddedStatus: '', unmappedTerms: [], error: 'projeto sem arquivos locais' };
+  if (!project) return { projectId, claims: [], iaEmbeddedStatus: '', unmappedTerms: [], error: 'project has no local files' };
 
   const documentText = await extractAllTexts(project.files);
   if (!documentText.trim()) {
-    return { projectId, claims: [], iaEmbeddedStatus: '', unmappedTerms: [], error: 'sem texto extraível' };
+    return { projectId, claims: [], iaEmbeddedStatus: '', unmappedTerms: [], error: 'no extractable text' };
   }
 
   const { text } = await generateContent({
@@ -781,7 +781,7 @@ export async function dryRunGoals(projectId: string): Promise<{
   });
 
   const parsed = parseGoalsResponse(text);
-  if (!parsed) return { projectId, claims: [], iaEmbeddedStatus: '', unmappedTerms: [], error: 'resposta ilegível' };
+  if (!parsed) return { projectId, claims: [], iaEmbeddedStatus: '', unmappedTerms: [], error: 'unreadable response' };
 
   return {
     projectId,

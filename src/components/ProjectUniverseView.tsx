@@ -648,12 +648,12 @@ export default function ProjectUniverseView() {
   if (!focusedProjectId) {
     return (
       <div className="flex-1 flex items-center justify-center text-ink-muted">
-        Nenhum projeto selecionado.
+        No project selected.
       </div>
     );
   }
 
-  if (loading) return <LoadingState label="Carregando Universe..." />;
+  if (loading) return <LoadingState label="Loading Universe..." />;
   if (error) return <div className="flex-1 flex items-center justify-center text-red-400">{error}</div>;
   if (!data) return null;
 
@@ -706,8 +706,8 @@ export default function ProjectUniverseView() {
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="bg-surface-1/80 border border-line rounded-xl px-6 py-4 text-center">
                 <div className="text-2xl mb-2">🛰️</div>
-                <div className="text-sm text-ink-3 font-semibold">Sem impactos analisados ainda</div>
-                <div className="text-xs text-ink-muted mt-1">Rode o Impact Analysis pra popular o universo deste projeto.</div>
+                <div className="text-sm text-ink-3 font-semibold">No impacts analysed yet</div>
+                <div className="text-xs text-ink-muted mt-1">Run the Impact Analysis to populate the universe of this project.</div>
               </div>
             </div>
           )}

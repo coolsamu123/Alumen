@@ -391,7 +391,7 @@ export default function ImpactView() {
             })}
             {cards.length > 200 && (
               <div className="text-center text-sm text-ink-muted py-4">
-                Mostrando 200 de {cards.length} projetos — use filtros pra reduzir
+                Showing 200 of {cards.length} projects — use filters to narrow down
               </div>
             )}
           </div>

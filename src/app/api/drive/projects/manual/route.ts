@@ -41,7 +41,7 @@ export async function POST(request: Request) {
   const projectId = normalizeProjectId(String(body.projectId ?? ''));
   if (!projectId) {
     return NextResponse.json(
-      { ok: false, error: 'Número de projeto inválido (ex.: PRJ0023456)' },
+      { ok: false, error: 'Invalid project number (e.g. PRJ0023456)' },
       { status: 400 },
     );
   }
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     const name = String(body.name ?? '').trim();
     if (!name) {
       return NextResponse.json(
-        { ok: false, needsName: true, error: `${projectId} não está no CDIO: informe o nome do projeto` },
+        { ok: false, needsName: true, error: `${projectId} is not in CDIO: enter the project name` },
         { status: 400 },
       );
     }
@@ -96,7 +96,7 @@ export async function POST(request: Request) {
       ok: false,
       projectId,
       created,
-      error: `Projeto ${created ? 'criado' : 'encontrado'}, mas o pedido de cópia falhou: ` +
+      error: `Project ${created ? 'created' : 'found'}, but the copy request failed: ` +
         (err instanceof Error ? err.message : String(err)),
     });
   }
@@ -114,14 +114,14 @@ export async function DELETE(request: Request) {
   }
   const projectId = normalizeProjectId(new URL(request.url).searchParams.get('projectId') ?? '');
   if (!projectId) {
-    return NextResponse.json({ ok: false, error: 'projectId inválido' }, { status: 400 });
+    return NextResponse.json({ ok: false, error: 'Invalid projectId' }, { status: 400 });
   }
   const db = getDb();
   const row = db.prepare('SELECT source FROM projects WHERE project_id = ? LIMIT 1')
     .get(projectId) as { source: string } | undefined;
-  if (!row) return NextResponse.json({ ok: false, error: `${projectId} não existe` }, { status: 404 });
+  if (!row) return NextResponse.json({ ok: false, error: `${projectId} does not exist` }, { status: 404 });
   if (row.source !== 'manual') {
-    return NextResponse.json({ ok: false, error: `${projectId} não é avulso e não pode ser removido` }, { status: 409 });
+    return NextResponse.json({ ok: false, error: `${projectId} is not ad hoc and cannot be removed` }, { status: 409 });
   }
   db.transaction(() => {
     const run = (sql: string) => { try { db.prepare(sql).run(projectId, projectId); } catch { /* table may not exist */ } };

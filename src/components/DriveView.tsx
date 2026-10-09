@@ -5,22 +5,30 @@ import { useProjectContext } from '@/context/ProjectContext';
 import { useDrivePanelStream } from '@/hooks/useDrivePanelStream';
 import type { DrivePanelState } from '@/lib/drive-panel-state';
 import PipelineSection from '@/components/DrivePipeline';
+import { DataFlowChain } from '@/components/DataFlowLive';
 import ArchitectureCanvas from '@/components/StromArchitecture/canvas';
 import DetailPanel from '@/components/StromArchitecture/panels/DetailPanel';
 import { getStage } from '@/components/StromArchitecture/stages';
 import type { StromStats } from '@/components/StromArchitecture';
 
 // ─── Component ──────────────────────────────────────────────────────────────
-// One screen for loading projects: the live chain, "+ Adicionar projeto",
-// "Carregar novos do CDIO" and the single per-stage table (DrivePipeline.tsx),
-// with configuration, architecture and run history folded below. Replaces the
-// former "Drive sources" / "Add a Drive source" cards, the Sync-all explorer
-// and the separate Alumen menu.
+// One screen for loading projects, in three tabs:
+//   Projects — "+ Add project", "Load new from CDIO" and the single per-stage
+//              table (DrivePipeline.tsx), with configuration and history below
+//   Chain    — the animated chain diagram (DataFlowLive.tsx)
+//   Pipeline — the architecture, click a stage for its explanation
+// Replaces the former "Drive sources" / "Add a Drive source" cards, the
+// Sync-all explorer and the separate Alumen menu (whose Chain and Pipeline
+// views are the last two tabs).
+
+type DriveTab = 'projects' | 'chain' | 'pipeline';
+const TAB_LABEL: Record<DriveTab, string> = { projects: 'Projects', chain: '⟶ Chain', pipeline: '⬡ Pipeline' };
 
 export default function DriveView() {
   const { refreshProjects } = useProjectContext();
   const { state, connected } = useDrivePanelStream();
 
+  const [tab, setTab] = useState<DriveTab>('projects');
   const [toast, setToast] = useState<{ kind: 'info'|'success'|'error'; msg: string } | null>(null);
   const showToast = useCallback((kind: 'info'|'success'|'error', msg: string) => {
     setToast({ kind, msg });
@@ -52,28 +60,50 @@ export default function DriveView() {
 
       <StatusHeader state={state} connected={connected} />
 
-      <div className="p-6 space-y-4">
+      <div className="px-6 pt-4 flex items-center gap-1 border-b border-line">
+        {(Object.keys(TAB_LABEL) as DriveTab[]).map(t => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              tab === t ? 'border-accent text-accent-text' : 'border-transparent text-ink-4 hover:text-ink-2'}`}
+          >
+            {TAB_LABEL[t]}
+          </button>
+        ))}
+      </div>
+
+      {/* Kept mounted and toggled, like the app's views: no refetch or lost
+          filters when switching tabs. */}
+      <div className={tab === 'projects' ? 'p-6 space-y-4' : 'hidden'}>
         <PipelineSection addProject={<AddProject />} onToast={showToast} />
 
-        <CollapsibleCard title="Configuração" subtitle="Arquivo CDIO, pasta base e ciclo automático">
+        <CollapsibleCard title="Configuration" subtitle="CDIO file, base folder and automatic cycle">
           <ConfigPanel onToast={showToast} />
         </CollapsibleCard>
 
-        <CollapsibleCard title="Arquitetura" subtitle="As etapas da cadeia e o que cada uma faz">
-          <ArchitectureBox />
-        </CollapsibleCard>
-
         {state?.recentRuns.length ? (
-          <CollapsibleCard title="Histórico" subtitle={`Últimos ${state.recentRuns.length} ciclos`}>
+          <CollapsibleCard title="History" subtitle={`Last ${state.recentRuns.length} cycles`}>
             <RecentRunsTable runs={state.recentRuns} />
           </CollapsibleCard>
         ) : null}
       </div>
+
+      {tab === 'chain' && <DataFlowChain />}
+
+      {tab === 'pipeline' && (
+        <div className="p-6">
+          <p className="text-[11px] text-ink-muted mb-3">
+            Click any stage to inspect its inputs, outputs, code and run controls.
+          </p>
+          <ArchitectureBox />
+        </div>
+      )}
     </div>
   );
 }
 
-// ─── Configuração ───────────────────────────────────────────────────────────
+// ─── Configuration ───────────────────────────────────────────────────────────
 
 function ConfigPanel({ onToast }: { onToast: (kind: 'info'|'success'|'error', msg: string) => void }) {
   const [busy, setBusy] = useState(false);
@@ -90,9 +120,9 @@ function ConfigPanel({ onToast }: { onToast: (kind: 'info'|'success'|'error', ms
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'full' }),
       });
-      if (res.status === 409) { onToast('info', 'Um ciclo já está rodando.'); return; }
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Falhou');
-      onToast('info', 'Ciclo iniciado: descoberta → download → goals → impacto.');
+      if (res.status === 409) { onToast('info', 'A cycle is already running.'); return; }
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed');
+      onToast('info', 'Cycle started: discover → download → goals → impact.');
     } catch (err: unknown) {
       onToast('error', err instanceof Error ? err.message : String(err));
     } finally { setBusy(false); }
@@ -101,33 +131,33 @@ function ConfigPanel({ onToast }: { onToast: (kind: 'info'|'success'|'error', ms
   return (
     <div className="pt-3 space-y-5">
       <div>
-        <div className="text-xs font-semibold text-ink-2 mb-1">Arquivo CDIO</div>
+        <div className="text-xs font-semibold text-ink-2 mb-1">CDIO file</div>
         <CdioPanel />
       </div>
       <div className="border-t border-line pt-4">
-        <div className="text-xs font-semibold text-ink-2 mb-1">Pasta base</div>
+        <div className="text-xs font-semibold text-ink-2 mb-1">Base folder</div>
         <p className="text-[11px] text-ink-muted mb-1">
-          Onde o Apps Script entrega os documentos de cada projeto, já limpos. É o único lugar onde o Alumen procura.
+          Where Apps Script delivers the documents of each project, already cleaned. The only place Alumen looks.
         </p>
         {baseUrl && <a href={baseUrl} target="_blank" rel="noreferrer" className="text-xs text-accent-text2 hover:underline break-all">{baseUrl}</a>}
       </div>
       <div className="border-t border-line pt-4">
-        <div className="text-xs font-semibold text-ink-2 mb-1">Ciclo automático</div>
+        <div className="text-xs font-semibold text-ink-2 mb-1">Automatic cycle</div>
         <p className="text-[11px] text-ink-muted mb-2">
-          Roda sozinho a cada 15 minutos quando há trabalho: assim que a limpeza de um projeto termina, ele é
-          descoberto, baixado, tem os goals extraídos e os impactos calculados. Espera o lote inteiro sair do
-          Apps Script antes de começar.
+          Runs on its own every 15 minutes when there is work: once the cleanup of a project finishes, it is
+          discovered, downloaded, its goals extracted and its impacts computed. Waits for the whole batch to
+          leave Apps Script before starting.
         </p>
         <button onClick={runNow} disabled={busy}
           className={`px-4 py-1.5 rounded-lg border border-line text-sm text-ink-2 ${busy ? 'opacity-50' : 'hover:bg-surface-2'}`}>
-          {busy ? 'Iniciando…' : 'Rodar ciclo agora'}
+          {busy ? 'Starting…' : 'Run cycle now'}
         </button>
       </div>
     </div>
   );
 }
 
-// ─── Arquitetura (from the former Alumen menu) ──────────────────────────────
+// ─── Pipeline (from the former Alumen menu) ──────────────────────────────
 
 function ArchitectureBox() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -137,7 +167,7 @@ function ArchitectureBox() {
   }, []);
   const stage = selectedId ? getStage(selectedId) : null;
   return (
-    <div className="pt-3 flex h-[560px] border border-line rounded-lg overflow-hidden">
+    <div className="flex h-[calc(100vh-220px)] min-h-[520px] border border-line rounded-lg overflow-hidden">
       <div className="flex-1 min-w-0">
         <ArchitectureCanvas selectedId={selectedId} onSelect={setSelectedId} />
       </div>
@@ -294,26 +324,26 @@ function CdioPanel() {
   }, [load]);
 
   const readNow = async () => {
-    setBusy(true); setMsg('Lendo o CDIO no Drive…');
+    setBusy(true); setMsg('Reading the CDIO file from Drive…');
     try {
       const res = await fetch('/api/drive/cdio', { method: 'POST' });
       const data = await res.json();
       if (data.status) setStatus(data.status);
-      if (!data.ok) throw new Error(data.error || 'Falha na leitura');
+      if (!data.ok) throw new Error(data.error || 'Read failed');
       const r = data.result;
       setMsg((r
-        ? `OK: ${r.added} novos, ${r.updated} atualizados, ${r.promoted} promovidos, ${r.missing} saíram do CDIO.`
-        : 'OK.') + (data.autoLoaded ? ` ${data.autoLoaded} entraram na fila do Apps Script.` : ''));
+        ? `OK: ${r.added} new, ${r.updated} updated, ${r.promoted} promoted, ${r.missing} no longer in CDIO.`
+        : 'OK.') + (data.autoLoaded ? ` ${data.autoLoaded} queued for Apps Script.` : ''));
       refreshProjects();
     } catch (err: unknown) {
-      setMsg(`Erro: ${err instanceof Error ? err.message : String(err)}`);
+      setMsg(`Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setBusy(false);
     }
   };
 
   const toggleAuto = async (on: boolean) => {
-    if (!on && !window.confirm('Pausar a carga automática? Projetos novos do CDIO só entrarão na fila pelo botão "Carregar".')) return;
+    if (!on && !window.confirm('Pause automatic loading? New CDIO projects will only be queued through the "Load" button.')) return;
     try {
       const res = await fetch('/api/drive/cdio', {
         method: 'PATCH',
@@ -331,13 +361,13 @@ function CdioPanel() {
         <input type="checkbox" className="mt-0.5" checked={status?.autoLoad ?? true}
           disabled={!status} onChange={e => toggleAuto(e.target.checked)} />
         <span>
-          <b>Carregar automaticamente</b> todo projeto do CDIO: depois de cada leitura, os que ainda não foram
-          pedidos entram na fila do Apps Script e seguem a cadeia completa (cópia, limpeza, descoberta,
-          download, goals, impacto).
+          <b>Load automatically</b> every CDIO project: after each read, the ones never requested are queued
+          for Apps Script and go through the whole chain (copy, cleanup, discover, download, goals, impact).
+          Projects whose folder is already in the base folder skip the copy.
           {status?.lastAutoLoad && (
             <span className="block text-[11px] text-ink-muted mt-0.5">
-              Última carga automática: {fmtWhen(status.lastAutoLoad.at)} · {status.lastAutoLoad.added} projeto(s) na fila
-              {status.lastAutoLoad.error && <span className="text-red-400"> · erro: {status.lastAutoLoad.error}</span>}
+              Last automatic load: {fmtWhen(status.lastAutoLoad.at)} · {status.lastAutoLoad.added} project(s) queued
+              {status.lastAutoLoad.error && <span className="text-red-400"> · error: {status.lastAutoLoad.error}</span>}
             </span>
           )}
         </span>
@@ -348,13 +378,13 @@ function CdioPanel() {
         </div>
       )}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-        <div><div className="text-ink-muted">Projetos no CDIO</div><div className="font-mono text-ink-1 text-sm">{status?.counts.inSheet ?? '—'}</div></div>
-        <div><div className="text-ink-muted">Fora do CDIO</div><div className="font-mono text-ink-1 text-sm">{status?.counts.missing ?? '—'}</div></div>
-        <div><div className="text-ink-muted">Avulsos</div><div className="font-mono text-ink-1 text-sm">{status?.counts.manual ?? '—'}</div></div>
-        <div><div className="text-ink-muted">Versão lida (Drive)</div><div className="text-ink-3">{fmtWhen(status?.modifiedTime ?? null)}</div></div>
+        <div><div className="text-ink-muted">Projects in CDIO</div><div className="font-mono text-ink-1 text-sm">{status?.counts.inSheet ?? '—'}</div></div>
+        <div><div className="text-ink-muted">No longer in CDIO</div><div className="font-mono text-ink-1 text-sm">{status?.counts.missing ?? '—'}</div></div>
+        <div><div className="text-ink-muted">Ad hoc</div><div className="font-mono text-ink-1 text-sm">{status?.counts.manual ?? '—'}</div></div>
+        <div><div className="text-ink-muted">Version read (Drive)</div><div className="text-ink-3">{fmtWhen(status?.modifiedTime ?? null)}</div></div>
       </div>
       <div className="text-[11px] text-ink-muted">
-        {status?.fileName ?? 'Gating Pre-review – CDIO internal committee'} · lido em {fmtWhen(status?.readAt ?? null)} · última verificação {fmtWhen(status?.checkedAt ?? null)}
+        {status?.fileName ?? 'Gating Pre-review – CDIO internal committee'} · read {fmtWhen(status?.readAt ?? null)} · last checked {fmtWhen(status?.checkedAt ?? null)}
       </div>
       <div className="flex items-center gap-3 flex-wrap">
         <button
@@ -362,18 +392,18 @@ function CdioPanel() {
           disabled={busy || status?.running}
           className={`px-4 py-1.5 rounded-lg bg-accent-hover text-white text-sm font-semibold ${busy || status?.running ? 'opacity-50' : 'hover:bg-accent'}`}
         >
-          {busy || status?.running ? 'Lendo…' : 'Ler CDIO agora'}
+          {busy || status?.running ? 'Reading…' : 'Read CDIO now'}
         </button>
         {msg && <span className="text-xs text-ink-4">{msg}</span>}
       </div>
       {status?.lastResult?.warnings?.length ? (
         <details className="text-[11px] text-ink-muted">
-          <summary className="cursor-pointer">Avisos da última leitura ({status.lastResult.warnings.length})</summary>
+          <summary className="cursor-pointer">Warnings from the last read ({status.lastResult.warnings.length})</summary>
           <ul className="mt-1 list-disc pl-5">{status.lastResult.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
         </details>
       ) : null}
       <details className="text-xs">
-        <summary className="cursor-pointer text-ink-muted">Plano B: enviar o arquivo à mão</summary>
+        <summary className="cursor-pointer text-ink-muted">Plan B: upload the file by hand</summary>
         <ExcelUpload />
       </details>
     </div>
@@ -405,15 +435,15 @@ function AddProject() {
       });
       const data = await res.json();
       if (data.needsName) { setNeedsName(true); throw new Error(data.error); }
-      if (!data.ok) throw new Error(data.error || 'Falhou');
-      const what = data.created ? 'criado como Avulso' : `já existia (${data.source === 'excel' ? 'CDIO' : data.source})`;
+      if (!data.ok) throw new Error(data.error || 'Failed');
+      const what = data.created ? 'created as ad hoc' : `already known (${data.source === 'excel' ? 'CDIO' : data.source})`;
       const queue = data.queued
-        ? 'cópia pedida ao Apps Script'
+        ? 'copy requested from Apps Script'
         : data.queueNote === 'already in the base folder'
-          ? 'pasta já está no Drive: segue direto para download, goals e impacto'
+          ? 'folder already in Drive: going straight to download, goals and impact'
         : data.queueNote === 'already in the control sheet'
-          ? 'já copiado antes pelo Apps Script'
-          : data.queueNote === 'already queued' ? 'já estava na fila' : 'fila sem alteração';
+          ? 'already copied by Apps Script'
+          : data.queueNote === 'already queued' ? 'already queued' : 'queue unchanged';
       setMsg({ kind: 'ok', text: `${data.projectId}: ${what}; ${queue}.` });
       setProjectId(''); setName(''); setDds(''); setGate(''); setDescription(''); setNeedsName(false);
       refreshProjects();
@@ -430,18 +460,18 @@ function AddProject() {
       <div className="flex items-center gap-2 flex-wrap">
         <input value={projectId} onChange={e => setProjectId(e.target.value)} placeholder="PRJ0023456" className={`${input} w-40 font-mono`} />
         <input value={name} onChange={e => setName(e.target.value)}
-          placeholder={needsName ? 'Nome do projeto (obrigatório)' : 'Nome (só se não estiver no CDIO)'}
+          placeholder={needsName ? 'Project name (required)' : 'Name (only if not in CDIO)'}
           className={`${input} flex-1 min-w-[220px] ${needsName ? 'border-yellow-600' : ''}`} />
         <button type="submit" disabled={busy || !projectId.trim()}
           className={`px-4 py-1.5 rounded-lg bg-accent-hover text-white text-sm font-semibold ${busy || !projectId.trim() ? 'opacity-50' : 'hover:bg-accent'}`}>
-          {busy ? 'Adicionando…' : 'Adicionar e carregar'}
+          {busy ? 'Adding…' : 'Add and load'}
         </button>
       </div>
       {needsName && (
         <div className="flex items-center gap-2 flex-wrap">
-          <input value={dds} onChange={e => setDds(e.target.value)} placeholder="DDS (opcional)" className={`${input} w-48`} />
-          <input value={gate} onChange={e => setGate(e.target.value)} placeholder="Gate (opcional)" className={`${input} w-32`} />
-          <input value={description} onChange={e => setDescription(e.target.value)} placeholder="Descrição (opcional)" className={`${input} flex-1 min-w-[220px]`} />
+          <input value={dds} onChange={e => setDds(e.target.value)} placeholder="DDS (optional)" className={`${input} w-48`} />
+          <input value={gate} onChange={e => setGate(e.target.value)} placeholder="Gate (optional)" className={`${input} w-32`} />
+          <input value={description} onChange={e => setDescription(e.target.value)} placeholder="Description (optional)" className={`${input} flex-1 min-w-[220px]`} />
         </div>
       )}
       {msg && <div className={`text-xs ${msg.kind === 'ok' ? 'text-green-400' : 'text-red-400'}`}>{msg.text}</div>}
@@ -465,7 +495,7 @@ function ExcelUpload() {
       const res = await fetch('/api/projects/upload', { method: 'POST', body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setMsg(`OK: ${data.added} novos, ${data.updated} atualizados, ${data.missing} fora do CDIO (${file.name}).`);
+      setMsg(`OK: ${data.added} new, ${data.updated} updated, ${data.missing} no longer in CDIO (${file.name}).`);
       refreshProjects();
     } catch (err: unknown) {
       setMsg(`Error: ${err instanceof Error ? err.message : 'Upload failed'}`);
@@ -478,7 +508,7 @@ function ExcelUpload() {
   return (
     <div className="pt-3">
       <p className="text-xs text-ink-muted mb-3">
-        Plano B: envie o <code className="text-ink-3">Gating Pre-review – CDIO internal committee</code> à mão, se a leitura do Drive falhar. Mesma mesclagem: nada é apagado.
+        Plan B: upload the <code className="text-ink-3">Gating Pre-review – CDIO internal committee</code> workbook by hand if reading it from Drive fails. Same merge: nothing is deleted.
       </p>
       <label className={`inline-block px-5 py-2 rounded-lg bg-accent-hover text-white text-sm font-semibold ${busy ? 'opacity-50' : 'hover:bg-accent cursor-pointer'}`}>
         {busy ? 'Uploading…' : 'Upload Excel'}

@@ -190,7 +190,7 @@ export function setAutoLoad(on: boolean): void {
   setSetting(CDIO_SETTINGS.autoLoad, on ? 'on' : 'off');
 }
 
-export async function autoLoadNewCdio(requestedBy = 'alumen (automático)'): Promise<{ added: string[]; error: string | null }> {
+export async function autoLoadNewCdio(requestedBy = 'alumen (automatic)'): Promise<{ added: string[]; error: string | null }> {
   if (!isAutoLoadOn()) return { added: [], error: null };
   try {
     const queued = new Set((await readQueue()).map(it => it.projectId.trim().toUpperCase()));

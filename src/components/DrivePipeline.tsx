@@ -15,22 +15,22 @@ const STAGES = ['request', 'copy', 'cleanup', 'discover', 'download', 'goals', '
 type StageKey = typeof STAGES[number];
 
 const STAGE_LABEL: Record<StageKey, string> = {
-  request: 'Pedido',
-  copy: 'Cópia',
-  cleanup: 'Limpeza',
-  discover: 'Descoberta',
+  request: 'Request',
+  copy: 'Copy',
+  cleanup: 'Cleanup',
+  discover: 'Discover',
   download: 'Download',
   goals: 'Goals',
-  impact: 'Impacto',
+  impact: 'Impact',
 };
 const STAGE_WHO: Record<StageKey, string> = {
-  request: 'Alumen pede a cópia ao Apps Script',
-  copy: 'Apps Script copia os documentos para a pasta base',
-  cleanup: 'Apps Script remove duplicados e o rótulo de classificação',
-  discover: 'Alumen encontra a pasta PRJ na pasta base',
-  download: 'Alumen baixa os arquivos',
-  goals: 'Gemini extrai os campos de governança',
-  impact: 'Gemini calcula as relações com os outros projetos',
+  request: 'Alumen asks Apps Script for the copy',
+  copy: 'Apps Script copies the documents into the base folder',
+  cleanup: 'Apps Script removes duplicates and the classification label',
+  discover: 'Alumen finds the PRJ folder in the base folder',
+  download: 'Alumen downloads the files',
+  goals: 'Gemini extracts the governance fields',
+  impact: 'Gemini computes the relations with the other projects',
 };
 
 interface PipelineRow {
@@ -60,10 +60,10 @@ interface PipelineData {
 }
 
 export const SOURCE_BADGE: Record<ProjectSource, { label: string; title: string; className: string }> = {
-  excel: { label: 'CDIO', title: 'Da planilha CDIO', className: 'bg-surface-2 text-ink-4' },
-  drive: { label: 'Drive', title: 'Pasta PRJ encontrada no Drive, sem linha na planilha CDIO', className: 'bg-blue-900/40 text-blue-300' },
-  initiative: { label: 'Iniciativa', title: 'Pasta sem projeto CDIO', className: 'bg-amber-900/40 text-amber-300' },
-  manual: { label: 'Avulso', title: 'Adicionado à mão por número; vira CDIO quando a planilha o listar', className: 'bg-teal-900/40 text-teal-300' },
+  excel: { label: 'CDIO', title: 'From the CDIO sheet', className: 'bg-surface-2 text-ink-4' },
+  drive: { label: 'Drive', title: 'PRJ folder found in Drive with no row in the CDIO sheet', className: 'bg-blue-900/40 text-blue-300' },
+  initiative: { label: 'Initiative', title: 'Drive folder with no CDIO project', className: 'bg-amber-900/40 text-amber-300' },
+  manual: { label: 'Ad hoc', title: 'Added by hand by number; becomes CDIO once the sheet lists it', className: 'bg-teal-900/40 text-teal-300' },
 };
 
 function StageIcon({ state, title }: { state: StageState; title: string }) {
@@ -80,9 +80,9 @@ function StageIcon({ state, title }: { state: StageState; title: string }) {
 }
 
 function heartbeatAge(at: string | undefined): { text: string; ok: boolean } {
-  if (!at) return { text: 'sem sinal', ok: false };
+  if (!at) return { text: 'no signal', ok: false };
   const min = Math.round((Date.now() - new Date(at).getTime()) / 60_000);
-  return { text: min <= 0 ? 'agora' : `há ${min} min`, ok: min <= 20 };
+  return { text: min <= 0 ? 'just now' : `${min} min ago`, ok: min <= 20 };
 }
 
 type StageFilter = { stage: StageKey; kind: 'active' | 'error' } | null;
@@ -109,7 +109,7 @@ export default function PipelineSection({ addProject, onToast }: {
     try {
       const res = await fetch('/api/drive/pipeline');
       const d = await res.json();
-      if (!d.ok) throw new Error(d.error || 'Falha ao carregar');
+      if (!d.ok) throw new Error(d.error || 'Failed to load');
       setData(d);
       setLoadError(null);
     } catch (err: unknown) {
@@ -161,7 +161,7 @@ export default function PipelineSection({ addProject, onToast }: {
       body: JSON.stringify(body),
     });
     const d = await res.json();
-    if (!d.ok) throw new Error(d.error || 'Falhou');
+    if (!d.ok) throw new Error(d.error || 'Failed');
     return d;
   };
 
@@ -170,9 +170,9 @@ export default function PipelineSection({ addProject, onToast }: {
     try {
       const r = await post({ action: 'load', projectIds: [projectId] });
       onToast(r.added.length || r.alreadyInBase.length ? 'success' : 'info',
-        r.added.length ? `${projectId}: cópia pedida ao Apps Script.`
-        : r.alreadyInBase.length ? `${projectId}: pasta já está no Drive, segue direto para download, goals e impacto.`
-        : `${projectId}: ${r.skipped[0]?.reason ?? 'nada a fazer'}.`);
+        r.added.length ? `${projectId}: copy requested from Apps Script.`
+        : r.alreadyInBase.length ? `${projectId}: folder already in Drive, going straight to download, goals and impact.`
+        : `${projectId}: ${r.skipped[0]?.reason ?? 'nothing to do'}.`);
       load();
     } catch (err: unknown) {
       onToast('error', err instanceof Error ? err.message : String(err));
@@ -181,12 +181,12 @@ export default function PipelineSection({ addProject, onToast }: {
 
   const loadNew = async () => {
     if (!data?.newFromCdio) return;
-    if (!window.confirm(`Carregar ${data.newFromCdio} projeto(s) novos do CDIO? Cada um passa por cópia, limpeza e consome chamadas ao Gemini.`)) return;
+    if (!window.confirm(`Load ${data.newFromCdio} new CDIO project(s)? Each goes through copy and cleanup and uses Gemini calls.`)) return;
     setBusy('__all__');
     try {
       const r = await post({ action: 'load-new-cdio' });
-      onToast('success', `${r.added.length} projeto(s) pedidos ao Apps Script` +
-        (r.alreadyInBase.length ? `; ${r.alreadyInBase.length} já estavam no Drive e seguem direto.` : '.'));
+      onToast('success', `${r.added.length} project(s) queued for Apps Script` +
+        (r.alreadyInBase.length ? `; ${r.alreadyInBase.length} already in Drive, going straight on.` : '.'));
       load();
     } catch (err: unknown) {
       onToast('error', err instanceof Error ? err.message : String(err));
@@ -201,22 +201,22 @@ export default function PipelineSection({ addProject, onToast }: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'project', projectId }),
       });
-      if (res.status === 409) { onToast('info', 'Outra sincronização já está rodando.'); return; }
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Falhou');
-      onToast('info', `Baixando de novo os arquivos de ${projectId}…`);
+      if (res.status === 409) { onToast('info', 'Another sync is already running.'); return; }
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed');
+      onToast('info', `Downloading the files of ${projectId} again…`);
     } catch (err: unknown) {
       onToast('error', err instanceof Error ? err.message : String(err));
     } finally { setBusy(null); }
   };
 
   const removeManual = async (projectId: string) => {
-    if (!window.confirm(`Remover o projeto avulso ${projectId}, com seus goals e impactos?`)) return;
+    if (!window.confirm(`Remove the ad hoc project ${projectId}, with its goals and impacts?`)) return;
     setBusy(projectId);
     try {
       const res = await fetch(`/api/drive/projects/manual?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
       const d = await res.json();
-      if (!d.ok) throw new Error(d.error || 'Falhou');
-      onToast('success', `${projectId} removido.`);
+      if (!d.ok) throw new Error(d.error || 'Failed');
+      onToast('success', `${projectId} removed.`);
       refreshProjects();
       load();
     } catch (err: unknown) {
@@ -233,16 +233,16 @@ export default function PipelineSection({ addProject, onToast }: {
       {/* Chain, live. Clicking a stage filters the table to it. */}
       <div className="bg-surface-1 border border-line rounded-xl px-5 py-4">
         <div className="flex items-center gap-3 mb-3 flex-wrap">
-          <div className="text-sm font-semibold text-ink-2">Cadeia ao vivo</div>
+          <div className="text-sm font-semibold text-ink-2">Live chain</div>
           <span className={`text-[11px] px-2 py-0.5 rounded ${hb.ok ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'}`}
-            title="Último sinal do Apps Script (gatilho de 10 em 10 minutos)">
+            title="Last signal from Apps Script (trigger every 10 minutes)">
             Apps Script: {hb.text}
           </span>
-          {data && data.queueSize > 0 && <span className="text-[11px] text-ink-muted">{data.queueSize} na fila</span>}
+          {data && data.queueSize > 0 && <span className="text-[11px] text-ink-muted">{data.queueSize} queued</span>}
           {data?.cycle && data.cycle !== 'idle' && (
-            <span className="text-[11px] text-accent-text">ciclo em andamento: {data.cycle}</span>
+            <span className="text-[11px] text-accent-text">cycle running: {data.cycle}</span>
           )}
-          {data?.queueError && <span className="text-[11px] text-red-400" title={data.queueError}>fila ilegível</span>}
+          {data?.queueError && <span className="text-[11px] text-red-400" title={data.queueError}>queue unreadable</span>}
         </div>
         <div className="grid grid-cols-7 gap-1">
           {chain.map((c, i) => {
@@ -251,19 +251,19 @@ export default function PipelineSection({ addProject, onToast }: {
               <div key={c.stage} className="relative">
                 <button
                   onClick={() => setStageFilter(activeSel && stageFilter?.kind === 'active' ? null : { stage: c.stage, kind: 'active' })}
-                  title={`${STAGE_WHO[c.stage]} — clique para ver os projetos nesta etapa`}
+                  title={`${STAGE_WHO[c.stage]} — click to see the projects at this stage`}
                   className={`w-full rounded-lg border px-2 py-2 text-left transition-colors ${
                     activeSel ? 'border-accent bg-accent-soft' : 'border-line bg-surface-2/40 hover:bg-surface-2'}`}
                 >
                   <div className="text-[11px] text-ink-muted">{i + 1}. {STAGE_LABEL[c.stage]}</div>
                   <div className="font-mono text-base text-ink-1">{c.active}</div>
-                  <div className="text-[10px] text-ink-faint">{c.done} feitos</div>
+                  <div className="text-[10px] text-ink-faint">{c.done} done</div>
                 </button>
                 {c.error > 0 && (
                   <button
                     onClick={() => setStageFilter({ stage: c.stage, kind: 'error' })}
                     className="absolute top-1 right-1 text-[10px] px-1.5 rounded bg-red-900/60 text-red-200"
-                    title="Ver os projetos com erro nesta etapa"
+                    title="See the projects with an error at this stage"
                   >{c.error} ✗</button>
                 )}
               </div>
@@ -275,17 +275,17 @@ export default function PipelineSection({ addProject, onToast }: {
       {/* Actions */}
       <div className="bg-surface-1 border border-line rounded-xl px-5 py-4 space-y-3">
         <div className="flex items-center gap-3 flex-wrap">
-          <div className="text-sm font-semibold text-ink-2">+ Adicionar projeto</div>
-          <div className="text-[11px] text-ink-muted">Por número PRJ, esteja ou não no CDIO</div>
+          <div className="text-sm font-semibold text-ink-2">+ Add project</div>
+          <div className="text-[11px] text-ink-muted">By PRJ number, whether or not it is in CDIO</div>
           <div className="flex-1" />
           <button
             onClick={loadNew}
             disabled={!data?.newFromCdio || busy !== null}
             className={`px-4 py-1.5 rounded-lg border border-accent-border text-accent-text text-sm font-semibold ${
               !data?.newFromCdio || busy !== null ? 'opacity-40' : 'hover:bg-accent-soft'}`}
-            title="Pede ao Apps Script a cópia de todos os projetos do CDIO que ainda não foram carregados"
+            title="Asks Apps Script to copy every CDIO project not loaded yet"
           >
-            {busy === '__all__' ? 'Pedindo…' : `Carregar novos do CDIO (${data?.newFromCdio ?? 0})`}
+            {busy === '__all__' ? 'Requesting…' : `Load new from CDIO (${data?.newFromCdio ?? 0})`}
           </button>
         </div>
         {addProject}
@@ -294,38 +294,38 @@ export default function PipelineSection({ addProject, onToast }: {
       {/* Table */}
       <div className="bg-surface-1 border border-line rounded-xl">
         <div className="px-5 py-3 flex items-center gap-2 flex-wrap border-b border-line">
-          <div className="text-sm font-semibold text-ink-2">Projetos</div>
+          <div className="text-sm font-semibold text-ink-2">Projects</div>
           <div className="text-[11px] text-ink-muted mr-2">{visible.length} / {rows.length}</div>
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="PRJ ou nome…" className={`${sel} w-44`} />
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="PRJ or name…" className={`${sel} w-44`} />
           <select value={source} onChange={e => setSource(e.target.value as typeof source)} className={sel}>
-            <option value="any">Origem: todas</option>
+            <option value="any">Source: all</option>
             <option value="excel">CDIO</option>
-            <option value="manual">Avulso</option>
+            <option value="manual">Ad hoc</option>
             <option value="drive">Drive</option>
           </select>
           <select value={period} onChange={e => setPeriod(e.target.value)} className={sel}>
-            <option value="any">Período: todos</option>
+            <option value="any">Period: all</option>
             {periods.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
           <select value={gate} onChange={e => setGate(e.target.value)} className={sel}>
-            <option value="any">Gate: todos</option>
+            <option value="any">Gate: all</option>
             {gates.map(g => <option key={g} value={g}>{g}</option>)}
           </select>
           <select value={dds} onChange={e => setDds(e.target.value)} className={sel}>
-            <option value="any">DDS: todos</option>
+            <option value="any">DDS: all</option>
             {ddsList.map(d => <option key={d} value={d}>{d}</option>)}
           </select>
           <label className="text-xs text-ink-3 flex items-center gap-1">
-            <input type="checkbox" checked={onlyErrors} onChange={e => setOnlyErrors(e.target.checked)} /> só erro
+            <input type="checkbox" checked={onlyErrors} onChange={e => setOnlyErrors(e.target.checked)} /> errors only
           </label>
           {stageFilter && (
             <span className="text-[11px] px-2 py-0.5 rounded bg-accent-soft text-accent-text">
-              {STAGE_LABEL[stageFilter.stage]}: {stageFilter.kind === 'error' ? 'com erro' : 'em andamento'}
+              {STAGE_LABEL[stageFilter.stage]}: {stageFilter.kind === 'error' ? 'with error' : 'in progress'}
             </span>
           )}
           {filtersOn && (
             <button onClick={() => { setQ(''); setSource('any'); setPeriod('any'); setGate('any'); setDds('any'); setOnlyErrors(false); setStageFilter(null); }}
-              className="text-[11px] text-ink-muted hover:text-ink-2 underline">limpar filtros</button>
+              className="text-[11px] text-ink-muted hover:text-ink-2 underline">clear filters</button>
           )}
         </div>
         {loadError && <div className="px-5 py-2 text-xs text-red-400">{loadError}</div>}
@@ -334,13 +334,13 @@ export default function PipelineSection({ addProject, onToast }: {
             <thead className="sticky top-0 bg-surface-1 z-10">
               <tr className="text-ink-muted border-b border-line">
                 <th className="px-3 py-2 text-left font-semibold">PRJ</th>
-                <th className="px-2 py-2 text-left font-semibold">Nome</th>
-                <th className="px-2 py-2 text-left font-semibold">Origem</th>
-                <th className="px-2 py-2 text-left font-semibold">Período</th>
+                <th className="px-2 py-2 text-left font-semibold">Name</th>
+                <th className="px-2 py-2 text-left font-semibold">Source</th>
+                <th className="px-2 py-2 text-left font-semibold">Period</th>
                 {STAGES.map(s => (
                   <th key={s} className="px-1.5 py-2 text-center font-semibold" title={STAGE_WHO[s]}>{STAGE_LABEL[s]}</th>
                 ))}
-                <th className="px-3 py-2 text-right font-semibold">Ação</th>
+                <th className="px-3 py-2 text-right font-semibold">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -358,8 +358,8 @@ export default function PipelineSection({ addProject, onToast }: {
                           title={SOURCE_BADGE[r.source].title}>{SOURCE_BADGE[r.source].label}</span>
                         {r.cdioMissingSince && (
                           <span className="ml-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-red-900/40 text-red-300"
-                            title={`Não está mais na planilha CDIO desde ${r.cdioMissingSince}. Mantido: goals e impactos continuam valendo.`}>
-                            fora do CDIO
+                            title={`No longer in the CDIO sheet since ${r.cdioMissingSince}. Kept: its goals and impacts are still valid.`}>
+                            not in CDIO
                           </span>
                         )}
                       </td>
@@ -367,13 +367,13 @@ export default function PipelineSection({ addProject, onToast }: {
                       {STAGES.map(s => (
                         <td key={s} className="px-1.5 py-1.5 text-center">
                           {r.stages[s] === 'error' ? (
-                            <button onClick={() => setOpenError(isOpen ? null : r.projectId)} title={r.errors[s] || 'erro'}>
-                              <StageIcon state="error" title={r.errors[s] || 'erro'} />
+                            <button onClick={() => setOpenError(isOpen ? null : r.projectId)} title={r.errors[s] || 'error'}>
+                              <StageIcon state="error" title={r.errors[s] || 'error'} />
                             </button>
                           ) : (
                             <StageIcon state={r.stages[s]} title={`${STAGE_LABEL[s]}: ${r.stages[s]}`
-                              + (s === 'download' && r.filesDownloaded ? ` (${r.filesDownloaded} arquivos)` : '')
-                              + (s === 'impact' && r.impactCount ? ` (${r.impactCount} relações)` : '')} />
+                              + (s === 'download' && r.filesDownloaded ? ` (${r.filesDownloaded} files)` : '')
+                              + (s === 'impact' && r.impactCount ? ` (${r.impactCount} relations)` : '')} />
                           )}
                         </td>
                       ))}
@@ -381,16 +381,16 @@ export default function PipelineSection({ addProject, onToast }: {
                         {r.loadable && (
                           <button onClick={() => loadOne(r.projectId)} disabled={busy !== null}
                             className="px-2 py-0.5 rounded bg-accent-hover text-white text-[11px] font-semibold disabled:opacity-40 hover:bg-accent">
-                            {busy === r.projectId ? '…' : 'Carregar'}
+                            {busy === r.projectId ? '…' : 'Load'}
                           </button>
                         )}
                         {!r.loadable && downloadFailed && r.linkFolder && (
                           <button onClick={() => resync(r.projectId)} disabled={busy !== null}
-                            className="text-ink-muted hover:text-ink-2 disabled:opacity-40" title="Baixar de novo os arquivos deste projeto">↻</button>
+                            className="text-ink-muted hover:text-ink-2 disabled:opacity-40" title="Download this project's files again">↻</button>
                         )}
                         {r.source === 'manual' && (
                           <button onClick={() => removeManual(r.projectId)} disabled={busy !== null}
-                            className="text-ink-muted hover:text-red-400 disabled:opacity-40" title="Remover este projeto avulso">🗑</button>
+                            className="text-ink-muted hover:text-red-400 disabled:opacity-40" title="Remove this ad hoc project">🗑</button>
                         )}
                       </td>
                     </tr>
@@ -406,14 +406,14 @@ export default function PipelineSection({ addProject, onToast }: {
               })}
               {!visible.length && (
                 <tr><td colSpan={5 + STAGES.length} className="px-5 py-6 text-center text-ink-muted">
-                  {data ? 'Nenhum projeto com esses filtros.' : 'Carregando…'}
+                  {data ? 'No project matches these filters.' : 'Loading…'}
                 </td></tr>
               )}
             </tbody>
           </table>
         </div>
         <div className="px-5 py-2 border-t border-line text-[11px] text-ink-muted">
-          ✓ feito · ● em andamento · ✗ erro (clique para ver) · · aguardando a etapa anterior · – não pedido
+          ✓ done · ● running · ✗ error (click to see) · · waiting for the previous stage · – not requested
         </div>
       </div>
     </div>

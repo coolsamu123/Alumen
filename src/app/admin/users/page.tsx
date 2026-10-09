@@ -315,7 +315,7 @@ function UserRowView({
           </span>
         </td>
         <td className="px-4 py-3 text-ink-2">
-          {user.role === 'admin' ? 'Tudo' : user.visibleCount === 'ALL' ? 'Tudo' : `${user.visibleCount} projetos`}
+          {user.role === 'admin' ? 'All' : user.visibleCount === 'ALL' ? 'All' : `${user.visibleCount} projects`}
         </td>
         <td className="px-4 py-3">
           <span className={user.is_active ? 'text-green-400' : 'text-ink-faint'}>
@@ -488,7 +488,7 @@ function ScopeEditor({
 
       <div>
         <div className="text-xs font-semibold text-ink-4 mb-2 uppercase tracking-wide">
-          Projetos avulsos ({selectedProjects.size} selecionado{selectedProjects.size === 1 ? '' : 's'})
+          Individual projects ({selectedProjects.size} selected)
         </div>
         {selectedProjects.size > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-2">

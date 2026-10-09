@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
   }
   const projectId = request.nextUrl.searchParams.get('projectId');
   if (!projectId) {
-    return NextResponse.json({ error: 'projectId é obrigatório' }, { status: 400 });
+    return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
   }
   try {
     return NextResponse.json(await dryRunGoals(projectId));

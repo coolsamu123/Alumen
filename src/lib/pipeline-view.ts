@@ -161,8 +161,8 @@ export function buildPipelineRows(queued: Set<string>): PipelineRow[] {
     const cleanedAt = cleanupDoneAt.get(id);
     if (discover === 'waiting' && cleanedAt && lastCycleStart && lastCycleStart > cleanedAt) {
       discover = 'error';
-      errors.discover = 'Pasta do projeto não encontrada na pasta base. O Apps Script terminou, mas não há '
-        + 'pasta com este número (número errado, ou nenhum documento encontrado na cópia).';
+      errors.discover = 'Project folder not found in the base folder. Apps Script finished, but there is no '
+        + 'folder with this number (wrong number, or the copy found no documents).';
     }
 
     const d = docs.get(id);

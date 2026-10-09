@@ -154,11 +154,11 @@ export default function Sidebar() {
                   title={selectedProject.source === 'initiative'
                     ? 'Drive folder with documents, no matching CDIO project'
                     : selectedProject.source === 'manual'
-                      ? 'Projeto adicionado à mão, ainda sem linha na planilha CDIO'
-                      : 'Pasta PRJ encontrada no Drive, sem linha na planilha CDIO'}
+                      ? 'Added by hand by number, not yet in the CDIO sheet'
+                      : 'PRJ folder found in Drive with no row in the CDIO sheet'}
                 >
-                  {selectedProject.source === 'initiative' ? 'INICIATIVA'
-                    : selectedProject.source === 'manual' ? 'AVULSO' : 'DRIVE'}
+                  {selectedProject.source === 'initiative' ? 'INITIATIVE'
+                    : selectedProject.source === 'manual' ? 'AD HOC' : 'DRIVE'}
                 </span>
               </div>
             )}

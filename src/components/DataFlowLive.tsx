@@ -59,7 +59,7 @@ function useQueue() {
         setHeartbeat(data.heartbeat ?? null);
         setError(null);
       } else {
-        setError(data.error ?? 'falha ao ler a fila');
+        setError(data.error ?? 'failed to read the queue');
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
@@ -123,6 +123,17 @@ const STAGE_COLUMNS: Array<{ key: keyof ProjectStageRow['stages']; label: string
   { key: 'goals', label: 'Goals' },
   { key: 'impact', label: 'Impact' },
 ];
+
+/** The chain diagram alone — Drive Sync's "Chain" tab. */
+export function DataFlowChain() {
+  const { state, error } = useDataFlowState();
+  return (
+    <>
+      {error && <div className="px-6 pt-4 text-xs text-red-400">{error}</div>}
+      <ChainView state={state} />
+    </>
+  );
+}
 
 export default function DataFlowLive() {
   const { state, error } = useDataFlowState();
@@ -501,7 +512,7 @@ function ProjectsTable() {
   }, [rows, search, onlyErrors]);
 
   if (error) return <div className="p-8 text-sm text-red-400">{error}</div>;
-  if (!rows) return <div className="p-8 text-sm text-ink-muted">Carregando…</div>;
+  if (!rows) return <div className="p-8 text-sm text-ink-muted">Loading…</div>;
 
   return (
     <div className="p-6 flex flex-col gap-3">
