@@ -1,0 +1,70 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Alumen - Security Group para a EC2 ja existente. Inbound: HTTP (80) e,
+  opcionalmente, SSH (22) a partir da rede interna. Outbound: HTTPS (443) e
+  HTTP (80), que e o que o app e a instalacao usam (GitHub, npm, Google Drive,
+  Gemini, repositorios do Amazon Linux). Depois de criar a stack, anexe o SG a
+  instancia: EC2 > Instances > Actions > Security > Change security groups.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-0d8da53c5424a5840
+    Description: VPC da instancia (vpc-main).
+  HttpCidr:
+    Type: String
+    Default: 10.0.0.0/8
+    AllowedPattern: '^\d{1,3}(\.\d{1,3}){3}/\d{1,2}$'
+    Description: >-
+      Quem pode abrir o Alumen na porta 80. 10.0.0.0/8 = rede interna.
+      Nao use 0.0.0.0/0: o app e HTTP puro, a senha trafegaria sem criptografia.
+  SshCidr:
+    Type: String
+    Default: ''
+    Description: >-
+      Opcional. IP/CIDR da maquina de tunel (jump) para SSH na porta 22,
+      ex. 10.20.30.40/32. Vazio = nao cria a regra.
+
+Conditions:
+  HasSsh: !Not [!Equals [!Ref SshCidr, '']]
+
+Resources:
+  AlumenSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Alumen - HTTP da rede interna, saida HTTPS/HTTP
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !Ref HttpCidr
+          Description: Navegador para nginx para Alumen
+        - !If
+          - HasSsh
+          - IpProtocol: tcp
+            FromPort: 22
+            ToPort: 22
+            CidrIp: !Ref SshCidr
+            Description: SSH a partir da maquina de tunel
+          - !Ref AWS::NoValue
+      # Declarar egress substitui o "tudo liberado" padrao da AWS.
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: GitHub, npm, Google Drive, Gemini, pacotes
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: Pacotes e downloads via HTTP
+      Tags:
+        - Key: Name
+          Value: alumen-sg
+
+Outputs:
+  SecurityGroupId:
+    Description: Anexe este SG a instancia do Alumen.
+    Value: !Ref AlumenSecurityGroup
