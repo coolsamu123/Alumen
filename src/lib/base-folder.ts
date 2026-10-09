@@ -8,8 +8,8 @@
  * and the scheduler carries it through download → goals → impact
  * (pendingWork: "linked project never downloaded").
  */
-import { getDriveClient, discoverAndAddProjectFromDrive } from './drive-engine';
-import { baseFolderId, baseFolderUrl, isAutoCycleRunning } from './auto-pipeline';
+import { getDriveClient } from './drive-engine';
+import { baseFolderId, isAutoCycleRunning, scanBaseFolder } from './auto-pipeline';
 import { normalizeProjectId } from './project-id';
 
 /** Canonical project ids of the PRJ folders directly inside the base folder. */
@@ -54,7 +54,7 @@ export async function splitByBaseFolder(projectIds: string[]): Promise<{
     (present.has(id.trim().toUpperCase()) ? alreadyThere : toQueue).push(id);
   }
   if (alreadyThere.length && !isAutoCycleRunning()) {
-    await discoverAndAddProjectFromDrive(baseFolderUrl());
+    await scanBaseFolder();
   }
   return { toQueue, alreadyThere };
 }

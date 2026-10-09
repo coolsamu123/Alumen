@@ -17,7 +17,7 @@
  * from Drive.
  */
 import { getDb } from './db';
-import { isAutoCycleRunning, getAutoCycleStage } from './auto-pipeline';
+import { isAutoCycleRunning, getAutoCycleStage, BASE_FOLDER_SCANNED_SETTING } from './auto-pipeline';
 import type { ProjectSource } from './types';
 
 export type StageState = 'done' | 'running' | 'error' | 'waiting' | 'none' | 'na';
@@ -133,10 +133,9 @@ export function buildPipelineRows(queued: Set<string>): PipelineRow[] {
     SELECT project_id, datetime(MAX(observed_at)) at FROM upstream_events
     WHERE stage = 'cleanup' AND to_status = 'DONE' GROUP BY project_id
   `)) cleanupDoneAt.set(e.project_id, e.at);
-  const lastCycleStart = safeAll<{ at: string | null }>(`
-    SELECT datetime(MAX(started_at)) at FROM auto_runs
-    WHERE status IN ('success', 'partial') AND finished_at IS NOT NULL
-  `)[0]?.at ?? null;
+  const lastCycleStart = safeAll<{ at: string | null }>(
+    `SELECT datetime(value) at FROM app_settings WHERE key = '${BASE_FOLDER_SCANNED_SETTING}'`,
+  )[0]?.at ?? null;
 
   return projects.map(p => {
     const id = p.project_id;
@@ -155,7 +154,7 @@ export function buildPipelineRows(queued: Set<string>): PipelineRow[] {
     let discover: StageState = linked ? 'done'
       : cleanup === 'done' ? (cycle === 'discover' ? 'running' : 'waiting')
       : 'none';
-    // Same rule as pendingWork(): a completed cycle already looked for the
+    // Same rule as pendingWork(): a completed base-folder scan already looked for the
     // folder after cleanup finished and did not find it. Waiting longer will
     // not change that.
     const cleanedAt = cleanupDoneAt.get(id);

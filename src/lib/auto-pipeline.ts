@@ -51,6 +51,21 @@ export function baseFolderUrl(): string {
   return `https://drive.google.com/drive/folders/${baseFolderId()}`;
 }
 
+// When a scan of the base folder last STARTED and then completed. "A cycle ran"
+// is not the same thing: cycles from before the base folder existed (no watch
+// roots registered) scanned nothing, and counting them flagged 24 freshly
+// cleaned projects as "folder not found" on a new install.
+export const BASE_FOLDER_SCANNED_SETTING = 'base_folder_scanned_at';
+
+export async function scanBaseFolder(): Promise<void> {
+  const startedAt = (getDb().prepare("SELECT datetime('now') t").get() as { t: string }).t;
+  await discoverAndAddProjectFromDrive(baseFolderUrl());
+  getDb().prepare(`
+    INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+  `).run(BASE_FOLDER_SCANNED_SETTING, startedAt);
+}
+
 let cycleRunning = false;
 export type CycleStage = 'idle' | 'discover' | 'download' | 'goals' | 'impact' | 'finishing';
 let currentStage: CycleStage = 'idle';
@@ -206,16 +221,16 @@ export function pendingWork(): { total: number; reasons: string[] } {
     }
   };
 
-  // A project whose folder a completed cycle already looked for, after its
+  // A project whose folder a completed base-folder scan already looked for, after its
   // cleanup finished, and did not find. Retrying on a timer cannot change that
   // — something has to change on the Drive side — and counting it kept a full
   // scan of the base folder running every 15 minutes, forever (PRJ0202238, a
   // number with nothing behind it, did exactly that from 28 Sep). It shows as
   // a Discover error in Drive Sync instead; a manual cycle still retries it.
   const discoveryTried = `
-    EXISTS (SELECT 1 FROM auto_runs r
-            WHERE r.status IN ('success', 'partial') AND r.finished_at IS NOT NULL
-              AND datetime(r.started_at) > (
+    EXISTS (SELECT 1 FROM app_settings s
+            WHERE s.key = '${BASE_FOLDER_SCANNED_SETTING}'
+              AND datetime(s.value) > (
                 SELECT datetime(MAX(e.observed_at)) FROM upstream_events e
                 WHERE e.project_id = u.project_id AND e.stage = 'cleanup' AND e.to_status = 'DONE'))`;
 
@@ -301,7 +316,7 @@ export async function runAutoDiscoveryCycle(
     {
       const before = snapshotProjectIds();
       try {
-        await discoverAndAddProjectFromDrive(baseFolderUrl());
+        await scanBaseFolder();
         for (const id of snapshotProjectIds()) {
           if (!before.has(id)) newProjects.add(id);
         }
