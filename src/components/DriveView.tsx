@@ -263,6 +263,8 @@ interface CdioStatusDto {
   lastResult: { added: number; updated: number; promoted: number; missing: number; warnings: string[] } | null;
   counts: { inSheet: number; missing: number; manual: number };
   running: boolean;
+  autoLoad: boolean;
+  lastAutoLoad: { at: string; added: number; error: string | null } | null;
 }
 
 function fmtWhen(iso: string | null): string {
@@ -299,9 +301,9 @@ function CdioPanel() {
       if (data.status) setStatus(data.status);
       if (!data.ok) throw new Error(data.error || 'Falha na leitura');
       const r = data.result;
-      setMsg(r
+      setMsg((r
         ? `OK: ${r.added} novos, ${r.updated} atualizados, ${r.promoted} promovidos, ${r.missing} saíram do CDIO.`
-        : 'OK.');
+        : 'OK.') + (data.autoLoaded ? ` ${data.autoLoaded} entraram na fila do Apps Script.` : ''));
       refreshProjects();
     } catch (err: unknown) {
       setMsg(`Erro: ${err instanceof Error ? err.message : String(err)}`);
@@ -310,8 +312,36 @@ function CdioPanel() {
     }
   };
 
+  const toggleAuto = async (on: boolean) => {
+    if (!on && !window.confirm('Pausar a carga automática? Projetos novos do CDIO só entrarão na fila pelo botão "Carregar".')) return;
+    try {
+      const res = await fetch('/api/drive/cdio', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoLoad: on }),
+      });
+      const data = await res.json();
+      if (data.status) setStatus(data.status);
+    } catch { /* status poll will show the truth */ }
+  };
+
   return (
     <div className="pt-3 space-y-3">
+      <label className="flex items-start gap-2 text-xs text-ink-2 cursor-pointer">
+        <input type="checkbox" className="mt-0.5" checked={status?.autoLoad ?? true}
+          disabled={!status} onChange={e => toggleAuto(e.target.checked)} />
+        <span>
+          <b>Carregar automaticamente</b> todo projeto do CDIO: depois de cada leitura, os que ainda não foram
+          pedidos entram na fila do Apps Script e seguem a cadeia completa (cópia, limpeza, descoberta,
+          download, goals, impacto).
+          {status?.lastAutoLoad && (
+            <span className="block text-[11px] text-ink-muted mt-0.5">
+              Última carga automática: {fmtWhen(status.lastAutoLoad.at)} · {status.lastAutoLoad.added} projeto(s) na fila
+              {status.lastAutoLoad.error && <span className="text-red-400"> · erro: {status.lastAutoLoad.error}</span>}
+            </span>
+          )}
+        </span>
+      </label>
       {status?.error && (
         <div className="px-3 py-2 rounded-lg bg-red-950/50 border border-red-900/50 text-xs text-red-300">
           {status.error}
@@ -379,6 +409,8 @@ function AddProject() {
       const what = data.created ? 'criado como Avulso' : `já existia (${data.source === 'excel' ? 'CDIO' : data.source})`;
       const queue = data.queued
         ? 'cópia pedida ao Apps Script'
+        : data.queueNote === 'already in the base folder'
+          ? 'pasta já está no Drive: segue direto para download, goals e impacto'
         : data.queueNote === 'already in the control sheet'
           ? 'já copiado antes pelo Apps Script'
           : data.queueNote === 'already queued' ? 'já estava na fila' : 'fila sem alteração';

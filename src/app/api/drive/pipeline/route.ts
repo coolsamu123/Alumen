@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAdmin, isSessionError } from '@/lib/auth';
 import { readQueue, readHeartbeat, pruneQueue, enqueueMany } from '@/lib/alumen-queue';
 import { buildPipelineRows, newCdioProjects } from '@/lib/pipeline-view';
+import { splitByBaseFolder } from '@/lib/base-folder';
 import { baseFolderUrl, isAutoCycleRunning, getAutoCycleStage } from '@/lib/auto-pipeline';
 
 // The single table of Drive Sync: every project with the state of each stage.
@@ -72,11 +73,14 @@ export async function POST(request: Request) {
   } else {
     return NextResponse.json({ ok: false, error: 'Unknown action' }, { status: 400 });
   }
-  if (!ids.length) return NextResponse.json({ ok: true, added: [], skipped: [] });
+  if (!ids.length) return NextResponse.json({ ok: true, added: [], skipped: [], alreadyInBase: [] });
 
   try {
-    const r = await enqueueMany(ids, session.email);
-    return NextResponse.json({ ok: true, added: r.added, skipped: r.skipped });
+    // A project already in the base folder is not copied again: it is linked
+    // and goes straight to download → goals → impact.
+    const { toQueue, alreadyThere } = await splitByBaseFolder(ids);
+    const r = toQueue.length ? await enqueueMany(toQueue, session.email) : { added: [], skipped: [] };
+    return NextResponse.json({ ok: true, added: r.added, skipped: r.skipped, alreadyInBase: alreadyThere });
   } catch (err: unknown) {
     // The raw Google error matters: a 403 names the service account that needs
     // write access to the Copy Utility folder.

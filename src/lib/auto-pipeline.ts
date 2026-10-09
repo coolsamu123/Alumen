@@ -206,11 +206,25 @@ export function pendingWork(): { total: number; reasons: string[] } {
     }
   };
 
+  // A project whose folder a completed cycle already looked for, after its
+  // cleanup finished, and did not find. Retrying on a timer cannot change that
+  // — something has to change on the Drive side — and counting it kept a full
+  // scan of the base folder running every 15 minutes, forever (PRJ0202238, a
+  // number with nothing behind it, did exactly that from 28 Sep). It shows as
+  // a Discover error in Drive Sync instead; a manual cycle still retries it.
+  const discoveryTried = `
+    EXISTS (SELECT 1 FROM auto_runs r
+            WHERE r.status IN ('success', 'partial') AND r.finished_at IS NOT NULL
+              AND datetime(r.started_at) > (
+                SELECT datetime(MAX(e.observed_at)) FROM upstream_events e
+                WHERE e.project_id = u.project_id AND e.stage = 'cleanup' AND e.to_status = 'DONE'))`;
+
   const desconhecidos = count(`
     SELECT COUNT(DISTINCT u.project_id) c
     FROM upstream_status u
     LEFT JOIN projects p ON p.project_id = u.project_id
     WHERE u.stage = 'cleanup' AND u.status = 'DONE' AND p.project_id IS NULL
+      AND NOT ${discoveryTried}
   `);
   if (desconhecidos) { total += desconhecidos; reasons.push(`${desconhecidos} upstream project(s) not in Alumen`); }
 
@@ -220,6 +234,7 @@ export function pendingWork(): { total: number; reasons: string[] } {
     JOIN projects p ON p.project_id = u.project_id
     WHERE u.stage = 'cleanup' AND u.status = 'DONE'
       AND (p.link_folder IS NULL OR TRIM(p.link_folder) = '')
+      AND NOT ${discoveryTried}
   `);
   if (semLink) { total += semLink; reasons.push(`${semLink} cleaned project(s) with no Drive link`); }
 

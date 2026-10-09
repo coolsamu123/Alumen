@@ -23,6 +23,9 @@ import path from 'path';
 import { google } from 'googleapis';
 import { getDb } from './db';
 import { parseCdioWorkbook, mergeCdioRows, type CdioMergeResult } from './excel-parser';
+import { buildPipelineRows, newCdioProjects } from './pipeline-view';
+import { readQueue, enqueueMany } from './alumen-queue';
+import { splitByBaseFolder } from './base-folder';
 
 const SERVICE_ACCOUNT_PATH = path.join(process.cwd(), 'data', 'service-account.json');
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -34,6 +37,8 @@ export const CDIO_SETTINGS = {
   checkedAt: 'cdio_checked_at',
   error: 'cdio_error',
   lastResult: 'cdio_last_result',
+  autoLoad: 'cdio_auto_load',
+  lastAutoLoad: 'cdio_last_auto_load',
 } as const;
 
 // "Gating Pre-review - CDIO internal committee", Shared Drive "Alumen" › CDIO.
@@ -53,6 +58,9 @@ export interface CdioStatus {
   /** Projects currently governed by the sheet / no longer in it / added by hand. */
   counts: { inSheet: number; missing: number; manual: number };
   running: boolean;
+  /** CDIO projects nobody asked for are queued for Apps Script automatically. */
+  autoLoad: boolean;
+  lastAutoLoad: { at: string; added: number; error: string | null } | null;
 }
 
 let running = false;
@@ -165,6 +173,41 @@ export async function syncCdio(opts: { force?: boolean } = {}): Promise<{
   }
 }
 
+// ─── Automatic loading ──────────────────────────────────────────────────────
+// Every project listed in the CDIO sheet goes through the whole chain without
+// anyone clicking "Carregar": after each read, the ones never requested are
+// queued for Apps Script (copy → cleanup), and the scheduler takes them from
+// there (discover → download → goals → impact).
+//
+// On by default. Off is a pause, e.g. while two installs share the same Apps
+// Script queue and only one of them should be feeding it.
+
+export function isAutoLoadOn(): boolean {
+  return getSetting(CDIO_SETTINGS.autoLoad) !== 'off';
+}
+
+export function setAutoLoad(on: boolean): void {
+  setSetting(CDIO_SETTINGS.autoLoad, on ? 'on' : 'off');
+}
+
+export async function autoLoadNewCdio(requestedBy = 'alumen (automático)'): Promise<{ added: string[]; error: string | null }> {
+  if (!isAutoLoadOn()) return { added: [], error: null };
+  try {
+    const queued = new Set((await readQueue()).map(it => it.projectId.trim().toUpperCase()));
+    // Already in the base folder → no copy; linked and carried on by the scheduler.
+    const { toQueue } = await splitByBaseFolder(newCdioProjects(buildPipelineRows(queued)));
+    const r = toQueue.length ? await enqueueMany(toQueue, requestedBy) : { added: [] as string[] };
+    setSetting(CDIO_SETTINGS.lastAutoLoad, JSON.stringify({ at: new Date().toISOString(), added: r.added.length, error: null }));
+    if (r.added.length) console.log(`[cdio] auto-load: ${r.added.length} project(s) queued for Apps Script`);
+    return { added: r.added, error: null };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    setSetting(CDIO_SETTINGS.lastAutoLoad, JSON.stringify({ at: new Date().toISOString(), added: 0, error: message }));
+    console.error('[cdio] auto-load failed:', message);
+    return { added: [], error: message };
+  }
+}
+
 export function getCdioStatus(): CdioStatus {
   const db = getDb();
   let last: (CdioStatus['lastResult'] & { fileName?: string | null }) | null = null;
@@ -188,5 +231,9 @@ export function getCdioStatus(): CdioStatus {
       manual: count("SELECT COUNT(DISTINCT project_id) c FROM projects WHERE source = 'manual'"),
     },
     running,
+    autoLoad: isAutoLoadOn(),
+    lastAutoLoad: (() => {
+      try { const raw = getSetting(CDIO_SETTINGS.lastAutoLoad); return raw ? JSON.parse(raw) : null; } catch { return null; }
+    })(),
   };
 }

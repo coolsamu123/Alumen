@@ -3,6 +3,7 @@ import { requireAdmin, isSessionError } from '@/lib/auth';
 import { getDb } from '@/lib/db';
 import { normalizeProjectId } from '@/lib/project-id';
 import { enqueue } from '@/lib/alumen-queue';
+import { splitByBaseFolder } from '@/lib/base-folder';
 
 // Adds a project by number ("avulso") and asks Apps Script to copy its folder.
 //
@@ -74,6 +75,13 @@ export async function POST(request: Request) {
   // The row is kept even if queueing fails: the copy can be requested again,
   // and a Drive error should not throw away what the user typed.
   try {
+    const { alreadyThere } = await splitByBaseFolder([projectId]);
+    if (alreadyThere.length) {
+      return NextResponse.json({
+        ok: true, projectId, created, source: existing?.source ?? 'manual',
+        queued: false, queueNote: 'already in the base folder',
+      });
+    }
     const q = await enqueue(projectId, session.email);
     return NextResponse.json({
       ok: true,

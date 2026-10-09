@@ -126,6 +126,18 @@ export function buildPipelineRows(queued: Set<string>): PipelineRow[] {
 
   const cycle = isAutoCycleRunning() ? getAutoCycleStage().stage : 'idle';
 
+  // For "discover was tried and found nothing". Both normalised to SQLite's
+  // datetime() text so they compare as strings.
+  const cleanupDoneAt = new Map<string, string>();
+  for (const e of safeAll<{ project_id: string; at: string }>(`
+    SELECT project_id, datetime(MAX(observed_at)) at FROM upstream_events
+    WHERE stage = 'cleanup' AND to_status = 'DONE' GROUP BY project_id
+  `)) cleanupDoneAt.set(e.project_id, e.at);
+  const lastCycleStart = safeAll<{ at: string | null }>(`
+    SELECT datetime(MAX(started_at)) at FROM auto_runs
+    WHERE status IN ('success', 'partial') AND finished_at IS NOT NULL
+  `)[0]?.at ?? null;
+
   return projects.map(p => {
     const id = p.project_id;
     const errors: Partial<Record<StageKey, string>> = {};
@@ -140,9 +152,18 @@ export function buildPipelineRows(queued: Set<string>): PipelineRow[] {
     const linked = !!(p.link_folder && p.link_folder.trim());
     const request: StageState = isQueued ? 'waiting' : (copyRow || cleanRow || linked) ? 'done' : 'none';
 
-    const discover: StageState = linked ? 'done'
+    let discover: StageState = linked ? 'done'
       : cleanup === 'done' ? (cycle === 'discover' ? 'running' : 'waiting')
       : 'none';
+    // Same rule as pendingWork(): a completed cycle already looked for the
+    // folder after cleanup finished and did not find it. Waiting longer will
+    // not change that.
+    const cleanedAt = cleanupDoneAt.get(id);
+    if (discover === 'waiting' && cleanedAt && lastCycleStart && lastCycleStart > cleanedAt) {
+      discover = 'error';
+      errors.discover = 'Pasta do projeto não encontrada na pasta base. O Apps Script terminou, mas não há '
+        + 'pasta com este número (número errado, ou nenhum documento encontrado na cópia).';
+    }
 
     const d = docs.get(id);
     let download: StageState = 'none';

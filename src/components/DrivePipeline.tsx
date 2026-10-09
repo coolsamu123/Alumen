@@ -154,7 +154,7 @@ export default function PipelineSection({ addProject, onToast }: {
     });
   }, [rows, q, source, period, gate, dds, onlyErrors, stageFilter]);
 
-  const post = async (body: object): Promise<{ added: string[]; skipped: { projectId: string; reason: string }[] }> => {
+  const post = async (body: object): Promise<{ added: string[]; skipped: { projectId: string; reason: string }[]; alreadyInBase: string[] }> => {
     const res = await fetch('/api/drive/pipeline', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -169,8 +169,10 @@ export default function PipelineSection({ addProject, onToast }: {
     setBusy(projectId);
     try {
       const r = await post({ action: 'load', projectIds: [projectId] });
-      onToast(r.added.length ? 'success' : 'info',
-        r.added.length ? `${projectId}: cópia pedida ao Apps Script.` : `${projectId}: ${r.skipped[0]?.reason ?? 'nada a fazer'}.`);
+      onToast(r.added.length || r.alreadyInBase.length ? 'success' : 'info',
+        r.added.length ? `${projectId}: cópia pedida ao Apps Script.`
+        : r.alreadyInBase.length ? `${projectId}: pasta já está no Drive, segue direto para download, goals e impacto.`
+        : `${projectId}: ${r.skipped[0]?.reason ?? 'nada a fazer'}.`);
       load();
     } catch (err: unknown) {
       onToast('error', err instanceof Error ? err.message : String(err));
@@ -183,7 +185,8 @@ export default function PipelineSection({ addProject, onToast }: {
     setBusy('__all__');
     try {
       const r = await post({ action: 'load-new-cdio' });
-      onToast('success', `${r.added.length} projeto(s) pedidos ao Apps Script.`);
+      onToast('success', `${r.added.length} projeto(s) pedidos ao Apps Script` +
+        (r.alreadyInBase.length ? `; ${r.alreadyInBase.length} já estavam no Drive e seguem direto.` : '.'));
       load();
     } catch (err: unknown) {
       onToast('error', err instanceof Error ? err.message : String(err));
