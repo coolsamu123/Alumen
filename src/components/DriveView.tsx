@@ -8,13 +8,14 @@ import type { ProjectSyncStatus } from '@/lib/drive-sync-all';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-type ProjectSource = 'excel' | 'drive' | 'initiative';
+type ProjectSource = 'excel' | 'drive' | 'initiative' | 'manual';
 
 interface ExplorerRow {
   projectId: string;
   name: string;
   source: ProjectSource;
   missingSince: string | null;
+  cdioMissingSince: string | null;
   dds: string;
   gate: string;
   filesDownloaded: number;
@@ -64,6 +65,11 @@ const SOURCE_BADGE: Record<ProjectSource, { label: string; title: string; classN
     label: 'Iniciativa',
     title: 'Drive folder with documents but no CDIO project',
     className: 'bg-amber-900/40 text-amber-300',
+  },
+  manual: {
+    label: 'Avulso',
+    title: 'Added by hand by number; becomes CDIO when the sheet lists it',
+    className: 'bg-teal-900/40 text-teal-300',
   },
 };
 
@@ -245,8 +251,12 @@ function SourcesSection({ state }: { state: DrivePanelState | null }) {
         <AddSource />
       </CollapsibleCard>
 
-      <CollapsibleCard title="Upload CDIO Gating Pre-review Excel" subtitle="Replace base project metadata from the 'CDIO internal committee' sheet">
-        <ExcelUpload />
+      <CollapsibleCard title="Arquivo CDIO" subtitle="Lido do Drive de hora em hora e mesclado: nada é apagado" defaultOpen>
+        <CdioPanel />
+      </CollapsibleCard>
+
+      <CollapsibleCard title="+ Adicionar projeto" subtitle="Por número PRJ, esteja ou não no CDIO: cria o projeto e pede a cópia ao Apps Script" defaultOpen>
+        <AddProject />
       </CollapsibleCard>
 
       {state?.recentRuns.length ? (
@@ -653,6 +663,172 @@ function AddSource() {
   );
 }
 
+// ─── Arquivo CDIO (read from Drive) ─────────────────────────────────────────
+
+interface CdioStatusDto {
+  fileId: string;
+  fileName: string | null;
+  modifiedTime: string | null;
+  readAt: string | null;
+  checkedAt: string | null;
+  error: string | null;
+  lastResult: { added: number; updated: number; promoted: number; missing: number; warnings: string[] } | null;
+  counts: { inSheet: number; missing: number; manual: number };
+  running: boolean;
+}
+
+function fmtWhen(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso.includes('T') ? iso : iso.replace(' ', 'T') + 'Z');
+  return isNaN(d.getTime()) ? iso : d.toLocaleString();
+}
+
+function CdioPanel() {
+  const { refreshProjects } = useProjectContext();
+  const [status, setStatus] = useState<CdioStatusDto | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch('/api/drive/cdio');
+      const data = await res.json();
+      if (data.ok) setStatus(data.status);
+    } catch { /* keep the last status */ }
+  }, []);
+
+  useEffect(() => {
+    load();
+    const id = setInterval(load, 60_000);
+    return () => clearInterval(id);
+  }, [load]);
+
+  const readNow = async () => {
+    setBusy(true); setMsg('Lendo o CDIO no Drive…');
+    try {
+      const res = await fetch('/api/drive/cdio', { method: 'POST' });
+      const data = await res.json();
+      if (data.status) setStatus(data.status);
+      if (!data.ok) throw new Error(data.error || 'Falha na leitura');
+      const r = data.result;
+      setMsg(r
+        ? `OK: ${r.added} novos, ${r.updated} atualizados, ${r.promoted} promovidos, ${r.missing} saíram do CDIO.`
+        : 'OK.');
+      refreshProjects();
+    } catch (err: unknown) {
+      setMsg(`Erro: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="pt-3 space-y-3">
+      {status?.error && (
+        <div className="px-3 py-2 rounded-lg bg-red-950/50 border border-red-900/50 text-xs text-red-300">
+          {status.error}
+        </div>
+      )}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+        <div><div className="text-ink-muted">Projetos no CDIO</div><div className="font-mono text-ink-1 text-sm">{status?.counts.inSheet ?? '—'}</div></div>
+        <div><div className="text-ink-muted">Fora do CDIO</div><div className="font-mono text-ink-1 text-sm">{status?.counts.missing ?? '—'}</div></div>
+        <div><div className="text-ink-muted">Avulsos</div><div className="font-mono text-ink-1 text-sm">{status?.counts.manual ?? '—'}</div></div>
+        <div><div className="text-ink-muted">Versão lida (Drive)</div><div className="text-ink-3">{fmtWhen(status?.modifiedTime ?? null)}</div></div>
+      </div>
+      <div className="text-[11px] text-ink-muted">
+        {status?.fileName ?? 'Gating Pre-review – CDIO internal committee'} · lido em {fmtWhen(status?.readAt ?? null)} · última verificação {fmtWhen(status?.checkedAt ?? null)}
+      </div>
+      <div className="flex items-center gap-3 flex-wrap">
+        <button
+          onClick={readNow}
+          disabled={busy || status?.running}
+          className={`px-4 py-1.5 rounded-lg bg-accent-hover text-white text-sm font-semibold ${busy || status?.running ? 'opacity-50' : 'hover:bg-accent'}`}
+        >
+          {busy || status?.running ? 'Lendo…' : 'Ler CDIO agora'}
+        </button>
+        {msg && <span className="text-xs text-ink-4">{msg}</span>}
+      </div>
+      {status?.lastResult?.warnings?.length ? (
+        <details className="text-[11px] text-ink-muted">
+          <summary className="cursor-pointer">Avisos da última leitura ({status.lastResult.warnings.length})</summary>
+          <ul className="mt-1 list-disc pl-5">{status.lastResult.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
+        </details>
+      ) : null}
+      <details className="text-xs">
+        <summary className="cursor-pointer text-ink-muted">Plano B: enviar o arquivo à mão</summary>
+        <ExcelUpload />
+      </details>
+    </div>
+  );
+}
+
+// ─── + Adicionar projeto (avulso) ───────────────────────────────────────────
+
+function AddProject() {
+  const { refreshProjects } = useProjectContext();
+  const [projectId, setProjectId] = useState('');
+  const [name, setName] = useState('');
+  const [dds, setDds] = useState('');
+  const [gate, setGate] = useState('');
+  const [description, setDescription] = useState('');
+  const [needsName, setNeedsName] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!projectId.trim()) return;
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch('/api/drive/projects/manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, name, dds, gate, description }),
+      });
+      const data = await res.json();
+      if (data.needsName) { setNeedsName(true); throw new Error(data.error); }
+      if (!data.ok) throw new Error(data.error || 'Falhou');
+      const what = data.created ? 'criado como Avulso' : `já existia (${data.source === 'excel' ? 'CDIO' : data.source})`;
+      const queue = data.queued
+        ? 'cópia pedida ao Apps Script'
+        : data.queueNote === 'already in the control sheet'
+          ? 'já copiado antes pelo Apps Script'
+          : data.queueNote === 'already queued' ? 'já estava na fila' : 'fila sem alteração';
+      setMsg({ kind: 'ok', text: `${data.projectId}: ${what}; ${queue}.` });
+      setProjectId(''); setName(''); setDds(''); setGate(''); setDescription(''); setNeedsName(false);
+      refreshProjects();
+    } catch (err: unknown) {
+      setMsg({ kind: 'err', text: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const input = 'px-3 py-1.5 rounded-lg bg-surface-2 border border-line text-sm text-ink-1 placeholder:text-ink-faint focus:outline-none focus:border-accent';
+  return (
+    <form onSubmit={submit} className="pt-3 space-y-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <input value={projectId} onChange={e => setProjectId(e.target.value)} placeholder="PRJ0023456" className={`${input} w-40 font-mono`} />
+        <input value={name} onChange={e => setName(e.target.value)}
+          placeholder={needsName ? 'Nome do projeto (obrigatório)' : 'Nome (só se não estiver no CDIO)'}
+          className={`${input} flex-1 min-w-[220px] ${needsName ? 'border-yellow-600' : ''}`} />
+        <button type="submit" disabled={busy || !projectId.trim()}
+          className={`px-4 py-1.5 rounded-lg bg-accent-hover text-white text-sm font-semibold ${busy || !projectId.trim() ? 'opacity-50' : 'hover:bg-accent'}`}>
+          {busy ? 'Adicionando…' : 'Adicionar e carregar'}
+        </button>
+      </div>
+      {needsName && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <input value={dds} onChange={e => setDds(e.target.value)} placeholder="DDS (opcional)" className={`${input} w-48`} />
+          <input value={gate} onChange={e => setGate(e.target.value)} placeholder="Gate (opcional)" className={`${input} w-32`} />
+          <input value={description} onChange={e => setDescription(e.target.value)} placeholder="Descrição (opcional)" className={`${input} flex-1 min-w-[220px]`} />
+        </div>
+      )}
+      {msg && <div className={`text-xs ${msg.kind === 'ok' ? 'text-green-400' : 'text-red-400'}`}>{msg.text}</div>}
+    </form>
+  );
+}
+
 // ─── Excel upload ───────────────────────────────────────────────────────────
 
 function ExcelUpload() {
@@ -669,7 +845,7 @@ function ExcelUpload() {
       const res = await fetch('/api/projects/upload', { method: 'POST', body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setMsg(`Success: parsed ${data.count} projects from ${file.name}.`);
+      setMsg(`OK: ${data.added} novos, ${data.updated} atualizados, ${data.missing} fora do CDIO (${file.name}).`);
       refreshProjects();
     } catch (err: unknown) {
       setMsg(`Error: ${err instanceof Error ? err.message : 'Upload failed'}`);
@@ -682,7 +858,7 @@ function ExcelUpload() {
   return (
     <div className="pt-3">
       <p className="text-xs text-ink-muted mb-3">
-        Upload the <code className="text-ink-3">Gating Pre-review – CDIO internal committee</code> workbook to populate base project metadata. Replaces all existing projects.
+        Plano B: envie o <code className="text-ink-3">Gating Pre-review – CDIO internal committee</code> à mão, se a leitura do Drive falhar. Mesma mesclagem: nada é apagado.
       </p>
       <label className={`inline-block px-5 py-2 rounded-lg bg-accent-hover text-white text-sm font-semibold ${busy ? 'opacity-50' : 'hover:bg-accent cursor-pointer'}`}>
         {busy ? 'Uploading…' : 'Upload Excel'}
@@ -982,6 +1158,7 @@ function ProjectExplorer({
                     { value: 'excel', label: 'CDIO' },
                     { value: 'drive', label: 'Drive' },
                     { value: 'initiative', label: 'Iniciativa' },
+                    { value: 'manual', label: 'Avulso' },
                   ]} />} />
               <ColumnHeader label="DDS"     col="dds"             sort={sort} onSort={toggleSort}
                 filter={<FilterSelect value={filters.dds} onChange={v => updateFilter('dds', v)}
@@ -1068,6 +1245,14 @@ function ProjectExplorer({
                       title={`Folder no longer in Drive since ${r.missingSince}. Kept: its goals and impact edges are still valid.`}
                     >
                       fora do Drive
+                    </span>
+                  )}
+                  {r.cdioMissingSince && (
+                    <span
+                      className="ml-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-red-900/40 text-red-300"
+                      title={`No longer listed in the CDIO sheet since ${r.cdioMissingSince}. Kept: its goals and impact edges are still valid.`}
+                    >
+                      fora do CDIO
                     </span>
                   )}
                 </td>

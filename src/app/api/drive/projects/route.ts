@@ -10,6 +10,8 @@ interface ExplorerRow {
   source: ProjectSource;
   /** ISO timestamp since when an initiative's folder is gone from Drive. */
   missingSince: string | null;
+  /** Since when a CDIO project is no longer listed in the sheet. */
+  cdioMissingSince: string | null;
   dds: string;
   gate: string;
   filesDownloaded: number;
@@ -39,7 +41,7 @@ export async function GET() {
     // Using MAX(uploaded_at) here was unreliable because Excel uploads insert all
     // duplicates in a single transaction, so their uploaded_at is identical.
     const rows = db.prepare(`
-      SELECT p.project_id, p.name, p.dds, p.gate, p.source,
+      SELECT p.project_id, p.name, p.dds, p.gate, p.source, p.cdio_missing_since,
              p.link_folder, p.link_positions, p.link_cioo
       FROM projects p
       WHERE p.id = (
@@ -48,6 +50,7 @@ export async function GET() {
       ORDER BY p.project_id ASC
     `).all() as Array<{
       project_id: string; name: string; dds: string; gate: string; source: string | null;
+      cdio_missing_since: string | null;
       link_folder: string | null; link_positions: string | null; link_cioo: string | null;
     }>;
 
@@ -95,8 +98,9 @@ export async function GET() {
       return {
         projectId: r.project_id,
         name: r.name,
-        source: (r.source === 'initiative' || r.source === 'drive' ? r.source : 'excel'),
+        source: (r.source === 'initiative' || r.source === 'drive' || r.source === 'manual' ? r.source : 'excel'),
         missingSince: missingMap.get(r.project_id) ?? null,
+        cdioMissingSince: r.cdio_missing_since ?? null,
         dds: r.dds || '',
         gate: r.gate || '',
         filesDownloaded: filesMap.get(r.project_id) || 0,

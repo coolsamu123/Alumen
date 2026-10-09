@@ -507,6 +507,15 @@ function initSchema(db: Database.Database) {
     // Ignore if column already exists
   }
 
+  // The CDIO sheet is merged, not reloaded (excel-parser.ts mergeCdioRows), so a
+  // project that leaves the sheet stays — with its goals and impact edges — and
+  // this records since when it is no longer there. NULL = in the sheet.
+  try {
+    db.exec('ALTER TABLE projects ADD COLUMN cdio_missing_since TEXT');
+  } catch {
+    // Ignore if column already exists
+  }
+
   // A watch root is either a portfolio root (scanned recursively for PRJ-named
   // folders) or an initiatives root (whose direct subfolders each become one
   // initiative). Pre-existing roots are portfolio roots — that is all that

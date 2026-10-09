@@ -19,8 +19,12 @@
  * better-sqlite3 and googleapis, and the edge build cannot resolve those.
  */
 import { runAutoDiscoveryCycle, isAutoCycleRunning, pendingWork } from './auto-pipeline';
+import { syncCdio } from './cdio-sync';
 
 const DEFAULT_INTERVAL_MIN = 15;
+// The CDIO sheet changes a few times a month. Each check is one Drive metadata
+// call; the export and merge only run when modifiedTime moved (cdio-sync.ts).
+const CDIO_INTERVAL_MIN = 60;
 
 let started = false;
 
@@ -66,5 +70,15 @@ export function startScheduler(): void {
   setTimeout(tick, 60_000);
   setInterval(tick, minutes * 60_000);
 
-  console.log(`[scheduler] armed — every ${minutes} min, only when work is pending`);
+  // Independent of the cycle: the portfolio list must stay current even when
+  // there is no pipeline work at all. syncCdio never throws (errors are stored
+  // and shown in Drive Sync), so the catch is only a last guard for the timer.
+  const cdioTick = () => {
+    syncCdio().catch(err =>
+      console.error('[scheduler] CDIO check failed:', err instanceof Error ? err.message : err));
+  };
+  setTimeout(cdioTick, 2 * 60_000);
+  setInterval(cdioTick, CDIO_INTERVAL_MIN * 60_000);
+
+  console.log(`[scheduler] armed — every ${minutes} min, only when work is pending; CDIO every ${CDIO_INTERVAL_MIN} min`);
 }

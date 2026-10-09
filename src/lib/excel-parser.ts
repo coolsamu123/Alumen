@@ -9,7 +9,7 @@ interface RawRow {
   [key: string]: string | number | null | undefined;
 }
 
-interface ProjectInsert {
+export interface ProjectInsert {
   projectId: string;
   name: string;
   dds: string;
@@ -40,7 +40,7 @@ interface ProjectInsert {
 
 // ─── Format detection ───────────────────────────────────────────────────────
 
-type Format = 'cioo-legacy' | 'cdio';
+export type Format = 'cioo-legacy' | 'cdio';
 
 function detectFormat(worksheet: XLSX.WorkSheet): Format {
   // Read first 2 rows as 2-D array to inspect headers
@@ -60,14 +60,24 @@ function detectFormat(worksheet: XLSX.WorkSheet): Format {
   return 'cioo-legacy';
 }
 
-// ─── Public entry point ─────────────────────────────────────────────────────
+// ─── Public entry points ────────────────────────────────────────────────────
 
-export function parseExcelBuffer(buffer: Buffer): {
+export interface CdioMergeResult {
+  /** Rows written (added + updated). */
   count: number;
   batchId: string;
   errors: string[];
   format: Format;
-} {
+  added: number;
+  updated: number;
+  /** Rows that existed as 'drive' or 'manual' and are now governed by the sheet. */
+  promoted: number;
+  /** 'excel' rows no longer in the sheet, newly marked cdio_missing_since. */
+  missing: number;
+}
+
+/** Reads the workbook into canonical, deduplicated project rows. Writes nothing. */
+export function parseCdioWorkbook(buffer: Buffer): { rows: ProjectInsert[]; format: Format } {
   const workbook = XLSX.read(buffer, { type: 'buffer' });
   // Prefer the canonical CDIO sheet if it exists in this workbook. Falls back
   // to the first sheet for older single-sheet exports.
@@ -106,41 +116,62 @@ export function parseExcelBuffer(buffer: Buffer): {
   // same project_id can appear in several rows. Keep only the one with the most
   // recent review_date (ties → keep the last occurrence in source order, which
   // matches the chronological order of the sheet).
-  const rows = dedupeByProjectId(rawRows);
+  return { rows: dedupeByProjectId(rawRows), format };
+}
 
+/**
+ * Merges sheet rows into `projects`. Nothing is deleted.
+ *
+ * This used to DELETE FROM projects and reinsert, which took with it every row
+ * the sheet does not own: Drive-discovered stubs, and now projects added by
+ * hand ("avulso"). The sheet is re-read automatically from Drive (cdio-sync.ts),
+ * so a wipe on every read is no longer an option.
+ *
+ *   in sheet, not in DB          → INSERT, source 'excel'
+ *   in sheet and in DB           → UPDATE the columns the sheet owns; a 'drive'
+ *                                  or 'manual' row is promoted to 'excel'
+ *   'excel' in DB, not in sheet  → kept, cdio_missing_since set (its goals and
+ *                                  impact edges stay valid)
+ *   'drive' / 'manual' not in sheet → untouched
+ *
+ * Links (folder, positions, CIOO) belong to Drive discovery: an existing value
+ * is never overwritten, only filled when empty.
+ */
+export function mergeCdioRows(rows: ProjectInsert[], format: Format): CdioMergeResult {
   const db = getDb();
   const batchId = uuidv4();
   const errors: string[] = [];
-  let count = 0;
+  let added = 0, updated = 0, promoted = 0, missing = 0;
 
-  // Snapshot Drive-discovered links per project_id BEFORE wiping. Excel never
-  // owns folder/positions/CIOO links — those come exclusively from Drive
-  // discovery, so we must survive the DELETE.
-  const linkSnapshot = db.prepare(`
-    SELECT project_id,
-           MAX(link_folder)    AS link_folder,
-           MAX(link_positions) AS link_positions,
-           MAX(link_cioo)      AS link_cioo
-    FROM projects
-    GROUP BY project_id
-  `).all() as Array<{
-    project_id: string;
-    link_folder: string | null;
-    link_positions: string | null;
-    link_cioo: string | null;
-  }>;
-  const linksByProjectId = new Map<string, { folder: string; positions: string; cioo: string }>();
-  for (const r of linkSnapshot) {
-    linksByProjectId.set(r.project_id, {
-      folder: r.link_folder || '',
-      positions: r.link_positions || '',
-      cioo: r.link_cioo || '',
-    });
+  // A row without any id cannot be matched on the next read, so merging it would
+  // insert a fresh copy every hour. The old wipe-and-reinsert hid this.
+  const keyed = rows.filter(r => r.projectId);
+  const unkeyed = rows.length - keyed.length;
+  if (unkeyed > 0) errors.push(`${unkeyed} row(s) without a project number were skipped`);
+
+  // An empty read must never mark the whole portfolio as gone from the sheet:
+  // a renamed tab or a changed layout would look exactly like that.
+  if (keyed.length === 0) {
+    throw new Error('No project rows found in the CDIO sheet — nothing was changed');
   }
 
-  // Replace previous data
-  db.exec('DELETE FROM projects');
-
+  const sourceOf = db.prepare('SELECT source FROM projects WHERE project_id = ? LIMIT 1');
+  const update = db.prepare(`
+    UPDATE projects SET
+      name = @name, dds = @dds, gate = @gate, cost_keur = @costKEur,
+      description = @description, remarks = @remarks, qa = @qa,
+      review_date = @reviewDate, decision = @decision, decision_mode = @decisionMode,
+      decision_date = @decisionDate, review_status = @reviewStatus,
+      documents_status = @documentsStatus, restricted = @restricted,
+      cost_before_g2 = @costBeforeG2, est_gate2_date = @estGate2Date,
+      session_start = @sessionStart, session_end = @sessionEnd, participants = @participants,
+      link_positions = CASE WHEN COALESCE(link_positions, '') = '' THEN @linkPositions ELSE link_positions END,
+      link_folder    = CASE WHEN COALESCE(link_folder, '')    = '' THEN @linkFolder    ELSE link_folder    END,
+      link_cioo      = CASE WHEN COALESCE(link_cioo, '')      = '' THEN @linkCIOO      ELSE link_cioo      END,
+      year = @year, month = @month, batch_id = @batchId,
+      source = 'excel', cdio_missing_since = NULL, uploaded_at = datetime('now')
+    WHERE project_id = @projectId
+  `);
   const insert = db.prepare(`
     INSERT INTO projects (
       project_id, name, dds, gate, cost_keur, description, remarks, qa,
@@ -148,46 +179,54 @@ export function parseExcelBuffer(buffer: Buffer): {
       documents_status, restricted, cost_before_g2, est_gate2_date,
       session_start, session_end, participants,
       link_positions, link_folder, link_cioo,
-      year, month, batch_id
+      year, month, batch_id, source
     ) VALUES (
       @projectId, @name, @dds, @gate, @costKEur, @description, @remarks, @qa,
       @reviewDate, @decision, @decisionMode, @decisionDate, @reviewStatus,
       @documentsStatus, @restricted, @costBeforeG2, @estGate2Date,
       @sessionStart, @sessionEnd, @participants,
       @linkPositions, @linkFolder, @linkCIOO,
-      @year, @month, @batchId
+      @year, @month, @batchId, 'excel'
     )
   `);
+  const markMissing = db.prepare(`
+    UPDATE projects SET cdio_missing_since = datetime('now')
+    WHERE project_id = ? AND source = 'excel' AND cdio_missing_since IS NULL
+  `);
 
-  const insertMany = db.transaction((entries: ProjectInsert[]) => {
-    for (const entry of entries) {
+  db.transaction(() => {
+    for (const entry of keyed) {
       try {
-        insert.run({ ...entry, batchId });
-        count++;
+        const prior = sourceOf.get(entry.projectId) as { source: string } | undefined;
+        if (prior) {
+          update.run({ ...entry, batchId });
+          updated++;
+          if (prior.source !== 'excel') promoted++;
+        } else {
+          insert.run({ ...entry, batchId });
+          added++;
+        }
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
-        errors.push(`Row ${count}: ${msg}`);
+        errors.push(`${entry.projectId}: ${msg}`);
       }
     }
-  });
 
-  insertMany(rows);
-
-  // Restore Drive-discovered links onto rows that match by project_id.
-  const restoreLinks = db.prepare(`
-    UPDATE projects
-    SET link_folder = ?, link_positions = ?, link_cioo = ?
-    WHERE project_id = ?
-  `);
-  const restoreMany = db.transaction(() => {
-    for (const [projectId, links] of linksByProjectId) {
-      if (!links.folder && !links.positions && !links.cioo) continue;
-      restoreLinks.run(links.folder, links.positions, links.cioo, projectId);
+    const inSheet = new Set(keyed.map(r => r.projectId));
+    const governed = db.prepare("SELECT DISTINCT project_id FROM projects WHERE source = 'excel'")
+      .all() as { project_id: string }[];
+    for (const { project_id } of governed) {
+      if (!inSheet.has(project_id)) missing += markMissing.run(project_id).changes > 0 ? 1 : 0;
     }
-  });
-  restoreMany();
+  })();
 
-  return { count, batchId, errors, format };
+  return { count: added + updated, batchId, errors, format, added, updated, promoted, missing };
+}
+
+/** Upload path (plan B): same merge as the automatic read from Drive. */
+export function parseExcelBuffer(buffer: Buffer): CdioMergeResult {
+  const { rows, format } = parseCdioWorkbook(buffer);
+  return mergeCdioRows(rows, format);
 }
 
 // ─── CDIO (new) format ──────────────────────────────────────────────────────

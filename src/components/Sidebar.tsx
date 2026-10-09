@@ -147,13 +147,18 @@ export default function Sidebar() {
                   className={`px-1.5 py-0.5 rounded text-[11px] font-bold tracking-wide ${
                     selectedProject.source === 'initiative'
                       ? 'bg-amber-900/40 text-amber-300'
-                      : 'bg-blue-900/40 text-blue-300'
+                      : selectedProject.source === 'manual'
+                        ? 'bg-teal-900/40 text-teal-300'
+                        : 'bg-blue-900/40 text-blue-300'
                   }`}
                   title={selectedProject.source === 'initiative'
                     ? 'Drive folder with documents, no matching CDIO project'
-                    : 'Pasta PRJ encontrada no Drive, sem linha na planilha CDIO'}
+                    : selectedProject.source === 'manual'
+                      ? 'Projeto adicionado à mão, ainda sem linha na planilha CDIO'
+                      : 'Pasta PRJ encontrada no Drive, sem linha na planilha CDIO'}
                 >
-                  {selectedProject.source === 'initiative' ? 'INICIATIVA' : 'DRIVE'}
+                  {selectedProject.source === 'initiative' ? 'INICIATIVA'
+                    : selectedProject.source === 'manual' ? 'AVULSO' : 'DRIVE'}
                 </span>
               </div>
             )}

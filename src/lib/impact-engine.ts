@@ -151,7 +151,7 @@ export interface ProjectFullRecord {
  * which case `source` arrives as null. Everything else is trusted as written.
  */
 function normalizeSource(raw: unknown): ProjectSource {
-  return raw === 'initiative' || raw === 'drive' || raw === 'excel' ? raw : 'excel';
+  return raw === 'initiative' || raw === 'drive' || raw === 'manual' || raw === 'excel' ? raw : 'excel';
 }
 
 function fetchAllProjectRecords(lang: OutputLanguage = getActiveOutputLanguage()): ProjectFullRecord[] {

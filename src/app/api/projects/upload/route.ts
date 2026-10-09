@@ -33,6 +33,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       count: result.count,
+      added: result.added,
+      updated: result.updated,
+      promoted: result.promoted,
+      missing: result.missing,
       batchId: result.batchId,
       errors: result.errors,
       backup: backupPath,

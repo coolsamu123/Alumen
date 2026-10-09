@@ -44,8 +44,10 @@ export interface CIOOProject {
  *   'excel'      — governed by the CDIO sheet (the historical only case)
  *   'drive'      — a PRJ folder found in Drive with no sheet row behind it
  *   'initiative' — a Drive folder with documents but no project at all
+ *   'manual'     — added by hand by number ("avulso"), may or may not be in the
+ *                  sheet yet; promoted to 'excel' when the sheet lists it
  */
-export type ProjectSource = 'excel' | 'drive' | 'initiative';
+export type ProjectSource = 'excel' | 'drive' | 'initiative' | 'manual';
 
 export interface ProjectSummary {
   projectId: string;
