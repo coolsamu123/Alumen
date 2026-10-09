@@ -1,0 +1,182 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Alumen (Portfolio Intelligence) - uma EC2 Amazon Linux 2023 pronta para rodar
+  o app: Node 24.20.0, nginx, swap de 4 GiB, Claude Code e acesso por Session
+  Manager. O app em si e as credenciais entram depois, com deploy/bootstrap.sh.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-0d8da53c5424a5840
+    Description: VPC onde a maquina sobe (vpc-main).
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: >-
+      Subnet PUBLICA da vpc-main (rota 0.0.0.0/0 para um Internet Gateway).
+      Sem isso o Elastic IP nao responde e a maquina nao baixa pacotes.
+  InstanceType:
+    Type: String
+    Default: t3.large
+    AllowedValues: [t3.medium, t3.large, t3.xlarge, m6i.large, m6i.xlarge]
+    Description: >-
+      t3.large (8 GB) e o recomendado. t3.medium (4 GB) funciona com o swap,
+      mas o build do Next fica apertado.
+  VolumeSize:
+    Type: Number
+    Default: 40
+    MinValue: 20
+    Description: Disco raiz em GB (gp3).
+  HttpCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: Quem pode acessar o app na porta 80.
+  SshCidr:
+    Type: String
+    Default: ''
+    Description: >-
+      Opcional. CIDR liberado na porta 22 (ex. 203.0.113.10/32). Vazio = sem SSH;
+      o acesso fica pelo Session Manager.
+  KeyName:
+    Type: String
+    Default: ''
+    Description: Opcional. Nome de um key pair existente para SSH.
+  AmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+    Description: Amazon Linux 2023 mais recente (resolvido na criacao da stack).
+
+Conditions:
+  HasSsh: !Not [!Equals [!Ref SshCidr, '']]
+  HasKey: !Not [!Equals [!Ref KeyName, '']]
+
+Resources:
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Alumen - HTTP para o nginx, SSH opcional
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !Ref HttpCidr
+          Description: nginx -> app em 127.0.0.1:3333
+        - !If
+          - HasSsh
+          - IpProtocol: tcp
+            FromPort: 22
+            ToPort: 22
+            CidrIp: !Ref SshCidr
+            Description: SSH
+          - !Ref AWS::NoValue
+      Tags:
+        - Key: Name
+          Value: alumen-sg
+
+  # Session Manager substitui o SSH: acesso pelo console, sem porta 22 aberta.
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ec2.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref InstanceRole]
+
+  Instance:
+    Type: AWS::EC2::Instance
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT20M
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: !Ref InstanceType
+      KeyName: !If [HasKey, !Ref KeyName, !Ref AWS::NoValue]
+      IamInstanceProfile: !Ref InstanceProfile
+      MetadataOptions:
+        HttpTokens: required
+        HttpEndpoint: enabled
+      NetworkInterfaces:
+        - DeviceIndex: '0'
+          SubnetId: !Ref SubnetId
+          GroupSet: [!Ref SecurityGroup]
+          AssociatePublicIpAddress: true
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: !Ref VolumeSize
+            VolumeType: gp3
+            Encrypted: true
+            DeleteOnTermination: true
+      Tags:
+        - Key: Name
+          Value: alumen
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euxo pipefail
+          exec > >(tee /var/log/alumen-init.log) 2>&1
+
+          signal() {
+            /opt/aws/bin/cfn-signal -e "$1" --stack ${AWS::StackName} \
+              --resource Instance --region ${AWS::Region} || true
+          }
+          trap 'signal 1' ERR
+
+          dnf install -y git nginx gcc-c++ make python3 aws-cfn-bootstrap
+
+          # 4 GiB de swap: o deploy-alumen.service limita o heap em 1,5 GB e
+          # conta com o swap para absorver picos.
+          if ! swapon --show | grep -q /swapfile; then
+            fallocate -l 4G /swapfile
+            chmod 600 /swapfile
+            mkswap /swapfile
+            swapon /swapfile
+            echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+          fi
+
+          # Node 24.20.0 via nvm em /home/ec2-user/.nvm - e o caminho que o
+          # deploy-alumen.service usa no ExecStart.
+          sudo -u ec2-user -i bash -c '
+            curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+            . ~/.nvm/nvm.sh
+            nvm install 24.20.0
+            nvm alias default 24.20.0
+          '
+
+          # Claude Code, para conduzir o resto do deploy na propria maquina.
+          sudo -u ec2-user -i bash -c 'curl -fsSL https://claude.ai/install.sh | bash'
+
+          systemctl enable nginx
+          signal 0
+
+  ElasticIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref Instance
+      Tags:
+        - Key: Name
+          Value: alumen-eip
+
+Outputs:
+  InstanceId:
+    Value: !Ref Instance
+  PublicIP:
+    Description: Elastic IP - nao muda em stop/start.
+    Value: !Ref ElasticIP
+  AppURL:
+    Value: !Sub 'http://${ElasticIP}/'
+  NextSteps:
+    Value: >-
+      Conecte por Session Manager (EC2 > Connect), rode 'sudo su - ec2-user',
+      clone o repo em /home/ec2-user/Alumen e rode
+      ./deploy/bootstrap.sh alumen-secrets.tar.gz

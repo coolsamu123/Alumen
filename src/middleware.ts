@@ -70,6 +70,34 @@ function isProtected(pathname: string, method: string): boolean {
   return PROTECTED_BY_METHOD.some(r => pathStartsWith(pathname, r.prefix) && r.methods.includes(m));
 }
 
+/**
+ * The address the browser actually used, not the one the server thinks it has.
+ *
+ * `request.url` is synthesized by Next, and since the app started with
+ * `-H 127.0.0.1` (so only nginx can reach it) that synthesis hardcodes
+ * `http://localhost:3333`. Redirecting to `new URL('/login', request.url)`
+ * therefore sent every visitor to localhost:3333 on their own machine —
+ * ERR_CONNECTION_REFUSED, measured against production on 2026-09-18.
+ *
+ * The Host header (or X-Forwarded-Host, which nginx sets on the Apigee
+ * listener, where Host carries the EC2's own name) is what the browser typed,
+ * so the redirect is built from that instead.
+ */
+function publicUrl(request: NextRequest, pathname: string): URL {
+  const url = new URL(pathname, request.url);
+  const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+  if (host) {
+    // `url.host = 'example.com'` keeps the port already on the URL (3333), per
+    // the URL spec — hence hostname/port set apart, with port cleared unless
+    // the header carries one.
+    const [hostname, port = ''] = host.split(':');
+    url.hostname = hostname;
+    url.port = port;
+    url.protocol = `${request.headers.get('x-forwarded-proto') ?? 'http'}:`;
+  }
+  return url;
+}
+
 function unauthorizedJson(): NextResponse {
   return NextResponse.json(
     { error: 'Authentication required.' },
@@ -130,7 +158,7 @@ export async function middleware(request: NextRequest) {
 
   if (!session) {
     if (isApi) return unauthorizedJson();
-    const loginUrl = new URL('/login', request.url);
+    const loginUrl = publicUrl(request, '/login');
     loginUrl.searchParams.set('next', pathname);
     return NextResponse.redirect(loginUrl);
   }
@@ -154,7 +182,7 @@ export async function middleware(request: NextRequest) {
   // Checked after the session so a phone lands on /m already authenticated,
   // instead of bouncing login -> / -> /m.
   if (wantsMobileHome(request)) {
-    return NextResponse.redirect(new URL('/m', request.url));
+    return NextResponse.redirect(publicUrl(request, '/m'));
   }
 
   return NextResponse.next();

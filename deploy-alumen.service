@@ -18,7 +18,9 @@ Environment=PATH=/home/ec2-user/.nvm/versions/node/v24.20.0/bin:/usr/local/bin:/
 # Heap ceiling below total RAM so V8 collects instead of letting the kernel
 # choose a victim. 4 GiB of swap absorbs spikes above this.
 Environment=NODE_OPTIONS=--max-old-space-size=1536
-ExecStart=/home/ec2-user/.nvm/versions/node/v24.20.0/bin/npm run start -- -p 3333
+# Only nginx talks to the app. Listening on all interfaces let anyone who
+# reached :3333 skip nginx, and with it the Apigee-only gate on :8443.
+ExecStart=/home/ec2-user/.nvm/versions/node/v24.20.0/bin/npm run start -- -p 3333 -H 127.0.0.1
 
 # Stay up. Restart on any exit, including an OOM kill, but give up if it is
 # crash-looping so a broken deploy is visible instead of silently thrashing.
