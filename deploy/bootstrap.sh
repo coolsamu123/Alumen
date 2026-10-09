@@ -1,14 +1,14 @@
 #!/bin/bash
 # Sobe o Alumen do zero numa EC2 Amazon Linux 2023, sem dados (banco vazio).
 #
-#   cd ~/Alumen && bash deploy/bootstrap.sh ~/alumen-secrets.tar.gz
+#   cd ~/Alumen && bash deploy/bootstrap.sh [alumen-secrets.tar.gz]
 #
-# O tarball traz .env.local, config.json e data/service-account.json, que ficam
-# fora do git. O primeiro admin é criado a partir de ADMIN_BASIC_AUTH no boot.
+# As credenciais (.env.local, config.json, data/service-account.json) ficam fora
+# do git: ou vêm no tarball opcional, ou já foram criadas à mão no repo. O primeiro admin é criado a partir de ADMIN_BASIC_AUTH no boot.
 # Usa o Node que já estiver no PATH (>= 20); sem Node, instala o 24.20.0 via nvm.
 set -euo pipefail
 
-SECRETS="${1:?uso: bash deploy/bootstrap.sh /caminho/alumen-secrets.tar.gz}"
+SECRETS="${1:-}"
 APP="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$APP"
 
@@ -36,7 +36,10 @@ fi
 
 echo "[4/6] Credenciais"
 mkdir -p data
-tar -xzf "$SECRETS" -C "$APP"
+[ -n "$SECRETS" ] && tar -xzf "$SECRETS" -C "$APP"
+for f in .env.local config.json data/service-account.json; do
+  [ -s "$f" ] || { echo "ERRO: falta $APP/$f"; exit 1; }
+done
 chmod 600 .env.local config.json data/service-account.json
 
 echo "[5/6] Dependências e build"
