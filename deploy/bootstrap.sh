@@ -20,7 +20,10 @@ if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split("."
   export NVM_DIR="$HOME/.nvm"
   [ -s "$NVM_DIR/nvm.sh" ] || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
   . "$NVM_DIR/nvm.sh"
-  nvm install 24.20.0
+  # Um prefix no ~/.npmrc (npm global em ~/.npm-global) faz o nvm recusar a
+  # ativação e sair com erro depois do download; --delete-prefix resolve.
+  nvm install 24.20.0 || true
+  nvm use --delete-prefix 24.20.0
 fi
 NODE_BIN="$(dirname "$(command -v node)")"
 echo "Node $(node -v) em $NODE_BIN"
