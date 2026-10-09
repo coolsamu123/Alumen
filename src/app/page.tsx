@@ -11,13 +11,12 @@ import DetailView from '@/components/DetailView';
 import ImpactView from '@/components/ImpactView';
 import GoalsView from '@/components/GoalsView';
 import DriveView from '@/components/DriveView';
-import StromView from '@/components/StromArchitecture';
 import ProjectUniverseView from '@/components/ProjectUniverseView';
 import LoadingState from '@/components/LoadingState';
 import type { ViewType } from '@/lib/types';
 
 const TOOLBAR_VIEWS: ViewType[] = ['graph', 'timeline', 'detail', 'impact'];
-const VIEWS_OK_WHEN_EMPTY: ViewType[] = ['drive', 'goals', 'strom', 'universe'];
+const VIEWS_OK_WHEN_EMPTY: ViewType[] = ['drive', 'goals', 'universe'];
 
 export default function Home() {
   const { projects, view, setView, refreshProjects, isLoading, isAdmin } = useProjectContext();
@@ -39,7 +38,10 @@ export default function Home() {
   // server-side — Header.tsx locks the nav button too). This only catches a
   // 'drive' view restored from a prior session on mount; a basic user can't
   // click into it in the first place since Header.tsx disables that button.
+  // The Alumen menu was folded into Drive Sync; a 'strom' view restored from a
+  // prior session lands where its content went (or Details, for basic users).
   useEffect(() => {
+    if (view === 'strom') { setView(isAdmin ? 'drive' : 'detail'); return; }
     if (!isAdmin && view === 'drive') setView('detail');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin]);
@@ -94,9 +96,6 @@ export default function Home() {
         )}
         {visited.has('drive') && (
           <div className={view === 'drive' ? 'contents' : 'hidden'}><DriveView /></div>
-        )}
-        {visited.has('strom') && (
-          <div className={view === 'strom' ? 'contents' : 'hidden'}><StromView /></div>
         )}
         {visited.has('universe') && (
           <div className={view === 'universe' ? 'contents' : 'hidden'}><ProjectUniverseView /></div>

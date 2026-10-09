@@ -93,3 +93,34 @@ export async function POST(request: Request) {
     });
   }
 }
+
+/**
+ * Removes a project added by hand, with everything computed for it. Only
+ * 'manual' rows: a CDIO project is governed by the sheet and leaves it through
+ * the merge (marked "fora do CDIO"), never through this button.
+ */
+export async function DELETE(request: Request) {
+  const session = await requireAdmin();
+  if (isSessionError(session)) {
+    return NextResponse.json({ error: session.error }, { status: session.status });
+  }
+  const projectId = normalizeProjectId(new URL(request.url).searchParams.get('projectId') ?? '');
+  if (!projectId) {
+    return NextResponse.json({ ok: false, error: 'projectId inválido' }, { status: 400 });
+  }
+  const db = getDb();
+  const row = db.prepare('SELECT source FROM projects WHERE project_id = ? LIMIT 1')
+    .get(projectId) as { source: string } | undefined;
+  if (!row) return NextResponse.json({ ok: false, error: `${projectId} não existe` }, { status: 404 });
+  if (row.source !== 'manual') {
+    return NextResponse.json({ ok: false, error: `${projectId} não é avulso e não pode ser removido` }, { status: 409 });
+  }
+  db.transaction(() => {
+    const run = (sql: string) => { try { db.prepare(sql).run(projectId, projectId); } catch { /* table may not exist */ } };
+    run('DELETE FROM projects_impact WHERE source_project_id = ? OR target_project_id = ?');
+    run('DELETE FROM project_goals WHERE project_id = ? OR project_id = ?');
+    run('DELETE FROM documents_cache WHERE project_id = ? OR project_id = ?');
+    run('DELETE FROM projects WHERE project_id = ? OR project_id = ?');
+  })();
+  return NextResponse.json({ ok: true, projectId });
+}

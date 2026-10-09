@@ -20,6 +20,7 @@
  */
 import { runAutoDiscoveryCycle, isAutoCycleRunning, pendingWork } from './auto-pipeline';
 import { syncCdio } from './cdio-sync';
+import { getUpstreamSnapshot } from './upstream-sync';
 
 const DEFAULT_INTERVAL_MIN = 15;
 // The CDIO sheet changes a few times a month. Each check is one Drive metadata
@@ -42,6 +43,12 @@ export function startScheduler(): void {
   }
 
   const minutes = Number(process.env.ALUMEN_SCHEDULER_MINUTES) || DEFAULT_INTERVAL_MIN;
+
+  // pendingWork() reads the Apps Script status from the SQLite mirror, and the
+  // mirror is refreshed by a poller that getUpstreamSnapshot() arms on first
+  // call. Only screens called it, so after a restart nobody looking at Drive
+  // Sync meant "cleanup done" was never noticed and the chain stopped halfway.
+  getUpstreamSnapshot();
 
   const tick = async () => {
     try {

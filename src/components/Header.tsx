@@ -15,7 +15,6 @@ const NAV_ITEMS: { key: ViewType; label: string }[] = [
   { key: 'detail', label: 'Details' },
   { key: 'goals', label: 'Goals Extractor' },
   { key: 'drive', label: 'Drive Sync' },
-  { key: 'strom', label: 'Alumen' },
 ];
 
 // Views that don't fetch anything protected. Anonymous external visitors can

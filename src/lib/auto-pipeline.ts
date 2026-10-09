@@ -1,7 +1,6 @@
 import { getDb } from './db';
 import {
   discoverAndAddProjectFromDrive,
-  discoverInitiativesFromDrive,
   runDriveDownload,
   getDriveStatus,
   extractDriveId,
@@ -26,13 +25,30 @@ export interface CycleReport {
 
 export type RootKind = 'portfolio' | 'initiatives';
 
-interface WatchRoot {
-  id: number;
-  url: string;
-  drive_id: string;
-  label: string;
-  enabled: number;
-  kind: RootKind;
+// ─── Base folder ────────────────────────────────────────────────────────────
+// The one place Discover looks: the folder Apps Script copies every project
+// into ("Alumen › Projects" on the Shared Drive), after cleanup has removed the
+// classification labels that hide files from the service account.
+//
+// This replaced the list of hand-registered watch roots. Every root was the
+// same folder in practice, and a fresh install with none registered silently
+// never discovered anything — the two halves of the chain looked healthy and
+// were not connected. A setting with a default cannot be forgotten.
+export const BASE_FOLDER_SETTING = 'base_folder_id';
+const DEFAULT_BASE_FOLDER_ID = '1_NH0S9bv3q5SF4dfZG3MPy-jtPgSIA3X';
+
+export function baseFolderId(): string {
+  try {
+    const row = getDb().prepare('SELECT value FROM app_settings WHERE key = ?')
+      .get(BASE_FOLDER_SETTING) as { value?: string } | undefined;
+    const v = row?.value?.trim();
+    if (v) return v;
+  } catch { /* app_settings may not exist yet */ }
+  return DEFAULT_BASE_FOLDER_ID;
+}
+
+export function baseFolderUrl(): string {
+  return `https://drive.google.com/drive/folders/${baseFolderId()}`;
 }
 
 let cycleRunning = false;
@@ -101,22 +117,6 @@ function finishRun(
   );
 }
 
-function updateRootRunResult(
-  rootId: number,
-  status: 'success' | 'error',
-  errorMsg: string,
-  addedDelta: number,
-) {
-  const db = getDb();
-  db.prepare(`
-    UPDATE drive_watch_roots
-    SET last_run_at = datetime('now'),
-        last_run_status = ?,
-        last_run_error = ?,
-        added_count = added_count + ?
-    WHERE id = ?
-  `).run(status, errorMsg, addedDelta, rootId);
-}
 
 // ─── Main cycle ─────────────────────────────────────────────────────────────
 
@@ -277,54 +277,33 @@ export async function runAutoDiscoveryCycle(
   };
 
   try {
-    const db = getDb();
-    const roots = db.prepare(
-      'SELECT id, url, drive_id, label, enabled, kind FROM drive_watch_roots WHERE enabled = 1'
-    ).all() as WatchRoot[];
-
     // ─── Stage 1: Discover ────────────────────────────────────────────────────
+    // Only the base folder. Projects arrive there through Apps Script, and only
+    // once cleanup is done (pendingWork gates on that), so a PRJ folder found
+    // here is already readable by the service account.
     currentStage = 'discover';
-    for (const root of roots) {
-      currentRootLabel = root.label || root.url;
+    currentRootLabel = 'Alumen › Projects';
+    {
       const before = snapshotProjectIds();
       try {
-        // A portfolio root is scanned recursively for PRJ-named folders; an
-        // initiatives root turns each of its direct subfolders into one
-        // initiative. Both end up writing projects rows with a link_folder, so
-        // every stage below this one is identical for the two.
-        if (root.kind === 'initiatives') {
-          await discoverInitiativesFromDrive(root.url, { rootId: root.id });
-        } else {
-          await discoverAndAddProjectFromDrive(root.url);
+        await discoverAndAddProjectFromDrive(baseFolderUrl());
+        for (const id of snapshotProjectIds()) {
+          if (!before.has(id)) newProjects.add(id);
         }
-        const after = snapshotProjectIds();
-        let delta = 0;
-        for (const id of after) {
-          if (!before.has(id)) {
-            newProjects.add(id);
-            delta++;
-          }
-        }
-        updateRootRunResult(root.id, 'success', '', delta);
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        handleStageError(`Discover [${root.label || root.url}]`, err);
-        updateRootRunResult(root.id, 'error', msg, 0);
+        handleStageError('Discover [base folder]', err);
       }
     }
 
     // ─── Stage 2: Download ────────────────────────────────────────────────────
-    // runDriveDownload internally targets every project that has a Drive link
-    // and isn't already locally present. Run it whenever we have at least one
-    // root configured — discovery may have refreshed link_folder for existing rows too.
-    if (roots.length > 0) {
-      currentStage = 'download';
-      currentRootLabel = '';
-      try {
-        await runDriveDownload();
-      } catch (err: unknown) {
-        handleStageError('Download', err);
-      }
+    // runDriveDownload targets every project with a Drive link that isn't
+    // already local — discovery may have just set link_folder on several.
+    currentStage = 'download';
+    currentRootLabel = '';
+    try {
+      await runDriveDownload();
+    } catch (err: unknown) {
+      handleStageError('Download', err);
     }
 
     // ─── Stage 3: Goals Extractor ─────────────────────────────────────────────

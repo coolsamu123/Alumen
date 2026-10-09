@@ -175,6 +175,41 @@ export async function enqueue(
 }
 
 /**
+ * Queues several projects with ONE write to the Drive file.
+ *
+ * "Carregar novos do CDIO" can ask for dozens at once; calling enqueue() per
+ * project would be dozens of read-modify-write rounds on the same file, each
+ * widening the window in which a concurrent click loses a request (PLAN §3.5).
+ */
+export async function enqueueMany(
+  projectIds: string[],
+  requestedBy: string
+): Promise<{ added: string[]; skipped: { projectId: string; reason: string }[]; queue: QueueItem[] }> {
+  const current = await readQueue();
+  const inQueue = new Set(current.map(it => it.projectId.trim().toUpperCase()));
+  const known = new Set(
+    (getDb().prepare('SELECT DISTINCT project_id FROM upstream_status').all() as Array<{ project_id: string }>)
+      .map(r => r.project_id.trim().toUpperCase())
+  );
+
+  const added: string[] = [];
+  const skipped: { projectId: string; reason: string }[] = [];
+  const now = new Date().toISOString();
+  const next = [...current];
+  for (const raw of projectIds) {
+    const id = raw.trim().toUpperCase();
+    if (!id) continue;
+    if (inQueue.has(id)) { skipped.push({ projectId: id, reason: 'already queued' }); continue; }
+    if (known.has(id)) { skipped.push({ projectId: id, reason: 'already in the control sheet' }); continue; }
+    next.push({ projectId: id, requestedBy, requestedAt: now });
+    inQueue.add(id);
+    added.push(id);
+  }
+  if (added.length) await writeQueue(next);
+  return { added, skipped, queue: added.length ? next : current };
+}
+
+/**
  * Drops from the queue whatever already showed up in the control sheet.
  *
  * This is the counterpart to "Apps Script never deletes the file": a request
