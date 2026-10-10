@@ -9,6 +9,12 @@ import pLimit from 'p-limit';
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const SERVICE_ACCOUNT_PATH = path.join(process.cwd(), 'data', 'service-account.json');
+
+/** SQL condition on alias `p`: the project is not mid copy/cleanup in Apps Script. */
+export const NOT_IN_UPSTREAM_FLIGHT = `NOT EXISTS (
+  SELECT 1 FROM upstream_status u
+  WHERE u.project_id = p.project_id AND u.status NOT IN ('DONE', 'ERROR'))`;
+
 export const DRIVE_LOCAL_ROOT = path.join(process.cwd(), 'data', 'drive');
 
 // Supported export MIME types for Google Workspace files
@@ -918,12 +924,17 @@ export async function runDriveDownload(): Promise<void> {
       SELECT DISTINCT p.project_id, p.name,
         p.link_folder, p.link_positions, p.link_cioo
       FROM projects p
-      WHERE p.link_folder LIKE '%drive.google.com%'
+      WHERE (p.link_folder LIKE '%drive.google.com%'
          OR p.link_positions LIKE '%drive.google.com%'
          OR p.link_cioo LIKE '%drive.google.com%'
          OR p.link_folder LIKE '/%'
          OR p.link_positions LIKE '/%'
-         OR p.link_cioo LIKE '/%'
+         OR p.link_cioo LIKE '/%')
+        -- Not while Apps Script is still copying/cleaning it: until cleanup
+        -- removes the Classification label the files are invisible to the
+        -- service account, and the attempt is recorded as "No files found".
+        -- (Batched cycles, 2026-10-10, made that window reachable.)
+        AND ${NOT_IN_UPSTREAM_FLIGHT}
       GROUP BY p.project_id
     `).all() as { project_id: string; name: string; link_folder: string; link_positions: string; link_cioo: string }[];
 

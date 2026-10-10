@@ -4,6 +4,7 @@ import {
   runDriveDownload,
   getDriveStatus,
   extractDriveId,
+  NOT_IN_UPSTREAM_FLIGHT,
 } from './drive-engine';
 import { runGoalsAnalysis, getGoalsStatus } from './goals-analyzer';
 import { runFullImpactAnalysis } from './impact-engine';
@@ -239,6 +240,7 @@ export function pendingWork(): { total: number; reasons: string[] } {
     SELECT COUNT(*) c FROM projects p
     WHERE TRIM(COALESCE(p.link_folder, '')) <> ''
       AND NOT EXISTS (SELECT 1 FROM documents_cache d WHERE d.project_id = p.project_id)
+      AND ${NOT_IN_UPSTREAM_FLIGHT}
   `);
   if (naoBaixados) { total += naoBaixados; reasons.push(`${naoBaixados} linked project(s) never downloaded`); }
 
