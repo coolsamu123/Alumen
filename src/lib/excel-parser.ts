@@ -165,7 +165,7 @@ export function mergeCdioRows(rows: ProjectInsert[], format: Format): CdioMergeR
       documents_status = @documentsStatus, restricted = @restricted,
       cost_before_g2 = @costBeforeG2, est_gate2_date = @estGate2Date,
       session_start = @sessionStart, session_end = @sessionEnd, participants = @participants,
-      link_positions = CASE WHEN COALESCE(link_positions, '') = '' THEN @linkPositions ELSE link_positions END,
+      link_positions = CASE WHEN @linkPositions <> '' THEN @linkPositions ELSE link_positions END,
       link_folder    = CASE WHEN COALESCE(link_folder, '')    = '' THEN @linkFolder    ELSE link_folder    END,
       link_cioo      = CASE WHEN COALESCE(link_cioo, '')      = '' THEN @linkCIOO      ELSE link_cioo      END,
       year = @year, month = @month, batch_id = @batchId,
@@ -268,9 +268,10 @@ function parseCdioSheet(worksheet: XLSX.WorkSheet): ProjectInsert[] {
     blankrows: false,
   });
 
-  // Note: columns G ("CDIO folder") and Y ("Link to CDIOO Positions") are
-  // intentionally ignored. Folder links are the sole responsibility of Drive
-  // discovery (see drive-engine.discoverAndAddProjectFromDrive).
+  // Column G ("CDIO folder") is intentionally ignored: folder links are the
+  // sole responsibility of Drive discovery (drive-engine.discoverAndAddProjectFromDrive).
+  // Column Y ("Link to CDIOO Positions") shows the minutes' title; the URL is
+  // the cell hyperlink, which sheet_to_json drops, so it is read from the cell.
   const entries: ProjectInsert[] = [];
 
   for (let i = 0; i < rawData.length; i++) {
@@ -350,7 +351,7 @@ function parseCdioSheet(worksheet: XLSX.WorkSheet): ProjectInsert[] {
       sessionStart: '',
       sessionEnd: '',
       participants: '',
-      linkPositions: '',
+      linkPositions: cellLink(worksheet, 'Y', row),
       linkFolder: '',
       linkCIOO: '',
       year,
@@ -360,6 +361,17 @@ function parseCdioSheet(worksheet: XLSX.WorkSheet): ProjectInsert[] {
   }
 
   return entries;
+}
+
+/** The hyperlink of `col` on the sheet row `row` came from (or its text, when that is a URL). */
+function cellLink(worksheet: XLSX.WorkSheet, col: string, row: RawRow): string {
+  const rowNum = (row as { __rowNum__?: number }).__rowNum__;
+  if (typeof rowNum !== 'number') return '';
+  const cell = worksheet[`${col}${rowNum + 1}`] as XLSX.CellObject | undefined;
+  const target = cell?.l?.Target?.trim() ?? '';
+  if (/^https?:\/\//i.test(target)) return target;
+  const text = String(cell?.v ?? '').trim();
+  return /^https?:\/\/\S+$/i.test(text) ? text : '';
 }
 
 // ─── Legacy CIOO Forecast format ────────────────────────────────────────────

@@ -172,6 +172,8 @@ export default function ProjectPlanningPanel({ project, onClose }: { project: Pr
               )}
             </div>
           </div>
+          <div className="shrink-0 flex items-start gap-2">
+            <ReportButton projectId={project.projectId} />
           <button
             type="button"
             onClick={onClose}
@@ -180,6 +182,7 @@ export default function ProjectPlanningPanel({ project, onClose }: { project: Pr
           >
             ✕
           </button>
+          </div>
         </div>
 
         <div className="px-5 py-4 space-y-5">
@@ -382,6 +385,53 @@ function StatTile({ label, value, accent, wide }: { label: string; value: string
     <div className={`bg-surface-2 rounded-lg p-2.5 ${wide ? 'col-span-3' : ''}`}>
       <div className="text-[11px] text-ink-muted uppercase tracking-wider leading-tight">{label}</div>
       <div className={`text-sm font-bold mt-0.5 ${accent ? 'text-accent-text' : 'text-ink-2'}`}>{value}</div>
+    </div>
+  );
+}
+
+/** Builds the project's Google Doc report (Shared Drive Alumen › reports); generating again replaces it. */
+function ReportButton({ projectId }: { projectId: string }) {
+  const [state, setState] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // The panel stays mounted when another card is picked; start fresh per project.
+  useEffect(() => { setState('idle'); setUrl(null); setError(null); }, [projectId]);
+
+  const run = async () => {
+    setState('running');
+    setError(null);
+    try {
+      const res = await fetch(`/api/reports/${encodeURIComponent(projectId)}`, { method: 'POST' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body.url) throw new Error(body.error || `Report failed (${res.status})`);
+      setUrl(body.url);
+      setState('done');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setState('error');
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <button
+        type="button"
+        onClick={run}
+        disabled={state === 'running'}
+        title="Create a Google Doc report for this project in Shared Drive Alumen › reports. Generating again replaces it."
+        className="h-7 px-2.5 rounded-lg border border-line-strong text-[11px] font-semibold text-ink-2 hover:text-ink-1 hover:bg-surface-2 transition-colors disabled:cursor-wait disabled:opacity-60"
+      >
+        {state === 'running' ? 'Generating…' : state === 'done' ? '↻ Regenerate report' : '📄 Generate report'}
+      </button>
+      {state === 'done' && url && (
+        <a href={url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-accent-text2 hover:text-accent-text underline">
+          Open report ↗
+        </a>
+      )}
+      {state === 'error' && error && (
+        <span className="max-w-[220px] text-right text-[11px] text-red-400">{error}</span>
+      )}
     </div>
   );
 }
