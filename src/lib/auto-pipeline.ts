@@ -186,32 +186,14 @@ export function upstreamInFlight(): { total: number; projects: string[] } {
   }
 }
 
+// Batch rule for pendingWork() while Apps Script is still busy.
+const BATCH_SIZE = Math.max(1, Number(process.env.ALUMEN_BATCH_SIZE) || 20);
+const BATCH_MAX_WAIT_MS = 3 * 60 * 60 * 1000;
+
 export function pendingWork(): { total: number; reasons: string[] } {
   const db = getDb();
   const reasons: string[] = [];
   let total = 0;
-
-  // GATE: hold the whole Alumen half until every upstream project has finished
-  // copy AND cleanup.
-  //
-  // Without this the cycle fires the moment ONE project finishes, and with four
-  // arriving minutes apart that is four full cycles — each one dragging a
-  // complete Impact recomparison of the portfolio behind it, because Impact
-  // runs whenever goalsAdded > 0. Waiting for the batch turns four expensive
-  // passes into one.
-  //
-  // Known window: a project sitting in _alumen_queue.json but not yet merged
-  // into the control sheet is invisible here, because this function answers
-  // from SQLite alone and the queue file lives on Drive. The heartbeat merges
-  // within 10 minutes, after which the gate sees it.
-  const inFlight = upstreamInFlight();
-  if (inFlight.total > 0) {
-    return {
-      total: 0,
-      reasons: [`holding: ${inFlight.total} project(s) still in copy/cleanup — ` +
-                inFlight.projects.slice(0, 5).join(', ')],
-    };
-  }
 
   const count = (sql: string): number => {
     try {
@@ -272,6 +254,37 @@ export function pendingWork(): { total: number; reasons: string[] } {
       )
   `);
   if (semGoals) { total += semGoals; reasons.push(`${semGoals} downloaded project(s) without goals`); }
+
+  // GATE: while Apps Script is still copying/cleaning, work in batches.
+  //
+  // Firing on every finished project would mean one full cycle — and one
+  // Impact recomparison of the portfolio — per arrival. Holding until the
+  // whole queue is through (the previous rule) meant nothing at all for a day
+  // when the CDIO auto-load queued 300 projects at once (new EC2, 2026-10-10:
+  // 24 projects cleaned and waiting, 0 downloaded). So: run once enough is
+  // waiting, or once the oldest wait gets long.
+  //
+  // Known window: a project sitting in _alumen_queue.json but not yet merged
+  // into the control sheet is invisible here, because this function answers
+  // from SQLite alone and the queue file lives on Drive. The heartbeat merges
+  // within 10 minutes, after which the gate sees it.
+  const inFlight = upstreamInFlight();
+  if (inFlight.total > 0 && total > 0) {
+    const lastRun = (() => {
+      try {
+        return (db.prepare("SELECT MAX(started_at) t FROM auto_runs").get() as { t: string | null }).t;
+      } catch { return null; }
+    })();
+    const waitedMs = lastRun ? Date.now() - new Date(lastRun.replace(' ', 'T') + (/[zZ]|[+-]\d\d:?\d\d$/.test(lastRun) ? '' : 'Z')).getTime() : Infinity;
+    if (total < BATCH_SIZE && waitedMs < BATCH_MAX_WAIT_MS) {
+      return {
+        total: 0,
+        reasons: [`holding: ${total} ready, batch of ${BATCH_SIZE} or ${BATCH_MAX_WAIT_MS / 3_600_000}h since the last cycle; ` +
+                  `${inFlight.total} project(s) still in copy/cleanup`],
+      };
+    }
+    reasons.push(`batch released while ${inFlight.total} project(s) are still in copy/cleanup`);
+  }
 
   return { total, reasons };
 }
