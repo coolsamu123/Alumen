@@ -16,6 +16,7 @@
  * Built from SQLite only; the queue is passed in by the caller, which reads it
  * from Drive.
  */
+import { isProjectId } from './project-id';
 import { getDb } from './db';
 import { isAutoCycleRunning, getAutoCycleStage, BASE_FOLDER_SCANNED_SETTING } from './auto-pipeline';
 import type { ProjectSource } from './types';
@@ -205,6 +206,8 @@ export function buildPipelineRows(queued: Set<string>): PipelineRow[] {
 /** CDIO projects nobody asked for yet — what "Carregar novos do CDIO" loads. */
 export function newCdioProjects(rows: PipelineRow[]): string[] {
   return rows
-    .filter(r => r.source === 'excel' && !r.cdioMissingSince && r.loadable && /^PRJ\d+/.test(r.projectId))
+    // isProjectId rejects template rows such as "PRJ00XXXXX", which /^PRJ\d+/ let through.
+    .filter(r => r.source === 'excel' && !r.cdioMissingSince && r.loadable &&
+      /^PRJ/.test(r.projectId) && isProjectId(r.projectId))
     .map(r => r.projectId);
 }
