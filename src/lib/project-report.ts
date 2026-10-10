@@ -189,7 +189,10 @@ export function buildReportHtml(projectId: string, visible: VisibleProjectIds, t
   const done = (v: string | undefined) => (v === 'DONE' ? '✔' : v ? v.toLowerCase() : '—');
 
   const html = `<html><head><meta charset="utf-8"></head><body style="font-family:Arial;color:${C.ink}">
-<p style="font-size:9pt;color:${C.muted}">ALUMEN · PROJECT REPORT · INTERNAL</p>
+<table style="border-collapse:collapse;width:100%"><tr>
+<td style="border:none;padding:0;font-size:9pt;color:${C.muted}">ALUMEN · PROJECT REPORT · INTERNAL</td>
+<td style="border:none;padding:0;text-align:right;font-size:11pt;font-weight:bold;color:${C.brand}">AIR LIQUIDE</td>
+</tr></table>
 <h1 style="font-size:20pt;margin-bottom:2pt">${esc(name)}</h1>
 <p style="font-size:11pt;color:${C.muted};margin-top:0">${esc(projectId)}${s(p.dds) ? ` · ${esc(p.dds)}` : ''}${s(p.gate) ? ` · Gate ${esc(p.gate)}` : ''} · Generated ${today}</p>
 
