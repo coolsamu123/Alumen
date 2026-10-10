@@ -31,6 +31,14 @@ export interface ReportResult {
   url: string;
   replaced: boolean;
   generatedAt: string;
+  generatedBy: string;
+}
+
+/** The project's last generated report, as recorded here (no Drive call). */
+export function getProjectReport(projectId: string): Omit<ReportResult, 'replaced'> | null {
+  const row = getDb().prepare('SELECT url, generated_at, generated_by FROM project_reports WHERE project_id = ?')
+    .get(projectId) as { url: string; generated_at: string; generated_by: string } | undefined;
+  return row ? { url: row.url, generatedAt: row.generated_at, generatedBy: row.generated_by ?? '' } : null;
 }
 
 // ─── Data ───────────────────────────────────────────────────────────────────
@@ -363,7 +371,7 @@ const driveQuoted = (v: string) => v.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
 
 const inFlight = new Set<string>();
 
-export async function generateProjectReport(projectId: string, visible: VisibleProjectIds): Promise<ReportResult> {
+export async function generateProjectReport(projectId: string, visible: VisibleProjectIds, generatedBy: string): Promise<ReportResult> {
   if (inFlight.has(projectId)) throw new Error('A report for this project is already being generated');
   inFlight.add(projectId);
   try {
@@ -381,17 +389,22 @@ export async function generateProjectReport(projectId: string, visible: VisibleP
 
     const res = fileId
       ? await drive.files.update({
-        fileId, media, supportsAllDrives: true, fields: 'webViewLink',
+        fileId, media, supportsAllDrives: true, fields: 'id,webViewLink',
         requestBody: { name },
       })
       : await drive.files.create({
-        media, supportsAllDrives: true, fields: 'webViewLink',
+        media, supportsAllDrives: true, fields: 'id,webViewLink',
         requestBody: { name, mimeType: DOC_MIME, parents: [folderId], appProperties: { alumenProject: projectId } },
       });
     const url = res.data.webViewLink;
-    if (!url) throw new Error('Drive did not return a link for the report');
+    if (!url || !res.data.id) throw new Error('Drive did not return a link for the report');
+    getDb().prepare(`
+      INSERT INTO project_reports (project_id, file_id, url, generated_at, generated_by) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(project_id) DO UPDATE SET file_id = excluded.file_id, url = excluded.url,
+        generated_at = excluded.generated_at, generated_by = excluded.generated_by
+    `).run(projectId, res.data.id, url, generatedAt, generatedBy);
     console.log(`[report] ${fileId ? 'replaced' : 'created'} ${projectId}`);
-    return { url, replaced: Boolean(fileId), generatedAt };
+    return { url, replaced: Boolean(fileId), generatedAt, generatedBy };
   } finally {
     inFlight.delete(projectId);
   }

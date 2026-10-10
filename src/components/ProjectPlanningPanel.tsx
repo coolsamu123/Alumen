@@ -389,49 +389,68 @@ function StatTile({ label, value, accent, wide }: { label: string; value: string
   );
 }
 
-/** Builds the project's Google Doc report (Shared Drive Alumen › reports); generating again replaces it. */
+/**
+ * Builds the project's Google Doc report (Shared Drive Alumen › reports). Once
+ * one exists its link stays visible; generating again replaces the same Doc.
+ */
 function ReportButton({ projectId }: { projectId: string }) {
-  const [state, setState] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
-  const [url, setUrl] = useState<string | null>(null);
+  const [report, setReport] = useState<{ url: string; generatedAt: string; generatedBy: string } | null>(null);
+  const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // The panel stays mounted when another card is picked; start fresh per project.
-  useEffect(() => { setState('idle'); setUrl(null); setError(null); }, [projectId]);
+  // The panel stays mounted when another card is picked; load that project's report.
+  useEffect(() => {
+    let cancelled = false;
+    setReport(null);
+    setError(null);
+    fetch(`/api/reports/${encodeURIComponent(projectId)}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(body => { if (!cancelled && body?.report) setReport(body.report); })
+      .catch(() => { /* no link shown; the button still works */ });
+    return () => { cancelled = true; };
+  }, [projectId]);
 
   const run = async () => {
-    setState('running');
+    setRunning(true);
     setError(null);
     try {
       const res = await fetch(`/api/reports/${encodeURIComponent(projectId)}`, { method: 'POST' });
       const body = await res.json().catch(() => ({}));
       if (!res.ok || !body.url) throw new Error(body.error || `Report failed (${res.status})`);
-      setUrl(body.url);
-      setState('done');
+      setReport({ url: body.url, generatedAt: body.generatedAt, generatedBy: body.generatedBy ?? '' });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-      setState('error');
+    } finally {
+      setRunning(false);
     }
   };
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <button
-        type="button"
-        onClick={run}
-        disabled={state === 'running'}
-        title="Create a Google Doc report for this project in Shared Drive Alumen › reports. Generating again replaces it."
-        className="h-7 px-2.5 rounded-lg border border-line-strong text-[11px] font-semibold text-ink-2 hover:text-ink-1 hover:bg-surface-2 transition-colors disabled:cursor-wait disabled:opacity-60"
-      >
-        {state === 'running' ? 'Generating…' : state === 'done' ? '↻ Regenerate report' : '📄 Generate report'}
-      </button>
-      {state === 'done' && url && (
-        <a href={url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-accent-text2 hover:text-accent-text underline">
-          Open report ↗
-        </a>
+      <div className="flex items-center gap-2">
+        {report && !running && (
+          <a href={report.url} target="_blank" rel="noopener noreferrer"
+            title={`Generated ${report.generatedAt.slice(0, 16).replace('T', ' ')} UTC${report.generatedBy ? ` by ${report.generatedBy}` : ''}`}
+            className="h-7 px-2.5 rounded-lg inline-flex items-center text-[11px] font-semibold text-accent-text2 hover:text-accent-text border border-accent-border/50 hover:bg-surface-2 transition-colors">
+            📄 Open report ↗
+          </a>
+        )}
+        <button
+          type="button"
+          onClick={run}
+          disabled={running}
+          title={report
+            ? 'Rebuild the report with the latest data. Replaces the same Google Doc (Drive keeps the previous versions).'
+            : 'Create a Google Doc report for this project in Shared Drive Alumen › reports.'}
+          className="h-7 px-2.5 rounded-lg border border-line-strong text-[11px] font-semibold text-ink-2 hover:text-ink-1 hover:bg-surface-2 transition-colors disabled:cursor-wait disabled:opacity-60"
+        >
+          {running ? 'Generating…' : report ? '↻ Regenerate' : '📄 Generate report'}
+        </button>
+      </div>
+      {report && !running && (
+        <span className="text-[10px] text-ink-muted">Report of {report.generatedAt.slice(0, 10)}</span>
       )}
-      {state === 'error' && error && (
-        <span className="max-w-[220px] text-right text-[11px] text-red-400">{error}</span>
-      )}
+      {error && <span className="max-w-[260px] text-right text-[11px] text-red-400">{error}</span>}
     </div>
   );
 }

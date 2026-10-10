@@ -516,6 +516,18 @@ function initSchema(db: Database.Database) {
     // Ignore if column already exists
   }
 
+  // The Google Doc each project's "Generate report" wrote (project-report.ts),
+  // so the panel can show its link without asking Drive.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS project_reports (
+      project_id    TEXT PRIMARY KEY,
+      file_id       TEXT NOT NULL,
+      url           TEXT NOT NULL,
+      generated_at  TEXT NOT NULL,
+      generated_by  TEXT DEFAULT ''
+    )
+  `);
+
   // A watch root is either a portfolio root (scanned recursively for PRJ-named
   // folders) or an initiatives root (whose direct subfolders each become one
   // initiative). Pre-existing roots are portfolio roots — that is all that
