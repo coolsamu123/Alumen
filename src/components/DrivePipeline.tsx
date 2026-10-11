@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useProjectContext } from '@/context/ProjectContext';
 
 type ProjectSource = 'excel' | 'drive' | 'initiative' | 'manual';
-type StageState = 'done' | 'running' | 'error' | 'waiting' | 'none' | 'na';
+type StageState = 'done' | 'running' | 'error' | 'waiting' | 'none' | 'na' | 'empty';
 const STAGES = ['request', 'copy', 'cleanup', 'discover', 'download', 'goals', 'impact'] as const;
 type StageKey = typeof STAGES[number];
 
@@ -74,6 +74,7 @@ function StageIcon({ state, title }: { state: StageState; title: string }) {
     waiting: { ch: '·', cls: 'text-ink-3 font-bold' },
     none:    { ch: '–', cls: 'text-ink-faint' },
     na:      { ch: 'n/a', cls: 'text-ink-faint text-[10px]' },
+    empty:   { ch: '∅', cls: 'text-ink-muted' },
   };
   const m = map[state];
   return <span className={m.cls} title={title}>{m.ch}</span>;
@@ -135,6 +136,7 @@ export default function PipelineSection({ addProject, onToast }: {
     active: rows.filter(r => r.stages[stage] === 'running' || r.stages[stage] === 'waiting').length,
     error: rows.filter(r => r.stages[stage] === 'error').length,
     done: rows.filter(r => r.stages[stage] === 'done').length,
+    empty: rows.filter(r => r.stages[stage] === 'empty').length,
   })), [rows]);
 
   const visible = useMemo(() => {
@@ -263,7 +265,7 @@ export default function PipelineSection({ addProject, onToast }: {
                 >
                   <div className="text-[11px] text-ink-muted">{i + 1}. {STAGE_LABEL[c.stage]}</div>
                   <div className="font-mono text-base text-ink-1">{c.active}</div>
-                  <div className="text-[10px] text-ink-faint">{c.done} done</div>
+                  <div className="text-[10px] text-ink-faint">{c.done} done{c.empty > 0 && ` · ${c.empty} no files`}</div>
                 </button>
                 {c.error > 0 && (
                   <button
@@ -377,7 +379,9 @@ export default function PipelineSection({ addProject, onToast }: {
                               <StageIcon state="error" title={r.errors[s] || 'error'} />
                             </button>
                           ) : (
-                            <StageIcon state={r.stages[s]} title={`${STAGE_LABEL[s]}: ${r.stages[s]}`
+                            <StageIcon state={r.stages[s]} title={r.stages[s] === 'empty'
+                              ? 'No files: the Drive folder has no documents yet. Downloaded again on every cycle.'
+                              : `${STAGE_LABEL[s]}: ${r.stages[s]}`
                               + (s === 'download' && r.filesDownloaded ? ` (${r.filesDownloaded} files)` : '')
                               + (s === 'impact' && r.impactCount ? ` (${r.impactCount} relations)` : '')} />
                           )}

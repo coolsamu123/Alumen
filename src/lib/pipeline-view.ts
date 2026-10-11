@@ -21,7 +21,10 @@ import { getDb } from './db';
 import { isAutoCycleRunning, getAutoCycleStage, BASE_FOLDER_SCANNED_SETTING } from './auto-pipeline';
 import type { ProjectSource } from './types';
 
-export type StageState = 'done' | 'running' | 'error' | 'waiting' | 'none' | 'na';
+// 'empty': download ran but the Drive folder has no usable document — not an error.
+export type StageState = 'done' | 'running' | 'error' | 'waiting' | 'none' | 'na' | 'empty';
+
+const NO_FILES_MSG = 'No files found or not accessible';
 
 export const STAGES = ['request', 'copy', 'cleanup', 'discover', 'download', 'goals', 'impact'] as const;
 export type StageKey = typeof STAGES[number];
@@ -95,15 +98,20 @@ export function buildPipelineRows(queued: Set<string>): PipelineRow[] {
     upstream.set(`${u.project_id}|${u.stage}`, u);
   }
 
-  const docs = new Map<string, { ok: number; bad: number; err: string }>();
-  for (const d of safeAll<{ project_id: string; ok: number; bad: number; err: string | null }>(`
+  // `real` counts actual failures; "No files found…" (empty folder) and
+  // skipped files are not failures, they mean there is nothing to read.
+  const docs = new Map<string, { ok: number; bad: number; real: number; err: string }>();
+  for (const d of safeAll<{ project_id: string; ok: number; bad: number; real: number; err: string | null }>(`
     SELECT project_id,
            SUM(CASE WHEN fetch_status = 'success' THEN 1 ELSE 0 END) ok,
            SUM(CASE WHEN fetch_status <> 'success' THEN 1 ELSE 0 END) bad,
-           MAX(NULLIF(error_message, '')) err
+           SUM(CASE WHEN fetch_status = 'error'
+                     AND COALESCE(error_message, '') <> '${NO_FILES_MSG}' THEN 1 ELSE 0 END) real,
+           MAX(CASE WHEN fetch_status = 'error'
+                     AND COALESCE(error_message, '') <> '${NO_FILES_MSG}' THEN NULLIF(error_message, '') END) err
     FROM documents_cache GROUP BY project_id
   `)) {
-    docs.set(d.project_id, { ok: d.ok, bad: d.bad, err: d.err ?? '' });
+    docs.set(d.project_id, { ok: d.ok, bad: d.bad, real: d.real, err: d.err ?? '' });
   }
 
   const goals = new Map<string, { status: string; err: string }>();
@@ -168,7 +176,8 @@ export function buildPipelineRows(queued: Set<string>): PipelineRow[] {
     const d = docs.get(id);
     let download: StageState = 'none';
     if (d && d.ok > 0) download = 'done';
-    else if (d && d.bad > 0) { download = 'error'; errors.download = d.err || 'No files found or not accessible'; }
+    else if (d && d.real > 0) { download = 'error'; errors.download = d.err || NO_FILES_MSG; }
+    else if (d && d.bad > 0) download = 'empty';
     else if (linked) download = cycle === 'download' ? 'running' : 'waiting';
 
     const g = goals.get(id);
