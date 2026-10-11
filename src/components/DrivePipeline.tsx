@@ -47,6 +47,7 @@ interface PipelineRow {
   impactCount: number;
   linkFolder: string;
   loadable: boolean;
+  redoSince: string | null;
 }
 
 interface PipelineData {
@@ -211,6 +212,28 @@ export default function PipelineSection({ addProject, onToast }: {
       } else {
         onToast('error', `${projectId}: nothing downloaded. ${(d.errors ?? []).join('; ') || 'No files found.'}`);
       }
+      load();
+    } catch (err: unknown) {
+      onToast('error', err instanceof Error ? err.message : String(err));
+    } finally { setBusy(null); }
+  };
+
+  const redoAll = async (projectId: string) => {
+    if (!window.confirm(
+      `Run every stage of ${projectId} again?\n\n` +
+      'Apps Script copies and cleans it again, then Alumen downloads the files and redoes goals and impact. ' +
+      'Its current files and goals are replaced once the new copy is ready.'
+    )) return;
+    setBusy(projectId);
+    try {
+      const res = await fetch('/api/drive/pipeline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'redo', projectId }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!d.ok) throw new Error(d.error || 'Failed');
+      onToast('success', `${projectId} queued to run again. Apps Script picks it up within 10 minutes.`);
       load();
     } catch (err: unknown) {
       onToast('error', err instanceof Error ? err.message : String(err));
@@ -400,6 +423,13 @@ export default function PipelineSection({ addProject, onToast }: {
                             {busy === r.projectId ? <span className="inline-block animate-spin">↻</span> : '↻'}
                           </button>
                         )}
+                        {!r.loadable && (r.redoSince ? (
+                          <span className="text-[11px] text-accent-text" title={`Redo requested ${r.redoSince.slice(0, 16).replace('T', ' ')} UTC`}>redo…</span>
+                        ) : (
+                          <button onClick={() => redoAll(r.projectId)} disabled={busy !== null}
+                            className="text-ink-muted hover:text-ink-2 disabled:opacity-40"
+                            title="Redo all: copy, cleanup, download, goals and impact again">⟲</button>
+                        ))}
                         {r.source === 'manual' && (
                           <button onClick={() => removeManual(r.projectId)} disabled={busy !== null}
                             className="text-ink-muted hover:text-red-400 disabled:opacity-40" title="Remove this ad hoc project">🗑</button>

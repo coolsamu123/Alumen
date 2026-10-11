@@ -3,6 +3,8 @@ import { requireAdmin, isSessionError } from '@/lib/auth';
 import { readQueue, readHeartbeat, pruneQueue, enqueueMany } from '@/lib/alumen-queue';
 import { buildPipelineRows, newCdioProjects } from '@/lib/pipeline-view';
 import { splitByBaseFolder } from '@/lib/base-folder';
+import { requestRedo } from '@/lib/project-redo';
+import { normalizeProjectId } from '@/lib/project-id';
 import { baseFolderUrl, isAutoCycleRunning, getAutoCycleStage } from '@/lib/auto-pipeline';
 
 // The single table of Drive Sync: every project with the state of each stage.
@@ -51,17 +53,29 @@ export async function GET() {
 /**
  *   { action: 'load', projectIds: [...] }  → queue the copy for these projects
  *   { action: 'load-new-cdio' }            → queue every CDIO project not requested yet
+ *   { action: 'redo', projectId }          → run every stage of one project again
  */
 export async function POST(request: Request) {
   const session = await requireAdmin();
   if (isSessionError(session)) {
     return NextResponse.json({ error: session.error }, { status: session.status });
   }
-  let body: { action?: string; projectIds?: string[] };
+  let body: { action?: string; projectIds?: string[]; projectId?: string };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ ok: false, error: 'Invalid JSON' }, { status: 400 });
+  }
+
+  if (body.action === 'redo') {
+    const id = normalizeProjectId(String(body.projectId ?? ''));
+    if (!id) return NextResponse.json({ ok: false, error: 'Invalid projectId' }, { status: 400 });
+    try {
+      await requestRedo(id, session.email);
+      return NextResponse.json({ ok: true, projectId: id });
+    } catch (err: unknown) {
+      return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
   }
 
   let ids: string[];

@@ -19,6 +19,7 @@ import fs from 'fs';
 import path from 'path';
 import { google } from 'googleapis';
 import { getDb } from './db';
+import { pendingRedos, copyTaken } from './project-redo';
 
 const SERVICE_ACCOUNT_PATH = path.join(process.cwd(), 'data', 'service-account.json');
 
@@ -37,6 +38,8 @@ export interface QueueItem {
   projectId: string;
   requestedBy: string;
   requestedAt: string;
+  /** Run every stage again even if the sheet already has the project (Apps Script v4). */
+  redo?: boolean;
 }
 
 export interface Heartbeat {
@@ -209,8 +212,18 @@ export async function enqueueMany(
   return { added, skipped, queue: added.length ? next : current };
 }
 
+/** Queues a project to be copied and cleaned again (see project-redo.ts). */
+export async function enqueueRedo(projectId: string, requestedBy: string, requestedAt: string): Promise<void> {
+  const id = projectId.trim().toUpperCase();
+  const current = await readQueue();
+  const next = current.filter(it => it.projectId.trim().toUpperCase() !== id);
+  next.push({ projectId: id, requestedBy, requestedAt, redo: true });
+  await writeQueue(next);
+}
+
 /**
  * Drops from the queue whatever already showed up in the control sheet.
+ * A redo request stays until Apps Script has reset the project's copy row.
  *
  * This is the counterpart to "Apps Script never deletes the file": a request
  * only leaves once the other side has confirmed it. Called on the same tick
@@ -225,7 +238,15 @@ export async function pruneQueue(): Promise<number> {
     .all() as Array<{ project_id: string }>;
   const known = new Set(rows.map(r => r.project_id.trim().toUpperCase()));
 
-  const keep = current.filter(it => !known.has(it.projectId.trim().toUpperCase()));
+  const redos = pendingRedos();
+  const keep = current.filter(it => {
+    const id = it.projectId.trim().toUpperCase();
+    if (it.redo) {
+      const r = redos.get(id);
+      return !!r && !copyTaken(r);
+    }
+    return !known.has(id);
+  });
   if (keep.length === current.length) return 0;
 
   await writeQueue(keep);

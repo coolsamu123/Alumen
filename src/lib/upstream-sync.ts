@@ -19,6 +19,7 @@ import fs from 'fs';
 import path from 'path';
 import { getDb } from './db';
 import { normalizeProjectId } from './project-id';
+import { settleRedos } from './project-redo';
 
 const SERVICE_ACCOUNT_PATH = path.join(process.cwd(), 'data', 'service-account.json');
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -294,6 +295,13 @@ export function persistUpstream(rows: UpstreamRow[], observedAt: string): void {
     }
   });
   tx(rows);
+  // Projects asked to run again whose copy and cleanup are now redone.
+  try {
+    const reset = settleRedos();
+    if (reset.length) console.log(`[redo] upstream redone, local data reset: ${reset.join(', ')}`);
+  } catch (e) {
+    console.error('[redo] settle failed:', e);
+  }
 }
 
 export function readMirror(): UpstreamRow[] {

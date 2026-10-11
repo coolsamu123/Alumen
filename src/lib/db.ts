@@ -519,6 +519,14 @@ function initSchema(db: Database.Database) {
   // The Google Doc each project's "Generate report" wrote (project-report.ts),
   // so the panel can show its link without asking Drive.
   db.exec(`
+    CREATE TABLE IF NOT EXISTS project_redo (
+      project_id        TEXT PRIMARY KEY,
+      requested_at      TEXT NOT NULL,
+      requested_by      TEXT DEFAULT '',
+      copy_sheet_at     TEXT,   -- sheet rows as they were when asked, so a
+      cleanup_sheet_at  TEXT    -- change proves Apps Script redid them
+    );
+
     CREATE TABLE IF NOT EXISTS project_reports (
       project_id    TEXT PRIMARY KEY,
       file_id       TEXT NOT NULL,

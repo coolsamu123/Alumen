@@ -18,6 +18,7 @@
  */
 import { isProjectId } from './project-id';
 import { getDb } from './db';
+import { pendingRedos } from './project-redo';
 import { isAutoCycleRunning, getAutoCycleStage, BASE_FOLDER_SCANNED_SETTING } from './auto-pipeline';
 import type { ProjectSource } from './types';
 
@@ -46,6 +47,8 @@ export interface PipelineRow {
   linkFolder: string;
   /** Not requested and nothing downstream: the row offers "Carregar". */
   loadable: boolean;
+  /** "Redo all" was asked and is not finished: every stage shows waiting. */
+  redoSince: string | null;
 }
 
 function upstreamState(status: string | undefined): StageState {
@@ -91,9 +94,9 @@ export function buildPipelineRows(queued: Set<string>): PipelineRow[] {
     ORDER BY p.project_id
   `);
 
-  const upstream = new Map<string, { status: string; detail_json: string }>();
-  for (const u of safeAll<{ project_id: string; stage: string; status: string; detail_json: string }>(
-    'SELECT project_id, stage, status, detail_json FROM upstream_status',
+  const upstream = new Map<string, { status: string; detail_json: string; sheet_at: string | null }>();
+  for (const u of safeAll<{ project_id: string; stage: string; status: string; detail_json: string; sheet_at: string | null }>(
+    'SELECT project_id, stage, status, detail_json, sheet_at FROM upstream_status',
   )) {
     upstream.set(`${u.project_id}|${u.stage}`, u);
   }
@@ -134,6 +137,7 @@ export function buildPipelineRows(queued: Set<string>): PipelineRow[] {
   `)) impacts.set(r.pid, r.c);
 
   const cycle = isAutoCycleRunning() ? getAutoCycleStage().stage : 'idle';
+  const redos = pendingRedos();
 
   // For "discover was tried and found nothing". Both normalised to SQLite's
   // datetime() text so they compare as strings.
@@ -191,6 +195,24 @@ export function buildPipelineRows(queued: Set<string>): PipelineRow[] {
       : goalsState === 'done' ? (cycle === 'impact' ? 'running' : 'waiting')
       : 'none';
 
+    const stages: Record<StageKey, StageState> = { request, copy, cleanup, discover, download, goals: goalsState, impact };
+
+    // Redo pending: a stage counts as done only if redone after the request.
+    const redo = redos.get(id.toUpperCase());
+    if (redo) {
+      // Until Apps Script rewrites the row, its state is the old run's.
+      const redone = (row: typeof copyRow, before: string | null, st: StageState): StageState =>
+        row?.sheet_at && row.sheet_at !== before && st !== 'none' ? st : 'waiting';
+      stages.copy = redone(copyRow, redo.copy_sheet_at, copy);
+      stages.cleanup = redone(cleanRow, redo.cleanup_sheet_at, cleanup);
+      stages.request = copyRow?.sheet_at && copyRow.sheet_at !== redo.copy_sheet_at ? 'done' : 'waiting';
+      stages.discover = stages.cleanup === 'done' ? discover : 'waiting';
+      stages.download = 'waiting';
+      stages.goals = 'waiting';
+      stages.impact = 'waiting';
+      for (const k of Object.keys(errors) as StageKey[]) if (stages[k] !== 'error') delete errors[k];
+    }
+
     const period = p.year && p.month ? `${p.year}-${String(p.month).padStart(2, '0')}` : '';
     const source = (['excel', 'drive', 'manual'].includes(p.source ?? '') ? p.source : 'excel') as ProjectSource;
 
@@ -202,12 +224,13 @@ export function buildPipelineRows(queued: Set<string>): PipelineRow[] {
       dds: p.dds ?? '',
       gate: p.gate ?? '',
       period,
-      stages: { request, copy, cleanup, discover, download, goals: goalsState, impact },
+      stages,
       errors,
       filesDownloaded: d?.ok ?? 0,
       impactCount,
       linkFolder: p.link_folder ?? '',
-      loadable: request === 'none' && !linked,
+      loadable: request === 'none' && !linked && !redo,
+      redoSince: redo?.requested_at ?? null,
     };
   });
 }
