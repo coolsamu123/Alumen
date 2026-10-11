@@ -221,19 +221,19 @@ function StatusHeader({
         {/* LLM */}
         <div className="flex items-center gap-4 text-xs text-ink-muted">
           {llm && (
-            <span title={`Today: ${llm.total}/${llm.cap} LLM calls`}>
+            <span title={llm.cap > 0 ? `Today: ${llm.total}/${llm.cap} LLM calls` : `Today: ${llm.total} LLM calls (no daily cap)`}>
               <span className="text-ink-faint">⚡</span>{' '}
-              <span className={`font-mono ${llm.remaining === 0 ? 'text-red-400' : llm.remaining < llm.cap * 0.2 ? 'text-yellow-400' : 'text-ink-3'}`}>
+              <span className={`font-mono ${llm.cap <= 0 ? 'text-ink-3' : llm.remaining === 0 ? 'text-red-400' : llm.remaining < llm.cap * 0.2 ? 'text-yellow-400' : 'text-ink-3'}`}>
                 {llm.total}
               </span>
-              <span className="text-ink-faint">/{llm.cap}</span>
+              {llm.cap > 0 && <span className="text-ink-faint">/{llm.cap}</span>}
             </span>
           )}
         </div>
       </div>
 
       {/* LLM cap warning */}
-      {llm && llm.remaining === 0 && (
+      {llm && llm.cap > 0 && llm.remaining === 0 && (
         <div className="px-6 py-1.5 bg-red-950/50 border-t border-red-900/50 text-[11px] text-red-300">
           Daily LLM cap reached. Cycles will skip LLM stages until tomorrow.
         </div>

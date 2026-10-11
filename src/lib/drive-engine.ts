@@ -402,7 +402,12 @@ async function processUrl(
 
 // ─── Download a single project's files ──────────────────────────────────────
 
-export async function runDriveDownloadSingle(projectId: string): Promise<void> {
+export interface SingleDownloadResult {
+  files: number;
+  errors: string[];
+}
+
+export async function runDriveDownloadSingle(projectId: string): Promise<SingleDownloadResult> {
   if (downloadStatus.isRunning) {
     throw new Error('Drive download is already running');
   }
@@ -453,7 +458,7 @@ export async function runDriveDownloadSingle(projectId: string): Promise<void> {
 
     if (urls.length === 0) {
       downloadStatus.currentProject = 'Complete (no links)';
-      return;
+      return { files: 0, errors: ['No Drive link for this project'] };
     }
 
     downloadStatus.totalUrls = urls.length;
@@ -476,6 +481,7 @@ export async function runDriveDownloadSingle(projectId: string): Promise<void> {
     `);
 
     downloadStatus.currentProject = `${row.project_id}: ${row.name.slice(0, 40)}`;
+    let okFiles = 0;
 
     for (let uIdx = 0; uIdx < urls.length; uIdx++) {
       const url = urls[uIdx];
@@ -491,11 +497,13 @@ export async function runDriveDownloadSingle(projectId: string): Promise<void> {
               upsertDocSkipped.run(f.webUrl, row.project_id, `skipped_${reason}`, f.name || '');
             } else {
               upsertDoc.run(f.webUrl, row.project_id, f.textContent, f.localPath ? 'downloaded' : 'metadata', f.name || '');
+              okFiles++;
             }
           }
 
           if (files.length === 0) {
             upsertDocError.run(url, row.project_id, 'No files found or not accessible');
+            downloadStatus.errors.push(`${row.project_id}: No files found or not accessible`);
           }
         }
       } catch (err: unknown) {
@@ -513,9 +521,11 @@ export async function runDriveDownloadSingle(projectId: string): Promise<void> {
     dedupeProjectDocs(row.project_id);
 
     downloadStatus.currentProject = 'Complete';
+    return { files: okFiles, errors: [...downloadStatus.errors] };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     downloadStatus.errors.push(`Fatal: ${msg}`);
+    return { files: 0, errors: [msg] };
   } finally {
     downloadStatus.isRunning = false;
     downloadStatus.finishedAt = new Date().toISOString();

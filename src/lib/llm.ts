@@ -14,7 +14,8 @@ export class LLMCapExceededError extends Error {
   }
 }
 
-const DEFAULT_DAILY_CAP = 500;
+// 0 = no daily cap. Set STROM_LLM_DAILY_CAP to a positive number to bring one back.
+const DEFAULT_DAILY_CAP = 0;
 const DEFAULT_MODEL = 'gemini-3-pro';
 const DEFAULT_OUTPUT_LANGUAGE: OutputLanguage = 'en';
 const CONFIG_PATH = path.join(process.cwd(), 'config.json');
@@ -125,7 +126,8 @@ export function getTodayLLMStats(): {
     date: dateRow.d,
     total: totalRow.c,
     cap,
-    remaining: Math.max(0, cap - totalRow.c),
+    // -1 = unlimited (cap 0).
+    remaining: cap > 0 ? Math.max(0, cap - totalRow.c) : -1,
     byContext: Object.fromEntries(byContextRows.map(r => [r.k, r.c])),
     byProvider: Object.fromEntries(byProviderRows.map(r => [r.k, r.c])),
     errors: errorsRow.c,

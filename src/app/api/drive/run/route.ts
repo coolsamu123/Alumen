@@ -11,8 +11,9 @@ import { runDriveDownload, runDriveDownloadSingle, getDriveStatus } from '@/lib/
 //   { mode: 'goals-only' }        → discover → download → goals (skip impact)
 //   { mode: 'download-only' }     → re-download all known links (legacy "Extract Everything")
 //   { mode: 'project', projectId } → re-sync a single project's Drive links
+//                                    (wait: true → answers with the result)
 export async function POST(request: NextRequest) {
-  let body: { mode?: string; projectId?: string } = {};
+  let body: { mode?: string; projectId?: string; wait?: boolean } = {};
   try {
     body = await request.json();
   } catch { /* ignore */ }
@@ -26,6 +27,11 @@ export async function POST(request: NextRequest) {
     const drive = getDriveStatus();
     if (drive.isRunning || isAutoCycleRunning()) {
       return NextResponse.json({ error: 'Pipeline already running' }, { status: 409 });
+    }
+    if (body.wait) {
+      // One project takes seconds to a few minutes; nginx allows 300 s+.
+      const result = await runDriveDownloadSingle(body.projectId);
+      return NextResponse.json({ success: true, mode, projectId: body.projectId, ...result });
     }
     runDriveDownloadSingle(body.projectId).catch(err =>
       console.error('[run] single project failed:', err)

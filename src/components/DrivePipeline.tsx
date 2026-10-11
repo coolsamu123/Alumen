@@ -199,11 +199,17 @@ export default function PipelineSection({ addProject, onToast }: {
       const res = await fetch('/api/drive/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'project', projectId }),
+        body: JSON.stringify({ mode: 'project', projectId, wait: true }),
       });
-      if (res.status === 409) { onToast('info', 'Another sync is already running.'); return; }
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed');
-      onToast('info', `Downloading the files of ${projectId} again…`);
+      if (res.status === 409) { onToast('info', 'A cycle is running. Try again when it is Idle.'); return; }
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || 'Failed');
+      if (d.files > 0) {
+        onToast('success', `${projectId}: ${d.files} file(s) downloaded. Goals and impact run on the next cycle.`);
+      } else {
+        onToast('error', `${projectId}: nothing downloaded. ${(d.errors ?? []).join('; ') || 'No files found.'}`);
+      }
+      load();
     } catch (err: unknown) {
       onToast('error', err instanceof Error ? err.message : String(err));
     } finally { setBusy(null); }
@@ -386,7 +392,9 @@ export default function PipelineSection({ addProject, onToast }: {
                         )}
                         {!r.loadable && downloadFailed && r.linkFolder && (
                           <button onClick={() => resync(r.projectId)} disabled={busy !== null}
-                            className="text-ink-muted hover:text-ink-2 disabled:opacity-40" title="Download this project's files again">↻</button>
+                            className="text-ink-muted hover:text-ink-2 disabled:opacity-40" title="Download this project's files again">
+                            {busy === r.projectId ? <span className="inline-block animate-spin">↻</span> : '↻'}
+                          </button>
                         )}
                         {r.source === 'manual' && (
                           <button onClick={() => removeManual(r.projectId)} disabled={busy !== null}
