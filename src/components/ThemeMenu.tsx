@@ -4,10 +4,11 @@ import { useEffect, useRef, useState } from 'react';
 import { useProjectContext, type ThemePreference } from '@/context/ProjectContext';
 
 const OPTIONS: { value: ThemePreference; label: string; hint: string }[] = [
-  { value: 'system', label: 'System', hint: 'Follows your OS' },
+  { value: 'airliquide', label: 'Air Liquide', hint: 'Default' },
   { value: 'dark', label: 'Dark', hint: 'Graphite' },
   { value: 'paper', label: 'Paper', hint: 'Clean light' },
-  { value: 'ocean', label: 'Ocean', hint: 'Air Liquide colors' },
+  { value: 'ocean', label: 'Ocean', hint: 'Navy header' },
+  { value: 'system', label: 'System', hint: 'Paper or Dark, as your OS' },
 ];
 
 function ThemeIcon({ pref }: { pref: ThemePreference }) {
@@ -26,6 +27,10 @@ function ThemeIcon({ pref }: { pref: ThemePreference }) {
   }
   if (pref === 'dark') {
     return <svg {...svg}><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" /></svg>;
+  }
+  if (pref === 'airliquide') {
+    // The group's drop mark: a circle with one square corner.
+    return <svg {...svg}><path d="M12 3h8v9a8 8 0 1 1-8-9z" /></svg>;
   }
   if (pref === 'ocean') {
     return (

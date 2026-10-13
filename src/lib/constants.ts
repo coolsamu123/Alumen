@@ -120,7 +120,7 @@ export function categoryText(color: string): string {
 // React Flow builds marker ids from the edge color string, so edges get
 // concrete colors rather than CSS variables. Sky-300 all but vanishes on a
 // white canvas; the light theme draws the same hues a few steps darker.
-export function severityStroke(severity: string, theme: 'dark' | 'paper' | 'ocean'): string {
+export function severityStroke(severity: string, theme: 'airliquide' | 'dark' | 'paper' | 'ocean'): string {
   if (theme === 'dark') return SEVERITY_COLORS[severity] || SEVERITY_FALLBACK;
   if (severity === 'high') return '#dc2626';
   if (severity === 'low' || severity === 'medium') return '#0284c7';

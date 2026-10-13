@@ -14,7 +14,7 @@ const token = (name: string) =>
 // Components were written for the dark theme: tinted-dark fills with bright
 // text (`bg-purple-900/40 text-purple-200`). Instead of overriding those
 // classes one by one for light (a whitelist that every new class escaped), the
-// light themes (paper, ocean) mirror the lightness scale: 900 → 100, 200 → 800, and so on.
+// light themes (airliquide, paper, ocean) mirror the lightness scale: 900 → 100, 200 → 800, and so on.
 // 500–700 are mid-tones that read on both grounds, so solid buttons with white
 // text keep their color.
 const HUES = [
@@ -62,7 +62,7 @@ const paletteVars = plugin(({ addBase }) => {
       light[`--pal-${hue}-${shade}`] = hex(hue, lightShade(hue, shade));
     }
   }
-  addBase({ ":root": dark, ':root[data-theme="paper"], :root[data-theme="ocean"]': light });
+  addBase({ ":root": dark, ':root[data-theme="airliquide"], :root[data-theme="paper"], :root[data-theme="ocean"]': light });
 });
 
 const TONES = ["tech", "vendor", "data", "dds", "gio", "neutral", "ok", "warn", "bad", "info"];

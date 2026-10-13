@@ -68,7 +68,7 @@ interface ProjectContextType {
   isAdmin: boolean;
 
   // Color theme — available to every role. `themePreference` is what the user
-  // picked ('system' follows the OS and is stored as nothing); `theme` is what
+  // picked ('system' follows the OS; nothing stored means Air Liquide); `theme` is what
   // is actually painted. The initial value comes from the inline anti-flash
   // script in layout.tsx so React hydration matches the painted DOM.
   theme: ThemeName;
@@ -76,13 +76,13 @@ interface ProjectContextType {
   setThemePreference: (p: ThemePreference) => void;
 }
 
-export type ThemeName = 'dark' | 'paper' | 'ocean';
+export type ThemeName = 'airliquide' | 'dark' | 'paper' | 'ocean';
 export type ThemePreference = ThemeName | 'system';
 
 const THEME_STORAGE_KEY = 'strom-theme';
 
 function isThemeName(v: string | null): v is ThemeName {
-  return v === 'dark' || v === 'paper' || v === 'ocean';
+  return v === 'airliquide' || v === 'dark' || v === 'paper' || v === 'ocean';
 }
 
 const ProjectContext = createContext<ProjectContextType | null>(null);
@@ -129,14 +129,15 @@ export function ProjectProvider({
   // it from <html data-theme> on mount instead of guessing and risking a flash.
   // The preference stays null until localStorage has been read: starting at
   // 'system' would let the OS listener below repaint over a stored choice.
-  const [theme, setThemeState] = useState<ThemeName>('dark');
+  const [theme, setThemeState] = useState<ThemeName>('airliquide');
   const [themePreference, setThemePreferenceState] = useState<ThemePreference | null>(null);
   useEffect(() => {
     const current = document.documentElement.getAttribute('data-theme');
     if (isThemeName(current)) setThemeState(current);
     let stored: string | null = null;
     try { stored = localStorage.getItem(THEME_STORAGE_KEY); } catch { /* private mode */ }
-    setThemePreferenceState(isThemeName(stored) ? stored : 'system');
+    // Nothing stored means the default theme; 'system' is an explicit choice.
+    setThemePreferenceState(isThemeName(stored) ? stored : stored === 'system' ? 'system' : 'airliquide');
   }, []);
 
   // While following the OS, repaint when the OS switches.
@@ -156,8 +157,7 @@ export function ProjectProvider({
   const setThemePreference = useCallback((p: ThemePreference) => {
     setThemePreferenceState(p);
     try {
-      if (p === 'system') localStorage.removeItem(THEME_STORAGE_KEY);
-      else localStorage.setItem(THEME_STORAGE_KEY, p);
+      localStorage.setItem(THEME_STORAGE_KEY, p);
     } catch { /* private mode */ }
     if (p !== 'system') {
       setThemeState(p);

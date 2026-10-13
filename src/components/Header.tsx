@@ -36,13 +36,15 @@ export default function Header() {
   return (
     <div className="app-header px-6 py-3 border-b border-line flex items-center gap-4 bg-surface">
       <div className="flex items-center gap-3">
-        <img src="/icon-192.png" alt="Alumen" className="w-10 h-10 rounded-lg" />
+        <img src="/brand/air-liquide-logo.png" alt="Air Liquide" className="theme-al-only h-6 w-auto" />
+        <div className="theme-al-only w-px h-7 bg-line-strong mx-1" />
+        <img src="/icon-192.png" alt="Alumen" className="theme-al-hide w-10 h-10 rounded-lg" />
         <div className="leading-none">
           <div className="flex items-baseline gap-1.5">
-            <span className="text-2xl font-extrabold text-ink-1 tracking-tight">Alumen</span>
+            <span className="brand-name text-2xl font-extrabold text-ink-1 tracking-tight">Alumen</span>
             <span className="text-sm font-medium text-ink-4 tracking-tight">— Portfolio Intelligence</span>
           </div>
-          <div className="text-xs text-ink-muted mt-1">Air Liquide</div>
+          <div className="theme-al-hide text-xs text-ink-muted mt-1">Air Liquide</div>
         </div>
       </div>
 
