@@ -34,7 +34,7 @@ export default function Header() {
   const { view, setView, isAdmin } = useProjectContext();
 
   return (
-    <div className="px-6 py-3 border-b border-line flex items-center gap-4 bg-surface">
+    <div className="app-header px-6 py-3 border-b border-line flex items-center gap-4 bg-surface">
       <div className="flex items-center gap-3">
         <img src="/icon-192.png" alt="Alumen" className="w-10 h-10 rounded-lg" />
         <div className="leading-none">

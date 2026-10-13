@@ -698,7 +698,7 @@ export default function ProjectUniverseView() {
             nodesConnectable={false}
             elementsSelectable={false}
           >
-            <Background gap={32} size={1} color={theme === 'light' ? '#cbd5e1' : theme === 'dim' ? '#444c56' : '#2f343d'} />
+            <Background gap={32} size={1} color={theme === 'dark' ? '#2f343d' : '#cbd5e1'} />
             <Controls className="!bg-surface-1 !border-line-strong" showInteractive={false} />
           </ReactFlow>
 

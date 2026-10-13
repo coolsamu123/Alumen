@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700;800&family=Roboto:wght@400;500;700;900&family=Roboto+Slab:wght@500;600;700;800&display=swap');
 
 /*
  * Theme tokens. Three themes ride on the same variable names — components consume
@@ -12,8 +12,10 @@
  *
  *   dark   Graphite — near-neutral graphite instead of saturated navy, #eceef2
  *          instead of pure white text. The default.
- *   light  Cool neutrals biased toward the accent; white cards on a sunken ground.
- *   dim    Mid-contrast dark for long sessions and projectors.
+ *   paper  Warm off-white, hairline borders, indigo accent (Linear/Vercel style).
+ *   ocean  Air Liquide palette: navy header, blue actions, Roboto / Roboto Slab.
+ *
+ *   font-sans / font-display  body and heading font per theme
  *
  *   ink-1  highest contrast (titles)
  *   ink-2  high contrast (subtitles)
@@ -98,111 +100,160 @@
 
   --shadow-card: 0 0 20px rgba(99, 102, 241, 0.08);
 
+  --font-sans: 'DM Sans', 'Segoe UI', sans-serif;
+  --font-display: 'DM Sans', 'Segoe UI', sans-serif;
+
   color-scheme: dark;
 }
 
-:root[data-theme="light"] {
-  --bg: #f4f6f8;
+/* Paper — warm off-white, hairline borders, one indigo accent. */
+:root[data-theme="paper"] {
+  --bg: #fafaf9;
   --surface: #ffffff;
   --surface-1: #ffffff;
-  --surface-2: #eef1f5;
-  --surface-3: #e3e7ed;
-  --surface-deep: #f8f9fb;
-  --surface-sunken: #f8f9fb;
+  --surface-2: #f5f5f4;
+  --surface-3: #e7e5e4;
+  --surface-deep: #f7f7f6;
+  --surface-sunken: #f5f5f4;
 
-  --ink-1: #0e1522;
-  --ink-2: #1c2533;
-  --ink-3: #3a4556;
-  --ink-4: #5a6577;
-  --ink-muted: #687282;
-  --ink-faint: #8a93a1;
+  --ink-1: #18181b;
+  --ink-2: #27272a;
+  --ink-3: #3f3f46;
+  --ink-4: #52525b;
+  --ink-muted: #71717a;
+  --ink-faint: #a1a1aa;
 
-  --border: #e3e7ec;
-  --border-strong: #d0d6de;
-  --border-faint: #eef1f4;
+  --border: #e7e5e4;
+  --border-strong: #d6d3d1;
+  --border-faint: #f0efee;
 
-  --accent: #2356d8;
-  --accent-hover: #1c46b5;
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
   --accent-fg: #ffffff;
-  --accent-soft: #eef3fe;
-  --accent-text: #1f4fc4;
-  --accent-text-2: #2356d8;
-  --accent-border: #5b85e8;
+  --accent-soft: #eef2ff;
+  --accent-text: #4338ca;
+  --accent-text-2: #4f46e5;
+  --accent-border: #818cf8;
 
-  --link: #1f4fc4;
-  --link-hover: #163b96;
+  --link: #4338ca;
+  --link-hover: #3730a3;
   --cat-mix: 45%;
 
-  --tone-tech-fg: #1d4ed8;    --tone-tech-bg: #eff4ff;    --tone-tech-bd: #c7d7fe;
+  --tone-tech-fg: #4338ca;    --tone-tech-bg: #eef2ff;    --tone-tech-bd: #c7d2fe;
   --tone-vendor-fg: #6d28d9;  --tone-vendor-bg: #f5f3ff;  --tone-vendor-bd: #ddd6fe;
   --tone-data-fg: #92400e;    --tone-data-bg: #fffbeb;    --tone-data-bd: #fde68a;
   --tone-dds-fg: #047857;     --tone-dds-bg: #ecfdf5;     --tone-dds-bd: #a7f3d0;
   --tone-gio-fg: #0e7490;     --tone-gio-bg: #ecfeff;     --tone-gio-bd: #a5f3fc;
-  --tone-neutral-fg: #334155; --tone-neutral-bg: #f1f5f9; --tone-neutral-bd: #e2e8f0;
+  --tone-neutral-fg: #3f3f46; --tone-neutral-bg: #f4f4f5; --tone-neutral-bd: #e4e4e7;
   --tone-ok-fg: #15803d;      --tone-ok-bg: #f0fdf4;      --tone-ok-bd: #bbf7d0;
   --tone-warn-fg: #b45309;    --tone-warn-bg: #fffbeb;    --tone-warn-bd: #fcd34d;
   --tone-bad-fg: #b91c1c;     --tone-bad-bg: #fef2f2;     --tone-bad-bd: #fecaca;
   --tone-info-fg: #0369a1;    --tone-info-bg: #f0f9ff;    --tone-info-bd: #bae6fd;
 
-  --scrollbar-track: #eef1f4;
-  --scrollbar-thumb: #d0d6de;
-  --scrollbar-thumb-hover: #8a93a1;
+  --scrollbar-track: #f5f5f4;
+  --scrollbar-thumb: #d6d3d1;
+  --scrollbar-thumb-hover: #a1a1aa;
 
-  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.04);
+  --shadow-card: 0 1px 2px rgba(24, 24, 27, 0.04), 0 2px 8px rgba(24, 24, 27, 0.04);
+
+  --font-sans: 'Inter', 'Segoe UI', sans-serif;
+  --font-display: 'Inter', 'Segoe UI', sans-serif;
 
   color-scheme: light;
 }
 
-:root[data-theme="dim"] {
-  --bg: #1c2128;
-  --surface: #22272e;
-  --surface-1: #2a3039;
-  --surface-2: #323944;
-  --surface-3: #3d4550;
-  --surface-deep: #1c2128;
-  --surface-sunken: #22272e;
+/* Ocean — Air Liquide palette: navy header (#021A7C), blue #3760A4 actions,
+ * magenta #B03A82 for errors, amber #F6B222 for the active tab. */
+:root[data-theme="ocean"] {
+  --bg: #f3f5fa;
+  --surface: #ffffff;
+  --surface-1: #ffffff;
+  --surface-2: #eef2f9;
+  --surface-3: #e1e7f2;
+  --surface-deep: #f7f9fc;
+  --surface-sunken: #eef2f9;
 
-  --ink-1: #e3e8ee;
-  --ink-2: #cdd5de;
-  --ink-3: #adbac7;
-  --ink-4: #9fabb8;
-  --ink-muted: #909dab;
-  --ink-faint: #768390;
+  --ink-1: #0a1446;
+  --ink-2: #1b2558;
+  --ink-3: #343e68;
+  --ink-4: #4f5880;
+  --ink-muted: #5f6889;
+  --ink-faint: #9aa2bd;
 
-  --border: #373e47;
-  --border-strong: #444c56;
-  --border-faint: #2d333b;
+  --border: #dfe4ef;
+  --border-strong: #c9d1e3;
+  --border-faint: #ebeff6;
 
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
+  --accent: #3760a4;
+  --accent-hover: #2b4f8c;
   --accent-fg: #ffffff;
-  --accent-soft: rgba(74, 130, 240, 0.18);
-  --accent-text: #8ab4f8;
-  --accent-text-2: #79a6f6;
-  --accent-border: #4a82f0;
+  --accent-soft: #e6ecf7;
+  --accent-text: #2b4f8c;
+  --accent-text-2: #3760a4;
+  --accent-border: #6f8fc7;
 
-  --link: #8ab4f8;
-  --link-hover: #b3cdfb;
-  --cat-mix: 40%;
+  --link: #2b4f8c;
+  --link-hover: #021a7c;
+  --cat-mix: 45%;
 
-  --tone-tech-fg: #9db8ff;    --tone-tech-bg: rgba(79, 124, 255, 0.16);   --tone-tech-bd: rgba(79, 124, 255, 0.32);
-  --tone-vendor-fg: #c4b5fd;  --tone-vendor-bg: rgba(167, 139, 250, 0.16); --tone-vendor-bd: rgba(167, 139, 250, 0.32);
-  --tone-data-fg: #fcd34d;    --tone-data-bg: rgba(245, 158, 11, 0.16);   --tone-data-bd: rgba(245, 158, 11, 0.32);
-  --tone-dds-fg: #6ee7b7;     --tone-dds-bg: rgba(16, 185, 129, 0.16);    --tone-dds-bd: rgba(16, 185, 129, 0.32);
-  --tone-gio-fg: #67e8f9;     --tone-gio-bg: rgba(6, 182, 212, 0.16);     --tone-gio-bd: rgba(6, 182, 212, 0.32);
-  --tone-neutral-fg: #cdd5de; --tone-neutral-bg: #323944;                 --tone-neutral-bd: #444c56;
-  --tone-ok-fg: #86efac;      --tone-ok-bg: rgba(34, 197, 94, 0.16);      --tone-ok-bd: rgba(34, 197, 94, 0.32);
-  --tone-warn-fg: #fbbf24;    --tone-warn-bg: rgba(251, 191, 36, 0.14);   --tone-warn-bd: rgba(251, 191, 36, 0.32);
-  --tone-bad-fg: #fca5a5;     --tone-bad-bg: rgba(239, 68, 68, 0.16);     --tone-bad-bd: rgba(239, 68, 68, 0.32);
-  --tone-info-fg: #7dd3fc;    --tone-info-bg: rgba(14, 165, 233, 0.16);   --tone-info-bd: rgba(14, 165, 233, 0.32);
+  --tone-tech-fg: #2b4f8c;    --tone-tech-bg: #e6ecf7;    --tone-tech-bd: #c3d1ea;
+  --tone-vendor-fg: #5b3fa0;  --tone-vendor-bg: #f1edfa;  --tone-vendor-bd: #d6ccf0;
+  --tone-data-fg: #8a5a00;    --tone-data-bg: #fef5dc;    --tone-data-bd: #f6d98a;
+  --tone-dds-fg: #1d7a4f;     --tone-dds-bg: #e8f5ee;     --tone-dds-bd: #b5dec8;
+  --tone-gio-fg: #0b6e86;     --tone-gio-bg: #e5f5f9;     --tone-gio-bd: #b0dfea;
+  --tone-neutral-fg: #343e68; --tone-neutral-bg: #eef2f9; --tone-neutral-bd: #dfe4ef;
+  --tone-ok-fg: #1d7a4f;      --tone-ok-bg: #e8f5ee;      --tone-ok-bd: #b5dec8;
+  --tone-warn-fg: #8a5a00;    --tone-warn-bg: #fef5dc;    --tone-warn-bd: #f6d98a;
+  --tone-bad-fg: #b03a82;     --tone-bad-bg: #f9e9f2;     --tone-bad-bd: #ebc3da;
+  --tone-info-fg: #3760a4;    --tone-info-bg: #e6ecf7;    --tone-info-bd: #c3d1ea;
 
-  --scrollbar-track: #22272e;
-  --scrollbar-thumb: #444c56;
-  --scrollbar-thumb-hover: #5b6470;
+  --scrollbar-track: #eef2f9;
+  --scrollbar-thumb: #c9d1e3;
+  --scrollbar-thumb-hover: #9aa2bd;
 
-  --shadow-card: 0 0 20px rgba(0, 0, 0, 0.25);
+  --shadow-card: 0 1px 2px rgba(2, 26, 124, 0.05), 0 6px 18px rgba(2, 26, 124, 0.06);
 
-  color-scheme: dark;
+  --font-sans: 'Roboto', 'Segoe UI', sans-serif;
+  --font-display: 'Roboto Slab', Georgia, serif;
+
+  color-scheme: light;
+}
+
+/* Ocean's header is navy: remap the tokens it uses so Header, ThemeMenu and
+ * UserMenu need no theme checks. Their popovers sit back on the light tokens. */
+:root[data-theme="ocean"] .app-header {
+  --surface: #021a7c;
+  --surface-2: rgba(255, 255, 255, 0.10);
+  --border: #0e2a92;
+  --border-strong: rgba(255, 255, 255, 0.24);
+  --ink-1: #ffffff;
+  --ink-2: #ffffff;
+  --ink-3: #dce2f7;
+  --ink-4: #c3cbef;
+  --ink-muted: #aeb9e8;
+  --accent-soft: rgba(255, 255, 255, 0.14);
+  --accent-text: #ffffff;
+  --accent-border: #f6b222;
+}
+:root[data-theme="ocean"] .app-header [role="menu"] {
+  --surface-2: #eef2f9;
+  --border: #dfe4ef;
+  --border-strong: #c9d1e3;
+  --ink-1: #0a1446;
+  --ink-2: #1b2558;
+  --ink-3: #343e68;
+  --ink-4: #4f5880;
+  --ink-muted: #5f6889;
+  --accent-soft: #e6ecf7;
+  --accent-text: #2b4f8c;
+  --accent-border: #6f8fc7;
+}
+:root[data-theme="ocean"] .app-header nav [aria-current="page"] {
+  box-shadow: inset 0 -2px 0 #f6b222;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
 }
 
 * {
@@ -210,7 +261,7 @@
 }
 
 body {
-  font-family: 'DM Sans', 'Segoe UI', sans-serif;
+  font-family: var(--font-sans);
   background: var(--bg);
   color: var(--ink-2);
 }
@@ -262,7 +313,7 @@ body {
 /*
  * Colored Tailwind classes (`bg-purple-900/40 text-purple-200`) no longer need
  * per-class overrides here: tailwind.config.ts serves the whole palette through
- * CSS variables and mirrors the lightness scale under [data-theme="light"], so
+ * CSS variables and mirrors the lightness scale under the light themes (paper, ocean), so
  * every class — including ones added later — adapts on its own.
  */
 

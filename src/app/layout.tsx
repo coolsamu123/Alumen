@@ -13,14 +13,17 @@ export const metadata: Metadata = {
 };
 
 // Runs before React hydrates so the page never paints with the wrong theme.
-// Reads localStorage('strom-theme') — 'light' | 'dark' | 'dim'; anything else
-// (including nothing) means "follow the OS" via prefers-color-scheme.
+// Reads localStorage('strom-theme') — 'dark' | 'paper' | 'ocean'; anything else
+// (including nothing) means "follow the OS" via prefers-color-scheme. The
+// retired 'light' and 'dim' are rewritten to 'paper' and 'dark'.
 const THEME_BOOT = `
 (function(){
   try {
     var t = localStorage.getItem('strom-theme');
-    if (t !== 'light' && t !== 'dark' && t !== 'dim') {
-      t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    var legacy = { light: 'paper', dim: 'dark' };
+    if (legacy[t]) { t = legacy[t]; localStorage.setItem('strom-theme', t); }
+    if (t !== 'dark' && t !== 'paper' && t !== 'ocean') {
+      t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'paper' : 'dark';
     }
     document.documentElement.setAttribute('data-theme', t);
   } catch (e) {

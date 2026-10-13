@@ -31,7 +31,7 @@ export default function ArchitectureCanvas({ selectedId, onSelect }: {
 }) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const { theme } = useProjectContext();
-  const light = theme === 'light';
+  const light = theme !== 'dark';
   // Concrete colors, not CSS variables: React Flow derives marker ids and the
   // minimap's SVG fill attributes from these strings.
   const edgeSolid = light ? '#64748b' : '#6b7280';
@@ -93,7 +93,7 @@ export default function ArchitectureCanvas({ selectedId, onSelect }: {
         nodesConnectable={false}
         elementsSelectable
       >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color={light ? '#cbd5e1' : theme === 'dim' ? '#444c56' : '#2f343d'} />
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color={light ? '#cbd5e1' : '#2f343d'} />
         <Controls position="bottom-right" showInteractive={false} className="!bg-surface-1 !border-line-strong" />
         <MiniMap
           position="top-right"

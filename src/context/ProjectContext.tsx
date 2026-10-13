@@ -76,13 +76,13 @@ interface ProjectContextType {
   setThemePreference: (p: ThemePreference) => void;
 }
 
-export type ThemeName = 'light' | 'dark' | 'dim';
+export type ThemeName = 'dark' | 'paper' | 'ocean';
 export type ThemePreference = ThemeName | 'system';
 
 const THEME_STORAGE_KEY = 'strom-theme';
 
 function isThemeName(v: string | null): v is ThemeName {
-  return v === 'light' || v === 'dark' || v === 'dim';
+  return v === 'dark' || v === 'paper' || v === 'ocean';
 }
 
 const ProjectContext = createContext<ProjectContextType | null>(null);
@@ -144,7 +144,7 @@ export function ProjectProvider({
     if (themePreference !== 'system') return;
     const mq = window.matchMedia('(prefers-color-scheme: light)');
     const apply = () => {
-      const t: ThemeName = mq.matches ? 'light' : 'dark';
+      const t: ThemeName = mq.matches ? 'paper' : 'dark';
       setThemeState(t);
       document.documentElement.setAttribute('data-theme', t);
     };
